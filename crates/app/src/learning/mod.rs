@@ -43,6 +43,25 @@ impl Topic {
 mod visuals;
 pub use visuals::{Construction, TeachingVisual};
 
+/// Primary research/context references offered by the guide.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LearningSource {
+    EegGlossary,
+    MemoryStudy,
+    SleepStages,
+}
+impl LearningSource {
+    pub const ALL: [Self; 3] = [Self::EegGlossary, Self::MemoryStudy, Self::SleepStages];
+    /// The source record, independent of the application's release documentation.
+    pub const fn url(self) -> &'static str {
+        match self {
+            Self::EegGlossary => "https://pmc.ncbi.nlm.nih.gov/articles/PMC6123891/",
+            Self::MemoryStudy => "https://pubmed.ncbi.nlm.nih.gov/16837600/",
+            Self::SleepStages => "https://www.nhlbi.nih.gov/health/sleep/stages-of-sleep",
+        }
+    }
+}
+
 /// Current learning destination. The workspace separately retains its working view.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LearningState {
@@ -50,43 +69,42 @@ pub struct LearningState {
     pub band: Band,
     pub construction: Construction,
 }
-/// Explicit examples, constructed by existing application constructors.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Example {
-    PulsedTone,
-}
-impl Example {
-    /// Actual application-owned construction, without generating a document identity.
-    pub fn form(self) -> crate::core::ComponentForm {
-        match self {
-            Self::PulsedTone => crate::document::construction::CreationKind::PulsedTone.component(),
-        }
-    }
-
-    /// Capture complete content and fresh identity at activation time.
-    pub fn recipe(self) -> Result<crate::core::Recipe, crate::services::OperationError> {
-        match self {
-            Self::PulsedTone => crate::document::construction::new_recipe(
-                crate::document::construction::CreationKind::PulsedTone,
-            ),
+impl Default for LearningState {
+    fn default() -> Self {
+        Self {
+            topic: Topic::Overview,
+            band: Band::Alpha,
+            construction: Construction::SteadyTone,
         }
     }
 }
 /// Typed requests; display wording is presentation-owned.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LearningCommand {
+    /// Reopen the session’s last guide location, without resetting its choices.
+    Resume,
     Open(Topic),
     SelectBand(Band),
     SelectConstruction(Construction),
-    ReturnToWork,
     BrowseLibrary,
-    CreateExample(Example),
+    CreateExample(Construction),
 }
 /// One illustrative sinusoid, never an audio carrier or a band definition.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct BandExample {
     pub band: Band,
     pub example_hz: f64,
+}
+impl BandExample {
+    /// One second of a normalized, zero-phase sine schematic, including both ends.
+    /// These are teaching marks, never rendered audio or measured EEG.
+    pub fn normalized_wave(self) -> Vec<f64> {
+        (0..=1024)
+            .map(|index| {
+                (std::f64::consts::TAU * self.example_hz * f64::from(index) / 1024.0).sin()
+            })
+            .collect()
+    }
 }
 /// Read the same factual input used by the optional artwork exporter.
 pub fn band_examples() -> Vec<BandExample> {
@@ -121,6 +139,31 @@ pub fn band_examples() -> Vec<BandExample> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn schematic_samples_have_independent_zero_crossing_and_quarter_cycle_checks() {
+        for example in band_examples() {
+            let wave = example.normalized_wave();
+            assert_eq!(wave.len(), 1025);
+            assert!(wave[0].abs() < 1e-12 && wave[1024].abs() < 1e-12);
+            assert!(
+                wave.iter()
+                    .all(|value| value.is_finite() && value.abs() <= 1.0)
+            );
+            let upward = wave
+                .windows(2)
+                .filter(|pair| pair[0] <= 0.0 && pair[1] > 0.0)
+                .count();
+            assert_eq!(
+                f64::from(u32::try_from(upward).unwrap()),
+                example.example_hz
+            );
+        }
+        let delta = band_examples()[0].normalized_wave();
+        assert!((delta[128] - 1.0).abs() < 1e-12);
+        assert!(delta[256].abs() < 1e-12);
+        assert!((delta[384] + 1.0).abs() < 1e-12);
+    }
+
     #[test]
     fn illustrative_rates_and_boundaries_match_core_independently() {
         let examples = band_examples();

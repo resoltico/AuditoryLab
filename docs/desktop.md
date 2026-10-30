@@ -4,17 +4,25 @@ Open **Auditory Lab.app**, `auditorylab-gui.exe`, or `auditorylab-gui`. Start wi
 
 ## Start here
 
-On a fresh profile, **Start here** offers optional orientation. **Browse Library** keeps the current query and selection; **Create a pulsed tone** captures a fresh Workbench example through the same Save/Discard/Cancel decision as other document replacements. Neither starts playback or saves the example. **New sound** starts empty and silent.
+**Start here** is an optional guide. Fresh profiles open it. After the first deliberate entry to work is successfully recorded, later launches start in Library. Reopen it from workspace navigation or Help. The guide retains its selected lesson, construction and band during the session. Selecting another lesson starts at its heading; selecting the current destination preserves the reading position.
 
-Reopen **Start here** from the workspace navigation or Help. Its **Meet the Library**, **Pitch and rhythm**, **Six ways to construct sound** and **A spectrum of rhythms** topics are revisitable. **Return to work** restores the working destination in this session. Reading preserves drafts, pending text, Library selection, playback and exports. Play, Save and Export require a working destination; Stop and Cancel export still address the actual running work.
+| Lesson | What it provides |
+| --- | --- |
+| Overview | Routes to the real Library or a pulsed-tone starter in Workbench. |
+| Library guide | Explains built-ins, saved sounds and research context. |
+| Pitch and rhythm | Compares a carrier, its pulse-modulation gain and the resulting sound, with actual example rates and labeled time windows. |
+| Sound types | Six selectable constructions and **Open this example in Workbench**. |
+| Rhythm ranges | A combined five-band spectrum, selected-band detail, observed EEG/MEG contexts and source links. |
 
-Pitch and rhythm compares the continuous carrier with its actual compiled amplitude envelope. Sound types offers six selectable constructions with real stereo waveform and envelope traces; choosing a diagram creates no document, device, playback or save. Quantities come from the constructors’ compiled facts. The comparisons are static; use Workbench to change sound parameters.
+Choose **Library** or **Workbench** to leave. Reading preserves drafts, pending text, Library selection and running tasks. Play, Save and Export require a working destination; Stop and Cancel export still address the actual running work. Guide entry focuses the selected lesson.
 
-Native band descriptions remain readable independently of image lettering. Choose an individual band for its normalized one-second sine illustration; **Enlarge illustration** provides a larger scrollable view. Artwork follows the resolved native light/dark palette. These diagrams are neither audio envelopes nor measured EEG. Real pulse previews retain their rectangular or shaped envelopes.
+**Create a pulsed tone** opens the starter; **Open this example in Workbench** opens the selected construction. Both capture a complete fresh example through Save/Discard/Cancel. Successful replacement focuses its title. Cancel or failed Save retains the guide and current draft. Nothing plays or saves automatically; **New sound** starts empty and silent.
 
-The first deliberate entry to work remembers only the `onboarding-seen` file in the platform application configuration directory, separately from the library and `AUDITORYLAB_LIBRARY_DIR`. Later ordinary launches start in Library. Closing before departure leaves orientation unseen. A malformed or unwritable preference is reported without replacing its bytes or blocking work; no course progress or last-workspace restoration is stored.
+Sound diagrams use actual compiled data. Signed waveforms share one fitted scale across channels, so height does not show digital full scale or listening volume. Identical channels share one labeled trace. Modulation gain runs from zero (off) to one (original source level); pulse-source on/off timing is distinct. **Technical details and sources** supplies the precise quantities.
 
-The learning context draws on the [IFCN glossary](https://pmc.ncbi.nlm.nih.gov/articles/PMC6123891/), [human memory MEG observations](https://pmc.ncbi.nlm.nih.gov/articles/PMC6674196/) and [NIH sleep-stage overview](https://www.nhlbi.nih.gov/health/sleep/stages-of-sleep). Associations overlap and depend on region, task and measurement. The memory study used 4.5–8.5 and 60–90 Hz, not the app’s exact reference intervals. Matching an audio rate to a band does not imply a therapeutic effect or establish a listener’s brain state.
+Band illustrations are one-second, zero-phase normalized sine schematics, with native labels and light/dark colors. They are not recorded EEG, rendered audio or pulse envelopes. Observed EEG/MEG associations overlap and depend on region, task and measurement; matching an audio rate to a band does not establish a brain state or promise an effect. Direct references open the [IFCN glossary](https://pmc.ncbi.nlm.nih.gov/articles/PMC6123891/), [memory-study record](https://pubmed.ncbi.nlm.nih.gov/16837600/) and [NIH sleep-stage overview](https://www.nhlbi.nih.gov/health/sleep/stages-of-sleep), independently of application-manual version links. The memory study used 4.5–8.5 and 60–90 Hz, rather than the app’s exact reference intervals.
+
+The `onboarding-seen` flag lives in the native application configuration directory, independently of User Library and `AUDITORYLAB_LIBRARY_DIR`. Closing before departure leaves the guide unseen. A malformed or unwritable preference produces a compact **Preference notice** with selectable path, cause and recovery details; Stop and Cancel remain available in that popup. Unknown bytes are never replaced automatically. Successful publication clears its notice and closes the popup. Repair the named file or directory and restart if the notice remains. Only the seen flag persists; lesson progress and workspace restoration are not stored.
 
 ## Browse the Library
 
@@ -74,7 +82,7 @@ Saved duration and endpoint fades govern finite playback and WAV export. Live Wo
 
 **Save sound** captures the current complete draft. New drafts go to User Library, managed edits use their captured key/token, and external edits use the observed file. Later edits remain dirty after an earlier captured save completes.
 
-**Save independent copy** creates a separate User identity. Portable recipe export preserves identity/history and does not mark a draft saved. **Export WAV…** validates at the export rate and opens the native Save dialog; stop audio first. Native Save dialogs confirm replacement.
+**Save independent copy** creates a separate User identity. Portable recipe export preserves identity/history and does not mark a draft saved. In Library, **Export sound** groups the WAV, portable recipe and export-rate controls. **Export WAV…** validates at the export rate and opens the native Save dialog; stop audio first. Native Save dialogs confirm replacement.
 
 Finite but acoustically invalid documents can be saved for repair. File errors keep the draft and identify the affected path. A content conflict requires Refresh/reload, retaining the draft, or saving an independent copy. A confirmed durability/cleanup warning remains a successful save. [Publication and recovery](formats.md#publication-and-recovery) explains these outcomes.
 
@@ -96,9 +104,9 @@ The drawer can be resized by pointer, keyboard or accessibility slider actions. 
 
 ## Appearance, typography and accessibility
 
-The desktop follows the resolved native light/dark appearance and system UI font family. Changing appearance updates the instructional artwork and native controls without selecting a different lesson or band. Native text describes diagram meanings independently of image lettering; names identify bands alongside their colors. Use Tab and arrow keys for workspace navigation and the lesson, construction and band choices.
+The desktop follows the resolved native light/dark appearance and system UI font family. Changing appearance updates native diagram colors and controls without selecting a different lesson or band. Diagram labels follow the application font and text size; names identify bands alongside their colors. Use Tab to reach controls. Guide entry focuses the selected lesson. Arrow keys follow the compact lesson grid’s rows and columns; Home and End select its first and last topics. Enter or Space activates buttons; technical disclosures announce their expanded state.
 
-Font sizing follows the platform adapter: macOS uses AppKit’s `systemFontSize`, Windows uses message-font metrics at 96 DPI, and Linux uses toolkit DPI with GNOME Wayland’s text-scaling preference where applicable. The macOS Accessibility **Text size** preferred-reading control does not resize this application. It applies to its listed compatible apps; the desktop does not expose a separate font-size setting. **Enlarge illustration** changes the selected band image’s presentation and permits horizontal scrolling; it does not change the application font size.
+Font sizing follows the platform adapter: macOS uses AppKit’s `systemFontSize`, Windows uses message-font metrics at 96 DPI, and Linux uses toolkit DPI with GNOME Wayland’s text-scaling preference where applicable. The macOS Accessibility **Text size** preferred-reading control does not resize this application. It applies to its listed compatible apps; the desktop does not expose a separate font-size setting.
 
 See [toolkit integration](../third_party/README.md) for native preference handling and [contributor checks](../CONTRIBUTING.md#checks) for accessibility/layout verification.
 

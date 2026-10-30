@@ -341,7 +341,18 @@ fn forward_shortcut(window: &slint::Window, key: &str) {
 }
 
 fn install_learning_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
-    use auditorylab_app::learning::{Construction, Example, LearningCommand, Topic};
+    use auditorylab_app::learning::{Construction, LearningCommand, Topic};
+    on!(adapter, ui, on_resume_learning, |a| {
+        let entering = a
+            .workspace
+            .borrow()
+            .as_ref()
+            .is_some_and(|w| w.learning().is_none());
+        a.command(|w| w.apply(Command::Learning(LearningCommand::Resume)));
+        if entering && let Some(ui) = a.main.upgrade() {
+            ui.invoke_focus_learning();
+        }
+    });
     on!(adapter, ui, on_open_learning, |a, index| {
         if let Ok(index) = usize::try_from(index)
             && let Some(topic) = Topic::ALL.get(index)
@@ -355,6 +366,13 @@ fn install_learning_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
             if entering && let Some(ui) = a.main.upgrade() {
                 ui.invoke_focus_learning();
             }
+        }
+    });
+    on!(adapter, ui, on_open_learning_source, |_a, index| {
+        if let Ok(index) = usize::try_from(index)
+            && let Some(source) = auditorylab_app::learning::LearningSource::ALL.get(index)
+        {
+            open_web(source.url());
         }
     });
     on!(adapter, ui, on_select_learning_band, |a, index| {
@@ -382,14 +400,18 @@ fn install_learning_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
         }
     });
     on!(adapter, ui, on_create_learning_example, |a| a.command(
-        |w| w.apply(Command::Learning(LearningCommand::CreateExample(
-            Example::PulsedTone
-        )))
-    ));
-    on!(adapter, ui, on_return_to_work, |a| {
-        a.command(|w| w.apply(Command::Learning(LearningCommand::ReturnToWork)));
-        if let Some(ui) = a.main.upgrade() {
-            ui.invoke_focus_workspace_navigation();
+        |w| {
+            let Some(learning) = w.learning() else {
+                return Err(auditorylab_app::workspace::Refusal::SelectionChanged);
+            };
+            let construction = if learning.topic == Topic::SoundTypes {
+                learning.construction
+            } else {
+                Construction::PulsedTone
+            };
+            w.apply(Command::Learning(LearningCommand::CreateExample(
+                construction,
+            )))
         }
-    });
+    ));
 }

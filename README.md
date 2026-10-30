@@ -41,7 +41,7 @@ Edit the TOML to change the sound, then inspect it again. CLI exports keep exist
 
 ## Create a sound in the desktop
 
-A fresh desktop profile opens optional **Start here** orientation. Explore the Library, pitch versus rhythm, six sound constructions and illustrated rhythm bands. **Browse Library** opens the real collection; **Create a pulsed tone** prepares a quiet editable example without playing or saving it. Reopen the guide from Start here or Help at any time.
+A fresh desktop profile opens optional **Start here** orientation. Explore the Library, pitch versus rhythm, six sound constructions and illustrated rhythm bands. **Browse Library** opens the real collection; **Create a pulsed tone** prepares a quiet editable example without playing or saving it. **Sound types** also opens the selected construction as an editable example through the unsaved-work decision. Reopen the guide from Start here or Help at any time.
 
 Open **Auditory Lab.app**, `auditorylab-gui.exe`, or `auditorylab-gui`. Choose **New sound** for an empty, silent Workbench. Add a component, enter its rate and level, and use the persistent Play/Stop control to audition it after setting device volume low. **Save sound** stores the draft in User Library. Stop audio before **Export WAV…**.
 

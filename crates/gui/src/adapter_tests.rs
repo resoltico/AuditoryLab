@@ -2754,17 +2754,69 @@ fn wide_library_group_headings_have_no_selectable_identity() {
     assert!(!h.adapter.inspect(|w| w.audio_busy()));
 }
 
-#[test]
-#[ignore = "explicit silent native visual evidence, not a device test"]
-fn library_review_screenshots() {
-    use std::io::Write;
+// Exercise presentation geometry without claiming a running audio device or worker.
+fn present_active_status_for_layout(ui: &MainWindow) {
+    ui.set_playback_busy(true);
+    ui.set_player_title("Playing · captured sound".into());
+    let stop = auditorylab_presentation::workspace::operation_label(
+        auditorylab_app::vocabulary::Operation::Stop,
+    );
+    ui.set_transport_action(stop.into());
+    ui.set_transport_enabled(true);
+    ui.set_transport_labels(Rc::new(slint::VecModel::from(vec![stop.into()])).into());
+    ui.global::<crate::generated::Actions>()
+        .set_stop(crate::generated::Action {
+            label: stop.into(),
+            enabled: true,
+        });
+    ui.set_operation_summary("Exporting a captured sound".into());
+    ui.set_status("Background task status".into());
+    ui.set_exporting(true);
+    ui.global::<crate::generated::Actions>()
+        .set_cancel_export(crate::generated::Action {
+            label: "Cancel export".into(),
+            enabled: true,
+        });
+}
 
+#[test]
+#[ignore = "explicit silent desktop visual evidence, not a device test"]
+fn desktop_review_screenshots() {
     let h = Harness::new();
+    let destination = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target/evidence/desktop-review");
+    std::fs::create_dir_all(&destination).unwrap();
+    render_library_review(&h, &destination);
+    render_learning_review(&h, &destination);
+    assert!(!h.adapter.inspect(|w| w.audio_busy() || w.file_busy()));
+}
+
+fn save_desktop_review_frame(ui: &MainWindow, destination: &std::path::Path, name: &str) {
+    use std::io::Write;
+    // Explicit renderer inputs must stay coherent after settling real
+    // telemetry; this text does not claim hardware playback is occurring.
+    let layout_audio_active = ui.get_playback_busy();
+    if layout_audio_active {
+        ui.set_player_title("Audio task active (layout fixture)".into());
+        assert_eq!(ui.get_player_title(), "Audio task active (layout fixture)");
+    }
+    let pixels = ui.window().take_snapshot().unwrap();
+    if layout_audio_active {
+        assert!(ui.get_playback_busy());
+        assert_eq!(ui.get_player_title(), "Audio task active (layout fixture)");
+    }
+    let file = std::fs::File::create(destination.join(format!("{name}.ppm"))).unwrap();
+    let mut file = std::io::BufWriter::new(file);
+    write!(file, "P6\n{} {}\n255\n", pixels.width(), pixels.height()).unwrap();
+    for pixel in pixels.as_slice() {
+        file.write_all(&[pixel.r, pixel.g, pixel.b]).unwrap();
+    }
+    file.flush().unwrap();
+}
+
+fn render_library_review(h: &Harness, destination: &std::path::Path) {
     let ui = h.ui();
     ui.set_monitor_open(false);
-    let destination =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/evidence/library-ux");
-    std::fs::create_dir_all(&destination).unwrap();
     for (name, width, height) in [
         ("library-startup", 1280_u32, 900_u32),
         ("library-with-monitor", 1280_u32, 900_u32),
@@ -2776,14 +2828,141 @@ fn library_review_screenshots() {
         ui.window()
             .set_size(slint::PhysicalSize::new(width, height));
         h.settle();
-        let pixels = ui.window().take_snapshot().unwrap();
-        let mut file = std::fs::File::create(destination.join(format!("{name}.ppm"))).unwrap();
-        write!(file, "P6\n{} {}\n255\n", pixels.width(), pixels.height()).unwrap();
-        for pixel in pixels.as_slice() {
-            file.write_all(&[pixel.r, pixel.g, pixel.b]).unwrap();
-        }
+        save_desktop_review_frame(ui, destination, name);
     }
-    assert!(!h.adapter.inspect(|w| w.audio_busy()));
+}
+
+fn render_learning_review(h: &Harness, destination: &std::path::Path) {
+    use auditorylab_presentation::Explain;
+    use slint::private_unstable_api::re_exports::ColorScheme;
+    let ui = h.ui();
+    ui.set_monitor_open(false);
+    let window = WindowInner::from_pub(ui.window());
+    let notice = auditorylab_app::onboarding::Problem::Unsupported {
+        path: std::path::PathBuf::from(
+            "/Users/example/Library/Application Support/org.resoltico.auditorylab/onboarding-seen",
+        ),
+    }
+    .explain();
+    for (appearance, scheme) in [("light", ColorScheme::Light), ("dark", ColorScheme::Dark)] {
+        window.context().set_color_scheme(scheme);
+        for (size, width, height, text) in [
+            ("regular", 1280.0, 900.0, 13.0),
+            ("large", 680.0, 600.0, 26.0),
+        ] {
+            ui.window().set_size(slint::LogicalSize::new(width, height));
+            ui.set_ui_size(text);
+            for (name, topic) in [
+                ("overview", 0),
+                ("spectrum", 4),
+                ("pitch", 2),
+                ("sound-types", 3),
+            ] {
+                ui.invoke_open_learning(topic);
+                h.settle();
+                save_desktop_review_frame(
+                    ui,
+                    destination,
+                    &format!("guide-{name}-{appearance}-{size}"),
+                );
+            }
+            if size == "regular" {
+                render_construction_review(h, destination, appearance);
+            } else {
+                render_active_learning_review(h, destination, appearance);
+            }
+            ui.set_onboarding_notice(notice.clone().into());
+            if size == "large" {
+                present_active_status_for_layout(ui);
+            }
+            ui.invoke_show_onboarding_notice();
+            h.settle();
+            assert!(ui.get_onboarding_notice_open());
+            save_desktop_review_frame(
+                ui,
+                destination,
+                &format!("preference-notice-{appearance}-{size}"),
+            );
+            h.key(Key::Escape);
+            ui.set_onboarding_notice("".into());
+            // Real lesson commands reset the explicit renderer-only active state.
+            ui.invoke_open_learning(1);
+            ui.invoke_open_learning(0);
+            h.settle();
+        }
+        ui.window().set_size(slint::LogicalSize::new(2000.0, 600.0));
+        ui.set_ui_size(26.0);
+        ui.invoke_open_learning(3);
+        ui.set_onboarding_notice(notice.clone().into());
+        present_active_status_for_layout(ui);
+        h.settle();
+        assert!(
+            ui.get_learning_compact(),
+            "short viewport keeps all guide topics available"
+        );
+        save_desktop_review_frame(
+            ui,
+            destination,
+            &format!("guide-active-wide-short-{appearance}"),
+        );
+        ui.invoke_show_onboarding_notice();
+        h.settle();
+        save_desktop_review_frame(
+            ui,
+            destination,
+            &format!("preference-notice-active-wide-short-{appearance}"),
+        );
+        h.key(Key::Escape);
+        ui.set_onboarding_notice("".into());
+        ui.invoke_open_learning(1);
+        ui.invoke_open_learning(0);
+        h.settle();
+    }
+}
+
+fn render_construction_review(h: &Harness, destination: &std::path::Path, appearance: &str) {
+    use auditorylab_app::learning::Construction;
+    let ui = h.ui();
+    for construction in [
+        Construction::MonauralPair,
+        Construction::BinauralPair,
+        Construction::PulseTrain,
+    ] {
+        ui.invoke_select_learning_construction(i32::try_from(construction.index()).unwrap());
+        h.settle();
+        save_desktop_review_frame(
+            ui,
+            destination,
+            &format!("guide-{}-{appearance}-regular", construction.key()),
+        );
+    }
+    ui.invoke_select_learning_construction(0);
+}
+
+fn render_active_learning_review(h: &Harness, destination: &std::path::Path, appearance: &str) {
+    let ui = h.ui();
+    present_active_status_for_layout(ui);
+    h.settle();
+    assert!(action_button(ui, "Stop audio").is_visible());
+    assert!(action_button(ui, "Cancel export").is_visible());
+    save_desktop_review_frame(
+        ui,
+        destination,
+        &format!("guide-active-status-{appearance}-large"),
+    );
+    ui.set_monitor_open(true);
+    h.settle();
+    present_active_status_for_layout(ui);
+    h.settle();
+    assert!(!ui.get_drawer_fits());
+    assert!(action_button(ui, "Hide output monitor").is_visible());
+    save_desktop_review_frame(
+        ui,
+        destination,
+        &format!("guide-active-monitor-{appearance}-large"),
+    );
+    ui.set_monitor_open(false);
+    ui.invoke_open_learning(0);
 }
 
 #[test]
@@ -4394,9 +4573,9 @@ fn learning_callbacks_use_real_workspace_admission_and_captured_creation() {
         h.settle();
         assert!(
             ui.get_learning_band_description()
-                .contains(&format!("{rate} cycles/s"))
+                .contains(&format!("{rate} cycles per second"))
         );
-        assert!(ui.get_learning_band_description().contains("one second"));
+        assert!(ui.get_learning_body().contains("one second"));
     }
     ui.invoke_browse_learning_library();
     h.settle();
@@ -4420,31 +4599,36 @@ fn learning_callbacks_use_real_workspace_admission_and_captured_creation() {
 
 #[test]
 fn learning_native_topic_controls_fit_narrow_large_text_and_remain_revisitable() {
+    use auditorylab_app::learning::Topic;
     let h = Harness::new();
     let ui = h.ui();
     ui.set_monitor_open(false);
     ui.window().set_size(slint::LogicalSize::new(680.0, 600.0));
     for size in [13.0, 19.5, 26.0] {
         ui.set_ui_size(size);
-        for topic in 0..5 {
-            ui.invoke_open_learning(topic);
+        for topic in Topic::ALL {
+            ui.invoke_open_learning(i32::try_from(topic.index()).unwrap());
             h.settle();
-            let control = labelled(ui, "Learning topic");
+            let control = labelled(
+                ui,
+                auditorylab_presentation::learning::navigation_label(topic),
+            );
             let position = centre(&control);
             assert!(position.x > 0.0 && position.x < 680.0);
             assert!(position.y > 0.0 && position.y < 600.0);
             assert!(control.geometry().size.width <= 680.0);
             assert!(control.geometry().size.height >= size);
         }
-        ui.invoke_return_to_work();
+        action_button(ui, "Library").accessible_action(
+            &slint::private_unstable_api::re_exports::AccessibilityAction::Default,
+        );
         h.settle();
         assert!(!ui.get_learning_visible());
     }
 }
 
 #[test]
-fn learning_palette_swap_preserves_topic_band_draft_and_focus_and_enlarges_actual_image() {
-    use slint::private_unstable_api::re_exports::AccessibilityAction;
+fn learning_palette_swap_preserves_native_diagram_content_draft_and_focus() {
     let h = Harness::new();
     let ui = h.ui();
     ui.set_monitor_open(false);
@@ -4454,11 +4638,7 @@ fn learning_palette_swap_preserves_topic_band_draft_and_focus_and_enlarges_actua
     h.settle();
     let document = ui.get_document();
     let description = ui.get_learning_band_description();
-    let image = labelled(ui, "Band illustration.");
-    let compact_width = image.geometry().size.width;
-    labelled(ui, "Enlarge illustration").accessible_action(&AccessibilityAction::Default);
-    h.settle();
-    assert!(image.geometry().size.width > compact_width);
+    let trace = ui.get_learning_band_items().row_data(4).unwrap().trace;
     let window = WindowInner::from_pub(ui.window());
     let focus = window.focus_item.borrow().upgrade();
     window
@@ -4476,12 +4656,16 @@ fn learning_palette_swap_preserves_topic_band_draft_and_focus_and_enlarges_actua
     assert_eq!(ui.get_learning_topic(), 4);
     assert_eq!(ui.get_learning_band(), 4);
     assert_eq!(ui.get_learning_band_description(), description);
+    assert_eq!(
+        ui.get_learning_band_items().row_data(4).unwrap().trace,
+        trace
+    );
     assert_eq!(ui.get_document(), document);
     assert!(!h.adapter.inspect(|w| w.audio_busy()));
 }
 
 #[test]
-fn learning_keyboard_navigation_uses_native_topics_and_returns_to_retained_work() {
+fn learning_keyboard_navigation_uses_visible_topics_and_returns_to_retained_work() {
     let h = Harness::new();
     let ui = h.ui();
     ui.set_monitor_open(false);
@@ -4490,34 +4674,31 @@ fn learning_keyboard_navigation_uses_native_topics_and_returns_to_retained_work(
     assert!(ui.get_learning_visible());
     assert_eq!(ui.get_learning_topic(), 0);
     ui.invoke_focus_learning();
-    h.key(Key::Tab);
     h.key(Key::DownArrow);
     assert_eq!(ui.get_learning_topic(), 1);
     h.key(Key::DownArrow);
     assert_eq!(ui.get_learning_topic(), 2);
     assert_eq!(
-        labelled(ui, "Learning topic")
-            .accessible_string_property(AccessibleStringProperty::Value)
+        labelled(ui, "Pitch and rhythm")
+            .accessible_string_property(AccessibleStringProperty::ItemSelected)
             .as_deref(),
-        Some("Pitch and rhythm")
+        Some("true")
     );
-    ui.invoke_open_learning(0);
-    h.settle();
-    assert_eq!(
-        labelled(ui, "Learning topic")
-            .accessible_string_property(AccessibleStringProperty::Value)
-            .as_deref(),
-        Some("Start here")
-    );
-    // Return is a real native button, reached before the topic selector.
-    ui.invoke_focus_learning();
-    h.key(Key::Return);
+    ui.invoke_focus_workspace_navigation();
+    h.key(Key::Home);
     assert!(!ui.get_learning_visible());
     assert_eq!(h.adapter.inspect(|w| w.view()), View::Library);
+    ui.invoke_resume_learning();
+    h.settle();
+    assert_eq!(
+        ui.get_learning_topic(),
+        2,
+        "session reentry resumes the lesson"
+    );
 }
 
 #[test]
-fn learning_native_overview_fills_column_and_handoff_updates_selected_tab() {
+fn learning_spectrum_is_native_and_current_tab_does_not_reset_its_lesson() {
     use slint::private_unstable_api::re_exports::AccessibilityAction;
     let h = Harness::new();
     let ui = h.ui();
@@ -4543,54 +4724,41 @@ fn learning_native_overview_fills_column_and_handoff_updates_selected_tab() {
         Some("true")
     );
     ui.invoke_open_learning(4);
-    h.settle();
-    assert_eq!(
-        labelled(ui, "Rhythm band illustration")
-            .accessible_string_property(AccessibleStringProperty::Value)
-            .as_deref(),
-        Some("Alpha"),
-        "the native picker initializes from the application's selected band"
-    );
     ui.invoke_select_learning_band(4);
     h.settle();
-    assert_eq!(
-        labelled(ui, "Rhythm band illustration")
-            .accessible_string_property(AccessibleStringProperty::Value)
-            .as_deref(),
-        Some("Gamma")
-    );
-    ui.invoke_open_learning(0);
-    h.settle();
-    ui.invoke_open_learning(4);
-    h.settle();
-    assert_eq!(
-        labelled(ui, "Rhythm band illustration")
-            .accessible_string_property(AccessibleStringProperty::Value)
-            .as_deref(),
-        Some("Gamma"),
-        "revisiting the topic retains the same native and application selection"
-    );
-    let overview = labelled(ui, "Five normalized illustrative sine waves");
-    let image_size = overview.geometry().size;
+    let diagram = labelled(ui, "Five normalized illustrative sine waves");
     assert!(
-        image_size.width >= 900.0,
-        "overview fills native reading column: {image_size:?}"
+        diagram.geometry().size.width >= 700.0,
+        "spectrum fills the reading column"
     );
-    assert!((image_size.width / image_size.height - 1400.0 / 720.0).abs() < 0.01);
-    assert_eq!(
-        labelled(ui, "Learning topic")
-            .accessible_string_property(AccessibleStringProperty::Value)
-            .as_deref(),
-        Some("A spectrum of rhythms")
+    assert_eq!(ui.get_learning_band_items().row_count(), 5);
+    let delta = ui.get_learning_band_items().row_data(0).unwrap();
+    assert!(
+        delta.trace.contains("L128 0.0000"),
+        "quarter cycle reaches +1 at plot top"
     );
+    assert!(
+        delta.trace.contains("L256 50.0000"),
+        "half cycle crosses zero at center"
+    );
+    assert!(
+        delta.trace.contains("L384 100.0000"),
+        "third quarter reaches −1 at bottom"
+    );
+    let gamma = ui.get_learning_band_items().row_data(4).unwrap();
+    assert_eq!(gamma.name, "Gamma");
+    assert_eq!(gamma.range, ">30–80 Hz");
+    assert_eq!(gamma.rate, "32 cycles/s");
+    assert!(gamma.trace.starts_with("M0 50.0000L1"));
+    assert!(gamma.trace.ends_with("L1024 50.0000"));
     tab("Start here").accessible_action(&AccessibilityAction::Default);
     h.settle();
     assert_eq!(
-        labelled(ui, "Learning topic")
-            .accessible_string_property(AccessibleStringProperty::Value)
-            .as_deref(),
-        Some("Start here")
+        ui.get_learning_topic(),
+        4,
+        "current destination does not reset the lesson"
     );
+    assert_eq!(ui.get_learning_band(), 4);
     ui.invoke_create_learning_example();
     h.settle();
     assert_eq!(
@@ -4725,26 +4893,45 @@ fn learning_construction_picker_projects_real_sound_and_envelope_without_documen
         ui.invoke_select_learning_construction(i32::try_from(construction.index()).unwrap());
         h.settle();
         assert_eq!(
-            labelled(ui, "Sound construction")
+            construction_picker(ui)
                 .accessible_string_property(AccessibleStringProperty::Value)
                 .as_deref(),
             Some(title)
         );
         let traces = ui.get_learning_traces();
-        assert!(traces.row_count() >= 3);
         assert!(traces.iter().all(|lane| !lane.trace.is_empty()));
+        let waveforms = traces
+            .iter()
+            .filter(|lane| !lane.unipolar)
+            .collect::<Vec<_>>();
         if construction == Construction::BinauralPair {
-            assert_ne!(
-                traces.row_data(0).unwrap().trace,
-                traces.row_data(1).unwrap().trace
+            assert_eq!(waveforms.len(), 2);
+            assert!(waveforms[0].label.contains("Left"));
+            assert!(waveforms[1].label.contains("Right"));
+            assert_ne!(waveforms[0].trace, waveforms[1].trace);
+        } else {
+            assert_eq!(waveforms.len(), 1, "identical stereo traces are shown once");
+            assert!(waveforms[0].label.contains("Both channels"));
+        }
+        if matches!(
+            construction,
+            Construction::MonauralPair | Construction::BinauralPair
+        ) {
+            assert!(
+                traces.iter().all(|lane| !lane.unipolar),
+                "individual constant tone gain is not a combined pair envelope"
+            );
+        } else {
+            assert!(traces.iter().any(|lane| lane.unipolar));
+        }
+        if construction == Construction::PulseTrain {
+            assert!(
+                traces
+                    .iter()
+                    .any(|lane| lane.label.contains("Pulse source on/off timing"))
             );
         }
-        if construction == Construction::MonauralPair {
-            assert_eq!(
-                traces.row_data(0).unwrap().trace,
-                traces.row_data(1).unwrap().trace
-            );
-        }
+        assert!(!ui.get_learning_example_summary().is_empty());
         assert_eq!(
             h.adapter.inspect(|w| w.learning().unwrap().construction),
             construction
@@ -4757,7 +4944,7 @@ fn learning_construction_picker_projects_real_sound_and_envelope_without_documen
     ui.invoke_open_learning(i32::try_from(Topic::SoundTypes.index()).unwrap());
     h.settle();
     assert_eq!(
-        labelled(ui, "Sound construction")
+        construction_picker(ui)
             .accessible_string_property(AccessibleStringProperty::Value)
             .as_deref(),
         Some("Pulse train")
@@ -4790,7 +4977,974 @@ fn onboarding_publication_notice_uses_shared_prose_and_does_not_block_work() {
     );
     assert!(notice.contains("continue working"), "{notice}");
     assert!(!notice.contains("file.read_limit"), "{notice}");
-    assert!(labelled(ui, "Could not remember Start here").is_visible());
+    assert!(labelled(ui, "Start here preference needs attention.").is_visible());
+    ui.invoke_show_onboarding_notice();
+    h.settle();
+    assert_eq!(
+        text_of(&field(
+            ui,
+            "Full preference notice · Path, cause and recovery"
+        )),
+        notice.as_str()
+    );
+    h.key(Key::Escape);
     assert_eq!(std::fs::read(path).unwrap(), [0u8; 129]);
     assert!(!h.adapter.inspect(|w| w.audio_busy() || w.file_busy()));
+}
+
+#[test]
+fn lesson_switch_resets_real_scroll_but_background_projection_and_resume_preserve_it() {
+    use auditorylab_app::workspace::OutputCommand;
+    let h = Harness::new();
+    let ui = h.ui();
+    ui.set_monitor_open(false);
+    ui.window().set_size(slint::LogicalSize::new(680.0, 600.0));
+    ui.invoke_open_learning(4);
+    h.settle();
+    ui.set_learning_scroll_y(-120.0);
+    h.settle();
+    assert!(
+        ui.get_learning_scroll_y() < -1.0,
+        "exercise an actually scrolled lesson"
+    );
+    ui.invoke_open_learning(3);
+    h.settle();
+    assert_eq!(
+        ui.get_learning_scroll_y(),
+        0.0,
+        "new topic begins at its heading"
+    );
+    ui.set_learning_scroll_y(-120.0);
+    h.settle();
+    let y = ui.get_learning_scroll_y();
+    assert!(y < -1.0);
+    let topics = ui.get_learning_topics();
+    let bands = ui.get_learning_band_items();
+    let choices = ui.get_learning_constructions();
+    let traces = ui.get_learning_traces();
+    ui.invoke_resume_learning();
+    h.adapter
+        .command(|w| w.apply(Command::Output(OutputCommand::SetHold(true))));
+    h.settle();
+    assert_eq!(ui.get_learning_scroll_y(), y);
+    assert!(
+        ui.get_learning_topics() == topics,
+        "topic model is retained"
+    );
+    assert!(
+        ui.get_learning_band_items() == bands,
+        "native diagram source is retained"
+    );
+    assert!(
+        ui.get_learning_constructions() == choices,
+        "picker model is retained"
+    );
+    assert!(
+        ui.get_learning_traces() == traces,
+        "unrelated updates do not rebuild plots"
+    );
+}
+
+#[test]
+fn selected_learning_example_action_opens_that_construction_silently() {
+    use auditorylab_app::learning::Construction;
+    let h = Harness::new();
+    let ui = h.ui();
+    ui.set_monitor_open(false);
+    for construction in Construction::ALL {
+        ui.invoke_open_learning(3);
+        ui.invoke_select_learning_construction(i32::try_from(construction.index()).unwrap());
+        h.settle();
+        assert_eq!(
+            ui.get_learning_example_action(),
+            "Open this example in Workbench"
+        );
+        ui.invoke_create_learning_example();
+        h.settle();
+        let requests = h.take();
+        if let [Request::Unsaved(prompt)] = requests.as_slice() {
+            h.adapter.respond(*prompt, PromptAnswer::Discard);
+            h.settle();
+        } else {
+            assert!(
+                requests.is_empty(),
+                "only an unsaved-document decision is expected"
+            );
+        }
+        assert_eq!(
+            h.adapter
+                .inspect(|w| w.editor().draft().components()[0].form),
+            construction.form()
+        );
+        assert!(!ui.get_learning_visible());
+        assert!(!h.adapter.inspect(|w| w.audio_busy() || w.file_busy()));
+        let remaining = h.take();
+        assert!(
+            remaining.is_empty(),
+            "unexpected follow-up requests: {remaining:?}"
+        );
+    }
+}
+
+#[test]
+fn empty_workbench_first_action_opens_real_component_creation() {
+    use slint::private_unstable_api::re_exports::AccessibilityAction;
+    let h = Harness::new();
+    h.workbench();
+    let ui = h.ui();
+    assert_eq!(ui.get_components().row_count(), 0);
+    assert!(labelled(ui, "Build your sound").is_visible());
+    action_button(ui, "Add component…").accessible_action(&AccessibilityAction::Default);
+    h.settle();
+    action_button(ui, "Add steady tone").accessible_action(&AccessibilityAction::Default);
+    h.settle();
+    assert_eq!(ui.get_components().row_count(), 1);
+    assert_eq!(
+        ui.get_components().row_data(0).unwrap().heading,
+        "Steady tone"
+    );
+    assert!(!h.adapter.inspect(|w| w.audio_busy()));
+}
+
+#[test]
+fn library_export_disclosure_reveals_real_export_actions() {
+    use slint::private_unstable_api::re_exports::AccessibilityAction;
+    let h = Harness::new();
+    let ui = h.ui();
+    ui.set_monitor_open(false);
+    let key = ui.get_library_key();
+    assert!(!ui.get_export_settings());
+    labelled(ui, "Export sound · collapsed").accessible_action(&AccessibilityAction::Default);
+    h.settle();
+    assert!(ui.get_export_settings());
+    action_button(ui, "Export WAV…").accessible_action(&AccessibilityAction::Default);
+    h.settle();
+    let [Request::Path(prompt, PathPurpose::ExportWav, _)] = h.take()[..] else {
+        panic!("the native export action must open its real path flow");
+    };
+    h.adapter.respond(prompt, PromptAnswer::Cancel);
+    h.settle();
+    assert_eq!(ui.get_library_key(), key);
+    assert!(!h.adapter.inspect(|w| w.audio_busy() || w.file_busy()));
+    assert!(action_button(ui, "Export portable recipe…").is_visible());
+}
+
+#[test]
+fn minimum_window_keeps_a_useful_lesson_viewport_with_large_text_and_active_status() {
+    let h = Harness::new();
+    let ui = h.ui();
+    ui.window().set_size(slint::LogicalSize::new(680.0, 600.0));
+    ui.set_ui_size(26.0);
+    for monitor_open in [false, true] {
+        ui.invoke_tab_changed(0);
+        ui.set_monitor_open(monitor_open);
+        h.settle();
+        ui.invoke_open_learning(4);
+        h.settle();
+        // Renderer geometry inputs: no device is opened or playback claimed.
+        present_active_status_for_layout(ui);
+        h.settle();
+        let reader = labelled(ui, "Lesson content");
+        let geometry = reader.geometry();
+        assert!(
+            geometry.size.width >= 300.0,
+            "reading column remains usable (monitor={monitor_open}): {geometry:?}"
+        );
+        assert!(
+            geometry.size.height >= 150.0,
+            "reading viewport remains usable (monitor={monitor_open}): {geometry:?}"
+        );
+        let top = centre(&reader).y - geometry.size.height / 2.0;
+        let bottom = top + geometry.size.height;
+        ui.set_learning_scroll_y(-120.0);
+        h.settle();
+        ui.invoke_open_learning(3);
+        present_active_status_for_layout(ui);
+        h.settle();
+        let heading = labelled(ui, "Sound constructions");
+        let heading_y = centre(&heading).y - heading.geometry().size.height / 2.0;
+        assert!(
+            heading_y >= top - 1.0 && heading_y < bottom,
+            "new heading starts inside reader: heading={heading_y}, reader={top}..{bottom}"
+        );
+        assert!(labelled(ui, "Playback transport").is_visible());
+        let mut controls = vec!["Stop audio", "Cancel export"];
+        if monitor_open {
+            controls.push("Hide output monitor");
+            assert!(
+                !ui.get_drawer_fits(),
+                "minimum window uses the separate monitor"
+            );
+        }
+        for name in controls {
+            let item = action_button(ui, name);
+            let center = centre(&item);
+            let size = item.geometry().size;
+            let left = center.x - size.width / 2.0;
+            let right = center.x + size.width / 2.0;
+            let top = center.y - size.height / 2.0;
+            let bottom = center.y + size.height / 2.0;
+            assert!(
+                left >= 0.0 && right <= 680.0 && top >= 0.0 && bottom <= 600.0,
+                "essential control stays in window: {name} at {left},{top}..{right},{bottom}"
+            );
+        }
+    }
+}
+
+#[test]
+fn guide_navigation_never_overlays_the_lesson_reader() {
+    use auditorylab_app::learning::Topic;
+    let h = Harness::new();
+    let ui = h.ui();
+    ui.set_monitor_open(false);
+    // Float32 coordinate transforms can differ by a few ten-thousandths of a pixel.
+    let epsilon = 0.01;
+    let bounds = |item: &ItemRc| {
+        let size = item.geometry().size;
+        let center = centre(item);
+        (
+            center.x - size.width / 2.0,
+            center.y - size.height / 2.0,
+            center.x + size.width / 2.0,
+            center.y + size.height / 2.0,
+        )
+    };
+    for (width, height) in [(1280.0, 900.0), (680.0, 600.0), (2000.0, 600.0)] {
+        ui.window().set_size(slint::LogicalSize::new(width, height));
+        for text in [13.0, 26.0] {
+            ui.set_ui_size(text);
+            ui.invoke_open_learning(4);
+            h.settle();
+            let nav = bounds(&labelled(ui, "Learning topics"));
+            let reader = bounds(&labelled(ui, "Lesson content"));
+            assert!(reader.2 > reader.0 && reader.3 > reader.1);
+            if ui.get_learning_compact() {
+                assert!(
+                    nav.3 <= reader.1 + epsilon,
+                    "compact topics end before reader: nav={nav:?}, reader={reader:?}"
+                );
+            } else {
+                assert!(
+                    nav.2 <= reader.0 + epsilon,
+                    "wide topics end beside reader: nav={nav:?}, reader={reader:?}"
+                );
+            }
+            for topic in Topic::ALL {
+                let label = auditorylab_presentation::learning::navigation_label(topic);
+                let index = topic.index().to_string();
+                let item = find_control(ui, |item| {
+                    item.is_visible()
+                        && item
+                            .accessible_string_property(AccessibleStringProperty::Label)
+                            .as_deref()
+                            == Some(label)
+                        && item
+                            .accessible_string_property(AccessibleStringProperty::ItemIndex)
+                            .as_deref()
+                            == Some(index.as_str())
+                })
+                .unwrap_or_else(|| panic!("visible topic tab {label}"));
+                let tab = bounds(&item);
+                assert!(
+                    tab.0 + epsilon >= nav.0
+                        && tab.1 + epsilon >= nav.1
+                        && tab.2 <= nav.2 + epsilon
+                        && tab.3 <= nav.3 + epsilon,
+                    "entire topic fits navigation: {label}, tab={tab:?}, navigation={nav:?}"
+                );
+                assert!(
+                    tab.0 >= -epsilon
+                        && tab.1 >= -epsilon
+                        && tab.2 <= width + epsilon
+                        && tab.3 <= height + epsilon
+                );
+            }
+            let workspace = bounds(&labelled(ui, "Workspace navigation"));
+            assert!(workspace.0 >= -epsilon && workspace.1 >= -epsilon);
+            assert!(workspace.2 <= width + epsilon && workspace.3 <= height + epsilon);
+            assert!(
+                workspace.3 <= nav.1 + epsilon && workspace.3 <= reader.1 + epsilon,
+                "explicit workspace exits stay above the guide content"
+            );
+        }
+    }
+}
+
+fn activate_focused_learning_example(h: &Harness) -> ItemRc {
+    let ui = h.ui();
+    let action = action_button(ui, "Open this example in Workbench");
+    let window = WindowInner::from_pub(ui.window());
+    window.set_focus_item(&action, true, FocusReason::Programmatic);
+    h.settle();
+    let focused = window
+        .focus_item
+        .borrow()
+        .upgrade()
+        .expect("button forwards keyboard focus");
+    assert!(
+        action
+            .visit_descendants(|item| {
+                if item == &focused {
+                    ControlFlow::Break(())
+                } else {
+                    ControlFlow::Continue(())
+                }
+            })
+            .is_some(),
+        "focused item belongs to the actual example button"
+    );
+    assert!(focused.is_visible());
+    h.key(Key::Return);
+    focused
+}
+
+fn assert_workbench_title_has_focus(h: &Harness) {
+    let ui = h.ui();
+    assert!(!ui.get_learning_visible());
+    let title = field(ui, "Sound title");
+    let focus = WindowInner::from_pub(ui.window())
+        .focus_item
+        .borrow()
+        .upgrade();
+    assert_eq!(
+        focus,
+        Some(title),
+        "successful handoff focuses the actual title input"
+    );
+    assert!(focus.unwrap().is_visible());
+}
+
+#[test]
+fn clean_learning_example_handoff_focuses_the_actual_workbench_title() {
+    let h = Harness::new();
+    h.ui().set_monitor_open(false);
+    h.ui().invoke_open_learning(3);
+    h.settle();
+    activate_focused_learning_example(&h);
+    assert_workbench_title_has_focus(&h);
+    assert!(!h.adapter.inspect(|w| w.audio_busy()));
+}
+
+#[test]
+fn dirty_example_cancel_retains_guide_focus_then_discard_focuses_workbench() {
+    let h = Harness::new();
+    let ui = h.ui();
+    ui.set_monitor_open(false);
+    h.workbench();
+    ui.invoke_commit_metadata(
+        metadata_field_handle(&ui.get_document(), MetadataField::Title),
+        "Retain this draft".into(),
+    );
+    let original = ui.get_document();
+    ui.invoke_open_learning(3);
+    h.settle();
+    let create = activate_focused_learning_example(&h);
+    let [Request::Unsaved(prompt)] = h.take()[..] else {
+        panic!("protect dirty work");
+    };
+    assert_eq!(ui.get_document(), original);
+    assert!(ui.get_learning_visible());
+    assert_eq!(
+        WindowInner::from_pub(ui.window())
+            .focus_item
+            .borrow()
+            .upgrade(),
+        Some(create.clone())
+    );
+    h.adapter.respond(prompt, PromptAnswer::Cancel);
+    h.settle();
+    assert_eq!(ui.get_document(), original);
+    assert!(ui.get_learning_visible());
+    assert_eq!(
+        WindowInner::from_pub(ui.window())
+            .focus_item
+            .borrow()
+            .upgrade(),
+        Some(create)
+    );
+    activate_focused_learning_example(&h);
+    let [Request::Unsaved(prompt)] = h.take()[..] else {
+        panic!("protect dirty work again");
+    };
+    h.adapter.respond(prompt, PromptAnswer::Discard);
+    h.settle();
+    assert_ne!(ui.get_document(), original);
+    assert_workbench_title_has_focus(&h);
+}
+
+#[test]
+fn dirty_example_save_focuses_workbench_only_after_the_real_save_completes() {
+    let h = Harness::new();
+    let ui = h.ui();
+    ui.set_monitor_open(false);
+    h.workbench();
+    ui.invoke_commit_metadata(
+        metadata_field_handle(&ui.get_document(), MetadataField::Title),
+        "Save this draft first".into(),
+    );
+    let original = ui.get_document();
+    ui.invoke_open_learning(3);
+    h.settle();
+    let create = activate_focused_learning_example(&h);
+    let [Request::Unsaved(prompt)] = h.take()[..] else {
+        panic!("protect dirty work");
+    };
+    h.adapter.respond(prompt, PromptAnswer::Save);
+    let save = take_job(&h, JobKind::File);
+    assert_eq!(ui.get_document(), original);
+    assert!(ui.get_learning_visible());
+    assert_eq!(
+        WindowInner::from_pub(ui.window())
+            .focus_item
+            .borrow()
+            .upgrade(),
+        Some(create)
+    );
+    finish_file(&h, save);
+    h.wait_for_files();
+    h.settle();
+    assert_ne!(ui.get_document(), original);
+    assert_workbench_title_has_focus(&h);
+    assert_eq!(
+        h.store()
+            .scan(&auditorylab_app::job::Cancel::default())
+            .entries
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn failed_real_save_keeps_the_guide_document_and_visible_example_focus() {
+    use auditorylab_app::services::library::Mutation;
+    let h = Harness::new();
+    let ui = h.ui();
+    ui.set_monitor_open(false);
+    h.workbench();
+    ui.invoke_commit_metadata(
+        metadata_field_handle(&ui.get_document(), MetadataField::Title),
+        "Initial saved sound".into(),
+    );
+    ui.invoke_save_recipe();
+    h.wait_for_files();
+    let saved = h
+        .store()
+        .scan(&auditorylab_app::job::Cancel::default())
+        .entries
+        .remove(0);
+    ui.invoke_commit_metadata(
+        metadata_field_handle(&ui.get_document(), MetadataField::Title),
+        "Unsaved changes".into(),
+    );
+    let original = ui.get_document();
+    ui.invoke_open_learning(3);
+    h.settle();
+    let create = activate_focused_learning_example(&h);
+    let [Request::Unsaved(prompt)] = h.take()[..] else {
+        panic!("protect dirty work");
+    };
+    h.adapter.respond(prompt, PromptAnswer::Save);
+    let save = take_job(&h, JobKind::File);
+    h.store()
+        .apply(
+            Mutation::Rename {
+                key: saved.key.clone(),
+                expect: saved.version_token,
+                title: "Another writer".into(),
+            },
+            &auditorylab_app::job::Cancel::default(),
+        )
+        .unwrap();
+    finish_file(&h, save);
+    h.wait_for_files();
+    h.settle();
+    assert_eq!(ui.get_document(), original);
+    assert!(ui.get_learning_visible() && ui.get_dirty());
+    assert_eq!(
+        WindowInner::from_pub(ui.window())
+            .focus_item
+            .borrow()
+            .upgrade(),
+        Some(create)
+    );
+    assert_eq!(
+        h.store().load(&saved.key).unwrap().snapshot.title(),
+        "Another writer"
+    );
+    let summary = ui.get_operation_summary();
+    let details = ui.get_status();
+    assert!(
+        summary.contains("Saved version or identity conflicts with the captured operation")
+            && summary.contains(&saved.key.to_string()),
+        "current failure summary: {summary}; details: {details}"
+    );
+    assert!(
+        details.contains("saved recipe changed or disappeared"),
+        "current failure summary: {summary}; details: {details}"
+    );
+    assert!(
+        details.contains(&saved.key.to_string()),
+        "current failure summary: {summary}; details: {details}"
+    );
+    assert!(
+        details.contains("retain the draft and reload or save a copy"),
+        "current failure summary: {summary}; details: {details}"
+    );
+}
+
+#[test]
+fn preference_notice_keeps_guide_space_and_preserves_accessible_full_recovery_details() {
+    use auditorylab_app::onboarding::Problem;
+    use auditorylab_app::services::IoOperation;
+    use auditorylab_presentation::Explain;
+    let h = Harness::new();
+    let ui = h.ui();
+    ui.set_monitor_open(false);
+    ui.set_ui_size(26.0);
+    let path = std::path::PathBuf::from(format!(
+        "/Users/example/{}/Application Support/org.resoltico.auditorylab/onboarding-seen",
+        "a-long-but-supported-profile-name/".repeat(8)
+    ));
+    let blocked = h
+        .library
+        .as_ref()
+        .unwrap()
+        .0
+        .path()
+        .join("blocked-preference-config");
+    std::fs::write(&blocked, b"retain existing content").unwrap();
+    let preference = auditorylab_app::onboarding::Preference::at_config_directory(blocked.clone());
+    let read_problem = preference.seen().unwrap_err();
+    let write_problem = preference.mark_seen().unwrap_err();
+    assert!(matches!(
+        read_problem,
+        Problem::File {
+            operation: IoOperation::OpenDirectory,
+            ..
+        }
+    ));
+    assert!(matches!(
+        write_problem,
+        Problem::File {
+            operation: IoOperation::CreateDirectory,
+            ..
+        }
+    ));
+    let problems = [
+        (Problem::Unsupported { path: path.clone() }, path),
+        (read_problem, blocked.clone()),
+        (write_problem, blocked.clone()),
+    ];
+    for (width, height) in [(680.0, 600.0), (2000.0, 600.0)] {
+        ui.window().set_size(slint::LogicalSize::new(width, height));
+        ui.invoke_open_learning(4);
+        h.settle();
+        for (problem, expected_path) in &problems {
+            // Shared production prose, with explicit renderer state rather than
+            // pretending to change OS permissions or run an audio device.
+            let notice = problem.explain();
+            ui.set_onboarding_notice(notice.clone().into());
+            present_active_status_for_layout(ui);
+            h.settle();
+            let reader = labelled(ui, "Lesson content");
+            assert!(
+                reader.geometry().size.height >= 150.0,
+                "actionable error must leave the lesson usable: {:?}",
+                reader.geometry()
+            );
+            let full = exercise_preference_notice_popup(&h);
+            assert_eq!(full, notice);
+            assert!(full.contains(expected_path.to_str().unwrap()));
+            for label in ["Stop audio", "Cancel export"] {
+                let item = action_button(ui, label);
+                let center = centre(&item);
+                let size = item.geometry().size;
+                assert!(
+                    center.x - size.width / 2.0 >= 0.0
+                        && center.x + size.width / 2.0 <= width
+                        && center.y - size.height / 2.0 >= 0.0
+                        && center.y + size.height / 2.0 <= height,
+                    "notice leaves full essential action inside the window: {label}"
+                );
+            }
+        }
+    }
+    assert_eq!(std::fs::read(blocked).unwrap(), b"retain existing content");
+}
+
+fn exercise_preference_notice_popup(h: &Harness) -> String {
+    use slint::private_unstable_api::re_exports::AccessibilityAction;
+    let ui = h.ui();
+    let create = action_button(ui, "Start here preference notice · Details");
+    WindowInner::from_pub(h.ui().window()).set_focus_item(&create, true, FocusReason::Programmatic);
+    h.settle();
+    let opener_focus = WindowInner::from_pub(h.ui().window())
+        .focus_item
+        .borrow()
+        .upgrade()
+        .expect("notice button forwards focus");
+    assert!(
+        create
+            .visit_descendants(|item| {
+                if item == &opener_focus {
+                    ControlFlow::Break(())
+                } else {
+                    ControlFlow::Continue(())
+                }
+            })
+            .is_some(),
+        "focus belongs to the actual notice opener"
+    );
+    create.accessible_action(&AccessibilityAction::Default);
+    h.settle();
+    assert!(ui.get_onboarding_notice_open());
+    assert!(active_popup_action(ui, "Stop audio").is_visible());
+    assert!(active_popup_action(ui, "Cancel export").is_visible());
+    let full = text_of(&field(
+        ui,
+        "Full preference notice · Path, cause and recovery",
+    ));
+    h.key(Key::Escape);
+    assert!(!ui.get_onboarding_notice_open());
+    assert_eq!(
+        WindowInner::from_pub(h.ui().window())
+            .focus_item
+            .borrow()
+            .upgrade(),
+        Some(opener_focus.clone())
+    );
+    create.accessible_action(&AccessibilityAction::Default);
+    h.settle();
+    action_button(ui, "Close").accessible_action(&AccessibilityAction::Default);
+    h.settle();
+    assert!(!ui.get_onboarding_notice_open());
+    assert_eq!(ui.get_onboarding_notice(), full.as_str());
+    assert_eq!(
+        WindowInner::from_pub(h.ui().window())
+            .focus_item
+            .borrow()
+            .upgrade(),
+        Some(opener_focus)
+    );
+    full
+}
+
+#[test]
+fn guide_sources_are_named_and_separate_from_application_documentation() {
+    use auditorylab_app::learning::LearningSource;
+    use slint::private_unstable_api::re_exports::AccessibilityAction;
+    let h = Harness::new();
+    let ui = h.ui();
+    ui.set_monitor_open(false);
+    ui.invoke_open_learning(4);
+    h.settle();
+    assert_eq!(ui.get_learning_sources().row_count(), 3);
+    action_button(ui, "Technical details and sources · collapsed")
+        .accessible_action(&AccessibilityAction::Default);
+    h.settle();
+    for label in [
+        "IFCN EEG glossary",
+        "Memory study (PubMed)",
+        "NIH sleep stages",
+        "Desktop guide",
+    ] {
+        assert!(reveal_lesson_control(&h, label).is_visible());
+    }
+    // The source targets are typed application facts, independent of the app's
+    // published revision. Do not launch external browsers from an offline test.
+    assert_eq!(
+        LearningSource::MemoryStudy.url(),
+        "https://pubmed.ncbi.nlm.nih.gov/16837600/"
+    );
+}
+
+fn active_popup_action(ui: &MainWindow, label: &str) -> ItemRc {
+    let window = WindowInner::from_pub(ui.window());
+    window
+        .active_popups()
+        .iter()
+        .rev()
+        .find_map(|popup| {
+            let root = ItemRc::new(popup.component.clone(), 0);
+            root.visit_descendants(|item| {
+                if item.is_visible()
+                    && item.is_accessible()
+                    && item
+                        .accessible_string_property(AccessibleStringProperty::Label)
+                        .as_deref()
+                        == Some(label)
+                {
+                    ControlFlow::Break(item.clone())
+                } else {
+                    ControlFlow::Continue(())
+                }
+            })
+        })
+        .unwrap_or_else(|| panic!("action inside the active popup: {label}"))
+}
+
+#[test]
+fn preference_popup_stop_targets_audio_and_a_late_stop_never_starts_the_workbench() {
+    use slint::private_unstable_api::re_exports::AccessibilityAction;
+    let h = Harness::with_catalog(
+        auditorylab_app::services::catalog().unwrap(),
+        Capabilities::available(),
+    );
+    let ui = h.ui();
+    ui.set_monitor_open(false);
+    h.workbench();
+    ui.invoke_add_component(ui.get_document(), 0);
+    ui.invoke_play_stop();
+    let audio = take_job(&h, JobKind::Audio);
+    assert!(h.adapter.inspect(|w| w.audio_busy()));
+    ui.invoke_open_learning(0);
+    ui.set_onboarding_notice("Preference recovery details".into());
+    ui.invoke_show_onboarding_notice();
+    h.settle();
+    let stop = active_popup_action(ui, "Stop audio");
+    stop.accessible_action(&AccessibilityAction::Default);
+    assert_eq!(
+        h.adapter.inspect(|w| w.audio_phase()),
+        Some(auditorylab_app::services::playback::PlaybackPhase::Stopping),
+        "the popup action itself must request Stop before the job runs"
+    );
+    // No second Stop helper: a broken popup binding must fail above, before any
+    // device attempt. The actual stopped job exits before preparation.
+    let finished = audio.execute(|_| panic!("popup-stopped audio must not prepare a device"));
+    h.adapter.deliver(finished);
+    h.settle();
+    assert!(!h.adapter.inspect(|w| w.audio_busy()));
+    ui.invoke_tab_changed(1);
+    h.settle();
+    assert!(
+        ui.get_can_play(),
+        "exercise a valid Workbench target after completion"
+    );
+    assert_eq!(h.adapter.inspect(|w| w.audio_phase()), None);
+    assert!(
+        ui.get_onboarding_notice_open(),
+        "exercise the still-open popup"
+    );
+    // Restore only the obsolete offered Stop state. The actual workspace is
+    // idle with a playable target, so a Play/Stop toggle would start new audio.
+    ui.set_playback_busy(true);
+    ui.global::<crate::generated::Actions>()
+        .set_stop(crate::generated::Action {
+            label: auditorylab_presentation::workspace::operation_label(
+                auditorylab_app::vocabulary::Operation::Stop,
+            )
+            .into(),
+            enabled: true,
+        });
+    h.settle();
+    let stale_stop = active_popup_action(ui, "Stop audio");
+    assert_eq!(stale_stop, stop, "the same popup action remains offered");
+    assert_eq!(h.adapter.inspect(|w| w.audio_phase()), None);
+    stale_stop.accessible_action(&AccessibilityAction::Default);
+    h.settle();
+    assert!(!h.adapter.inspect(|w| w.audio_busy()));
+    let jobs = h.adapter.take_jobs();
+    assert!(
+        jobs.is_empty(),
+        "a stale Stop must not create new work: {jobs:?}"
+    );
+}
+
+fn construction_picker(ui: &MainWindow) -> ItemRc {
+    find_control(ui, |item| {
+        item.is_visible()
+            && item
+                .accessible_string_property(AccessibleStringProperty::Label)
+                .as_deref()
+                == Some("Sound construction")
+            && item
+                .accessible_string_property(AccessibleStringProperty::Value)
+                .is_some()
+    })
+    .expect("the exact construction picker exposes its value")
+}
+
+fn reveal_lesson_control(h: &Harness, label: &str) -> ItemRc {
+    for _ in 0..8 {
+        let item = find_control(h.ui(), |item| {
+            item.accessible_string_property(AccessibleStringProperty::Label)
+                .as_deref()
+                == Some(label)
+        })
+        .unwrap_or_else(|| panic!("lesson control exists: {label}"));
+        let reader = labelled(h.ui(), "Lesson content");
+        let center = centre(&item);
+        let viewport = centre(&reader);
+        let height = reader.geometry().size.height;
+        let item_height = item.geometry().size.height;
+        if item.is_visible()
+            && center.y - item_height / 2.0 >= viewport.y - height / 2.0
+            && center.y + item_height / 2.0 <= viewport.y + height / 2.0
+        {
+            return item;
+        }
+        h.ui()
+            .window()
+            .dispatch_event(WindowEvent::PointerScrolled {
+                position: viewport,
+                delta_x: 0.0,
+                delta_y: viewport.y - center.y,
+            });
+        h.settle();
+    }
+    panic!("lesson control can be revealed through its real scroll view: {label}");
+}
+
+#[test]
+fn preference_popup_cancel_is_the_only_cancellation_of_a_real_captured_export() {
+    use slint::private_unstable_api::re_exports::AccessibilityAction;
+    // The fixture owns a 10 ms silent recipe: even the no-cancel negative case
+    // would remain bounded, and no audio device is involved.
+    let (h, directory) = controlled_harness();
+    let ui = h.ui();
+    ui.set_monitor_open(false);
+    let path = directory.path().join("sound.wav");
+    ui.invoke_export_wav();
+    answer_path(&h, &path);
+    let export = take_job(&h, JobKind::File);
+    assert!(h.adapter.inspect(|w| w.file_busy()));
+    ui.invoke_open_learning(0);
+    ui.set_onboarding_notice("Preference recovery details".into());
+    ui.invoke_show_onboarding_notice();
+    h.settle();
+    active_popup_action(ui, "Cancel export").accessible_action(&AccessibilityAction::Default);
+    let finished = export.execute(|_| panic!("a file export cannot prepare audio"));
+    h.adapter.deliver(finished);
+    h.wait_for_files();
+    h.settle();
+    assert!(!path.exists(), "cancelled export must not publish output");
+    assert!(!h.adapter.inspect(|w| w.file_busy() || w.audio_busy()));
+    let summary = ui.get_operation_summary();
+    let details = ui.get_status();
+    assert!(
+        summary.contains("Export cancelled; no file was written."),
+        "popup cancellation summary: {summary}; details: {details}"
+    );
+}
+
+#[test]
+fn learning_intro_follows_its_heading_without_space_for_hidden_controls() {
+    use auditorylab_app::learning::Topic;
+    use slint::private_unstable_api::re_exports::AccessibleRole;
+    let h = Harness::new();
+    let ui = h.ui();
+    ui.set_monitor_open(false);
+    for (width, height) in [(1280.0, 900.0), (680.0, 600.0)] {
+        ui.window().set_size(slint::LogicalSize::new(width, height));
+        for text_size in [13.0, 26.0] {
+            ui.set_ui_size(text_size);
+            for topic in [Topic::Overview, Topic::PitchAndRhythm] {
+                ui.invoke_open_learning(i32::try_from(topic.index()).unwrap());
+                h.settle();
+                let reader = labelled(ui, "Lesson content");
+                let reader_center = centre(&reader);
+                let reader_height = reader.geometry().size.height;
+                let text = |label: &str| {
+                    reader
+                        .visit_descendants(|item| {
+                            if item.is_accessible()
+                                && item.accessible_role() == AccessibleRole::Text
+                                && item
+                                    .accessible_string_property(AccessibleStringProperty::ItemIndex)
+                                    .is_none()
+                                && item
+                                    .accessible_string_property(AccessibleStringProperty::Label)
+                                    .as_deref()
+                                    == Some(label)
+                            {
+                                ControlFlow::Break(item.clone())
+                            } else {
+                                ControlFlow::Continue(())
+                            }
+                        })
+                        .unwrap_or_else(|| panic!("exact text inside the lesson reader: {label}"))
+                };
+                let heading = text(auditorylab_presentation::learning::heading(topic));
+                let body = text(auditorylab_presentation::learning::body(topic));
+                let heading_bottom = centre(&heading).y + heading.geometry().size.height / 2.0;
+                let body_top = centre(&body).y - body.geometry().size.height / 2.0;
+                let gap = body_top - heading_bottom;
+                assert!(
+                    (-0.01..=32.0).contains(&gap),
+                    "intro follows heading without hidden-control space: topic={topic:?}, \
+                    size={width}x{height}, text={text_size}, gap={gap}"
+                );
+                assert!(
+                    body_top < reader_center.y + reader_height / 2.0,
+                    "the introduction starts inside the first viewport"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn repaired_preference_clears_its_old_notice_and_open_popup_on_successful_departure() {
+    use auditorylab_app::onboarding::Preference;
+    use auditorylab_presentation::Explain;
+    use slint::private_unstable_api::re_exports::AccessibilityAction;
+    let h = Harness::new();
+    let ui = h.ui();
+    ui.set_monitor_open(false);
+    let directory = h.library.as_ref().unwrap().0.path().join("preferences");
+    std::fs::create_dir(&directory).unwrap();
+    let path = directory.join("onboarding-seen");
+    std::fs::write(&path, b"unsupported preference").unwrap();
+    let preference = Preference::at_config_directory(directory.clone());
+    let notice = preference.seen().unwrap_err().explain();
+    ui.set_onboarding_notice(notice.clone().into());
+    h.adapter
+        .set_onboarding_preference(Some(Preference::at_config_directory(directory)));
+    ui.invoke_open_learning(4);
+    h.settle();
+    ui.invoke_show_onboarding_notice();
+    h.settle();
+    assert!(ui.get_onboarding_notice_open());
+    assert_eq!(ui.get_onboarding_notice(), notice.as_str());
+    assert_eq!(std::fs::read(&path).unwrap(), b"unsupported preference");
+    // Repair only the owned temporary flag before the first deliberate exit.
+    std::fs::remove_file(path).unwrap();
+    action_button(ui, "Workbench").accessible_action(&AccessibilityAction::Default);
+    h.settle();
+    assert_eq!(h.adapter.inspect(|w| w.view()), View::Workbench);
+    assert!(!ui.get_learning_visible());
+    assert!(
+        preference.seen().unwrap(),
+        "the real departure successfully remembered orientation"
+    );
+    assert_eq!(
+        ui.get_onboarding_notice(),
+        "",
+        "the old read failure is no longer current"
+    );
+    assert!(
+        !ui.get_onboarding_notice_open(),
+        "obsolete popup closes with its resolved notice"
+    );
+    let focus = WindowInner::from_pub(ui.window())
+        .focus_item
+        .borrow()
+        .upgrade()
+        .expect("successful global exit retains a focus destination");
+    assert!(focus.is_visible());
+    let navigation = labelled(ui, "Workspace navigation");
+    assert!(
+        focus == navigation
+            || navigation
+                .visit_descendants(|item| {
+                    if item == &focus {
+                        ControlFlow::Break(())
+                    } else {
+                        ControlFlow::Continue(())
+                    }
+                })
+                .is_some(),
+        "resolved-notice cleanup preserves the explicit workspace exit focus"
+    );
 }

@@ -9,6 +9,7 @@ import { Dialogs } from "dialogs.slint";
 import { LibraryPane } from "library-pane.slint";
 import { WorkbenchPane } from "workbench-pane.slint";
 import { TransportBar } from "transport.slint";
+import { RunningTaskActions } from "running-task-actions.slint";
 import { Button } from "button.slint";
 
 
@@ -21,6 +22,7 @@ import {
     VerticalBox,
     HorizontalBox,
     ProgressIndicator,
+    TextEdit,
 } from "std-widgets.slint";
 export {
     EntryAddress,
@@ -31,6 +33,9 @@ export {
     ComponentRow,
     MetadataRow,
     ModelLane,
+    LearningBand,
+    LearningTrace,
+    LearningSource,
 } from "models.slint";
 import {
     EntryAddress,
@@ -41,6 +46,9 @@ import {
     ComponentRow,
     MetadataRow,
     ModelLane,
+    LearningBand,
+    LearningTrace,
+    LearningSource,
 } from "models.slint";
 import { StableButton } from "editor.slint";
 export { AboutWindow, LicenseWindow } from "about.slint";
@@ -113,11 +121,24 @@ export component MainWindow inherits Window {
         workspace-layout.padding-right;
     out property <length> effective-drawer-height: max(root.minimum-monitor-height,
         min(root.monitor-height, root.maximum-monitor-height));
+    out property <bool> learning-compact: false;
+    property <length> learning-navigation-height: learning-page.wide-navigation-height;
+    function update-guide-layout() {
+        // Use viewport snapshots, not a minimum-layout binding back to window size.
+        root.learning-compact = root.compact ||
+            root.height - toolbar.preferred-height - transport.preferred-height -
+            (root.monitor-open && root.drawer-fits ? root.effective-drawer-height : 0px) -
+            56px < root.learning-navigation-height;
+    }
+    changed learning-navigation-height => { root.update-guide-layout(); }
+    changed learning-visible => { root.update-guide-layout(); }
+    changed monitor-open => { root.update-guide-layout(); }
     function update-monitor-layout() {
         // Snapshot viewport space on layout changes to avoid feeding the window's
         // inferred minimum height back into its own layout constraint binding.
         root.available-monitor-height = max(0px,
             root.height - toolbar.preferred-height - transport.preferred-height - 16px - 280px);
+        root.update-guide-layout();
         root.window-changed();
     }
     changed drawer-fits => { root.update-monitor-layout(); }
@@ -127,7 +148,13 @@ export component MainWindow inherits Window {
         root.monitor-height = max(240px,min(360px,
         pixels * 1px));
     }
-    public function focus-monitor-opener() { monitor-opener.focus-button(); }
+    public function focus-monitor-opener() {
+        if root.learning-visible && !root.monitor-open {
+            root.focus-learning();
+        } else {
+            monitor-opener.focus-button();
+        }
+    }
     in property <bool> can-change-waveform;
     out property <MonitorData> monitor-data:{
         state:root.output-state,
@@ -255,26 +282,60 @@ export component MainWindow inherits Window {
     in-out property <string> onboarding-notice;
     in property <bool> learning-visible;
     in property <int> learning-topic;
-    in property <int> learning-overview-index;
     in property <string> learning-topic-key;
     in property <int> learning-band;
     in property <int> learning-construction;
     in property <[string]> learning-constructions;
     in property <string> learning-construction-description;
-    in property <[ModelLane]> learning-traces;
+    in property <string> learning-example-summary;
+    in property <[LearningTrace]> learning-traces;
     callback select-learning-construction(int);
     in property <string> learning-heading;
     in property <string> learning-body;
+    in property <string> learning-details;
+    in property <string> learning-example-action;
+    in property <[LearningBand]> learning-band-items;
+    in property <[LearningSource]> learning-sources;
+    callback open-learning-source(int);
+    in-out property <length> learning-scroll-y <=> learning-page.scroll-y;
     in property <string> learning-band-description;
     in property <[string]> learning-topics;
-    in property <[string]> learning-bands;
     callback open-learning(int);
+    callback resume-learning();
     callback select-learning-band(int);
     callback browse-learning-library();
     callback create-learning-example();
-    callback return-to-work();
     public function focus-learning() { learning-page.focus-start(); }
-    public function sync-learning-choices() { learning-page.sync-choices(); }
+    public function focus-workbench() { workbench-page.focus-title(); }
+    public function show-onboarding-notice() {
+        if root.onboarding-notice != "" { preference-popup.show(); }
+    }
+    out property <bool> onboarding-notice-open: preference-popup.is-open;
+    changed onboarding-notice => {
+        if root.onboarding-notice == "" && preference-popup.is-open {
+            // Slint restores the popup's original trigger on close. Preserve a
+            // navigation target the user deliberately focused in the meantime.
+            let navigation-focused = workspace-navigation.has-focus;
+            preference-popup.close();
+            if navigation-focused { workspace-navigation.focus(); }
+        }
+    }
+    function restore-notice-focus() {
+        if root.onboarding-notice == "" {
+            if root.learning-visible { root.focus-learning(); }
+            else { root.focus-workspace-navigation(); }
+        } else if root.learning-visible {
+            learning-page.focus-preference-notice();
+        } else {
+            notice-details.focus();
+        }
+    }
+    function close-preference-notice() {
+        if preference-popup.is-open {
+            preference-popup.close();
+            root.restore-notice-focus();
+        }
+    }
     public function focus-workspace-navigation() { workspace-navigation.focus(); }
     in property <int> tab-index: 0;
     in-out property <int> window-index;
@@ -540,7 +601,7 @@ export component MainWindow inherits Window {
             title: Terms.caption-help;
             MenuItem {
                 title: "Start here";
-                activated => { root.open-learning(root.learning-overview-index); }
+                activated => { root.resume-learning(); }
             }
 
             MenuItem {
@@ -557,16 +618,105 @@ export component MainWindow inherits Window {
         }
     }
 
+    preference-popup := PopupWindow {
+        x: 16px;
+        y: 16px;
+        width: min(720px,root.width - 32px);
+        height: min(560px,max(280px,root.height - transport.preferred-height - 32px));
+        close-policy: close-on-click-outside;
+        forward-focus: preference-focus;
+        Rectangle {
+            background: Palette.background;
+            border-width: 1px;
+            border-color: Palette.border;
+            border-radius: 6px;
+        }
+
+        preference-focus := FocusScope {
+            key-pressed(event) => {
+                if event.text == Key.Escape {
+                    root.close-preference-notice();
+                    return accept;
+                }
+                return reject;
+            }
+            VerticalBox {
+                padding: 16px;
+                spacing: 12px;
+                Text {
+                    text: "Start here preference notice";
+                    color: Palette.foreground;
+                    font-weight: 600;
+                    wrap: word-wrap;
+                    min-width: 0px;
+                    vertical-stretch: 0;
+                }
+
+                TextEdit {
+                    text: root.onboarding-notice;
+                    read-only: true;
+                    wrap: word-wrap;
+                    min-width: 0px;
+                    accessible-label: "Full preference notice · Path, cause and recovery";
+                }
+
+                HorizontalBox {
+                    padding: 0px;
+                    vertical-stretch: 0;
+                    RunningTaskActions {
+                        audio-busy: root.playback-busy;
+                        exporting: root.exporting;
+                        progress: root.progress;
+                        stop-audio() => { root.stop-audio(); }
+                        cancel-export() => { root.cancel-file(); }
+                    }
+
+                    Rectangle {
+                        horizontal-stretch: 1;
+                    }
+
+                    Button {
+                        text: "Close";
+                        max-width: self.preferred-width;
+                        triggered => { root.close-preference-notice(); }
+                    }
+                }
+            }
+        }
+    }
+
     workspace-layout := VerticalBox {
         spacing: 0px;
-        if root.onboarding-notice != "": Text {
-            text: root.onboarding-notice;
-            color: Palette.foreground;
-            wrap: word-wrap;
-            min-width: 0px;
+        notice-banner := Rectangle {
+            visible: root.onboarding-notice != "" && !root.learning-visible;
+            preferred-height: self.visible ? notice-content.preferred-height : 0px;
+            min-height: self.preferred-height;
+            max-height: self.preferred-height;
             vertical-stretch: 0;
-            accessible-role: text;
+            clip: true;
+            notice-content := HorizontalBox {
+                x: 0px;
+                y: 0px;
+                width: parent.width;
+                height: parent.height;
+                padding: 4px;
+                Text {
+                    text: "Start here preference needs attention.";
+                    color: Palette.foreground;
+                    wrap: no-wrap;
+                    overflow: elide;
+                    min-width: 0px;
+                    horizontal-stretch: 1;
+                    accessible-live-region: polite;
+                }
+
+                notice-details := Button {
+                    text: "Details";
+                    triggered => { root.show-onboarding-notice(); }
+                }
+            }
         }
+
         toolbar := HorizontalBox {
             changed preferred-height => { root.update-monitor-layout(); }
             vertical-stretch: 0;
@@ -576,7 +726,7 @@ export component MainWindow inherits Window {
                 current: root.learning-visible ? 2 : root.tab-index;
                 text-size: root.ui-size;
                 selected(index) => {
-                    if index == 2 { root.open-learning(root.learning-overview-index); }
+                    if index == 2 { root.resume-learning(); }
                     else { root.tab-changed(index); }
                 }
             }
@@ -591,17 +741,20 @@ export component MainWindow inherits Window {
             }
             // Left of the lasting controls, so a late press on Cancel export
             // lands in the space it leaves rather than on another control.
-            if root.exporting: ProgressIndicator {
+            if root.exporting && !root.learning-visible: ProgressIndicator {
                 progress: root.progress;
                 accessible-label: ViewCaptions.wav-export-progress;
-                max-width: 120px;
+                min-width: 0px;
+                preferred-width: root.learning-visible ? 24px : 120px;
+                max-width: self.preferred-width;
             }
-            if root.exporting: Button {
+            if root.exporting && !root.learning-visible: Button {
                 enabled: Actions.cancel-export.enabled;
                 text: Actions.cancel-export.label;
                 triggered => { root.cancel-file(); }
             }
-            if root.status != "" || root.auxiliary-error != "": Button {
+            if !root.learning-visible &&
+                (root.status != "" || root.auxiliary-error != ""): Button {
                 text: Terms.caption-task-details-dialog;
                 triggered => { root.show-diagnostics(); }
             }
@@ -611,13 +764,24 @@ export component MainWindow inherits Window {
                 accessible-description: root.save-reason;
                 triggered => { root.save-recipe(); }
             }
-            monitor-opener := StableButton {
-                text: root.monitor-open ? Terms.action-hide-monitor : Terms.action-show-monitor;
-                labels: [Terms.action-hide-monitor, Terms.action-show-monitor];
-                accessible-name: (root.monitor-open ? Terms.action-hide-output-monitor :
-                    Terms.action-show-output-monitor);
-                expanded: root.monitor-open;
-                clicked => { root.monitor-open = !root.monitor-open; root.window-changed(); }
+            Rectangle {
+                preferred-width: monitor-opener.visible ? monitor-opener.preferred-width : 0px;
+                min-width: self.preferred-width;
+                max-width: self.preferred-width;
+                preferred-height: monitor-opener.visible ? monitor-opener.preferred-height : 0px;
+                min-height: self.preferred-height;
+                max-height: self.preferred-height;
+                monitor-opener := StableButton {
+                    x: 0px;
+                    y: 0px;
+                    visible: !root.learning-visible || root.monitor-open;
+                    text: root.monitor-open ? Terms.action-hide-monitor : Terms.action-show-monitor;
+                    labels: [Terms.action-hide-monitor, Terms.action-show-monitor];
+                    accessible-name: (root.monitor-open ? Terms.action-hide-output-monitor :
+                        Terms.action-show-output-monitor);
+                    expanded: root.monitor-open;
+                    clicked => { root.monitor-open = !root.monitor-open; root.window-changed(); }
+                }
             }
         }
 
@@ -713,7 +877,7 @@ export component MainWindow inherits Window {
                 ui-size: root.ui-size;
             }
 
-            WorkbenchPane {
+            workbench-page := WorkbenchPane {
                 visible: !root.learning-visible && root.tab-index == 1;
                 width: parent.width;
                 height: parent.height;
@@ -785,25 +949,33 @@ export component MainWindow inherits Window {
                 width: parent.width;
                 height: parent.height;
                 active: root.learning-visible;
+                compact: root.learning-compact;
                 topic: root.learning-topic;
                 topic-key: root.learning-topic-key;
                 band: root.learning-band;
                 construction: root.learning-construction;
                 constructions: root.learning-constructions;
                 construction-description: root.learning-construction-description;
+                example-summary: root.learning-example-summary;
                 traces: root.learning-traces;
                 select-construction(index) => { root.select-learning-construction(index); }
                 heading: root.learning-heading;
                 body: root.learning-body;
+                details: root.learning-details;
+                example-action: root.learning-example-action;
+                band-items: root.learning-band-items;
+                sources: root.learning-sources;
+                preference-notice: root.onboarding-notice != "";
+                open-preference-notice() => { root.show-onboarding-notice(); }
+                open-source(index) => { root.open-learning-source(index); }
                 band-description: root.learning-band-description;
                 topics: root.learning-topics;
-                bands: root.learning-bands;
                 ui-size: root.ui-size;
                 open-topic(index) => { root.open-learning(index); }
                 select-band(index) => { root.select-learning-band(index); }
                 browse-library() => { root.browse-learning-library(); }
                 create-example() => { root.create-learning-example(); }
-                return-to-work() => { root.return-to-work(); }
+                open-guide() => { root.open-guide(); }
             }
         }
 
@@ -881,7 +1053,7 @@ export component MainWindow inherits Window {
                     details => { root.show-diagnostics(); }
                     collapse => {
                         root.monitor-open = false;
-                        monitor-opener.focus-button();
+                        root.focus-monitor-opener();
                         root.window-changed();
                     }
                 }
@@ -889,6 +1061,10 @@ export component MainWindow inherits Window {
         }
 
         transport := TransportBar {
+            learning: root.learning-visible;
+            exporting: root.exporting;
+            export-progress: root.progress;
+            cancel-export() => { root.cancel-file(); }
             auxiliary-error: root.auxiliary-error;
             elapsed: root.elapsed;
             generated: root.generated;
@@ -896,6 +1072,7 @@ export component MainWindow inherits Window {
             operation-outcome: root.operation-outcome;
             operation-summary: root.operation-summary;
             play-stop() => { root.play-stop(); }
+            stop-audio() => { root.stop-audio(); }
             play-target: root.play-target;
             playback-busy: root.playback-busy;
             player-title: root.player-title;

@@ -1,6 +1,6 @@
 # Spectrum reference compositions
 
-This directory contains the `draw_spectra.py` drawing source and paired light/dark SVG/PNG reference compositions: Luminous spectrum, Spectral ribbon and Wave medallions. Runtime exports use the [active masters and exporter](../../README.md); these reference files are not embedded by the application.
+This directory contains the `draw_spectra.py` drawing source and paired light/dark SVG/PNG reference compositions: Luminous spectrum, Spectral ribbon and Wave medallions. Standalone exports use the [active masters and exporter](../../README.md). The application draws its diagrams natively and does not embed these reference files.
 
 The generator defines geometry, wave paths, gradients, composition and geometric glyph outlines. SVGs use internal paths rather than external font or image assets. Their metadata supports source inspection; native accessibility relies on the application’s separate text equivalents.
 

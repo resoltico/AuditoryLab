@@ -329,7 +329,8 @@ struct Pending {
 pub struct Workspace {
     library: library::LibraryState,
     view: View,
-    learning: Option<crate::learning::LearningState>,
+    learning: crate::learning::LearningState,
+    learning_visible: bool,
     editor: EditorState,
     audio: AudioState,
     files: FileState,
@@ -367,7 +368,8 @@ impl Workspace {
         let mut workspace = Self {
             library,
             view: View::Library,
-            learning: None,
+            learning: crate::learning::LearningState::default(),
+            learning_visible: false,
             editor: EditorState::new()?,
             audio: AudioState::new(capabilities),
             files: FileState::default(),

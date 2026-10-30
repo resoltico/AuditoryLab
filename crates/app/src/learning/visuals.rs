@@ -44,7 +44,7 @@ impl Construction {
     pub fn form(self) -> ComponentForm {
         match self {
             Self::SteadyTone => CreationKind::Tone.component(),
-            Self::PulsedTone => super::Example::PulsedTone.form(),
+            Self::PulsedTone => CreationKind::PulsedTone.component(),
             Self::SinusoidalAm => {
                 let mut form = CreationKind::Tone.component();
                 form.modulation = Some(default_modulation(core::ModulationKind::Sinusoidal));
@@ -55,6 +55,15 @@ impl Construction {
             Self::PulseTrain => CreationKind::PulseTrain.component(),
         }
     }
+    /// Capture a fresh complete document from exactly the illustrated construction.
+    pub fn recipe(self) -> Result<core::Recipe, crate::services::OperationError> {
+        let mut draft = crate::document::editing::Draft::new()?;
+        draft
+            .add_node(self.form())
+            .unwrap_or_else(|_| unreachable!("one example fits an empty draft"));
+        Ok(draft.recipe()?)
+    }
+
     /// Bounded origin-zero projections compiled once; frontends only choose geometry.
     pub fn visual(self) -> &'static TeachingVisual {
         static VISUALS: LazyLock<Vec<TeachingVisual>> = LazyLock::new(|| {
@@ -99,8 +108,10 @@ impl TeachingVisual {
         let rate = core::SampleRate::DEFAULT;
         let carrier_frames = u64::from(rate.hz()) / 100;
         let waveform_frames = u64::from(rate.hz()) / 10;
-        core::waveform::trace(&carrier_signal, 0, carrier_frames, 256, &mut carrier);
-        core::waveform::trace(&signal, 0, waveform_frames, 256, &mut waveform);
+        // Match the teaching plot's 1024-unit horizontal extent. Every sample
+        // still contributes to an extrema bin; short spans stop at one bin/frame.
+        core::waveform::trace(&carrier_signal, 0, carrier_frames, 1024, &mut carrier);
+        core::waveform::trace(&signal, 0, waveform_frames, 1024, &mut waveform);
         Self {
             form,
             carrier,
@@ -134,8 +145,8 @@ mod tests {
             let visual = construction.visual();
             assert!(std::ptr::eq(visual, construction.visual()));
             assert_eq!(visual.form, construction.form());
-            assert_eq!(visual.carrier.len(), 256);
-            assert_eq!(visual.waveform.len(), 256);
+            assert_eq!(visual.carrier.len(), 480);
+            assert_eq!(visual.waveform.len(), 1024);
             assert_eq!(visual.carrier_seconds, 0.01);
             assert_eq!(visual.waveform_seconds, 0.1);
             assert_eq!(visual.timing.rate.hz(), 48_000);

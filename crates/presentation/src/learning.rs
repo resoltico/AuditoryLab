@@ -1,4 +1,4 @@
-//! Shared orientation wording; factual ranges remain owned by core.
+//! Plain-language lessons and optional technical context; core owns sound facts.
 // Copyright 2026 Ervins Strauhmanis
 // SPDX-License-Identifier: MPL-2.0
 use auditorylab_app::{
@@ -9,77 +9,96 @@ use auditorylab_app::{
 pub const fn heading(topic: Topic) -> &'static str {
     match topic {
         Topic::Overview => "Start here",
-        Topic::Library => "Meet the Library",
+        Topic::Library => "Library guide",
         Topic::PitchAndRhythm => "Pitch and rhythm",
-        Topic::SoundTypes => "Six ways to construct sound",
+        Topic::SoundTypes => "Sound constructions",
         Topic::RhythmBands => "A spectrum of rhythms",
+    }
+}
+
+pub const fn source_label(source: auditorylab_app::learning::LearningSource) -> &'static str {
+    use auditorylab_app::learning::LearningSource;
+    match source {
+        LearningSource::EegGlossary => "IFCN EEG glossary",
+        LearningSource::MemoryStudy => "Memory study (PubMed)",
+        LearningSource::SleepStages => "NIH sleep stages",
+    }
+}
+
+pub const fn navigation_label(topic: Topic) -> &'static str {
+    match topic {
+        Topic::Overview => "Overview",
+        Topic::Library => "Library guide",
+        Topic::PitchAndRhythm => "Pitch and rhythm",
+        Topic::SoundTypes => "Sound types",
+        Topic::RhythmBands => "Rhythm ranges",
     }
 }
 
 pub const fn body(topic: Topic) -> &'static str {
     match topic {
         Topic::Overview => {
-            "Explore sounds at your own pace. Browse Library to inspect real \
-            recipes and their research context, or create a pulsed tone in \
-            Workbench. This optional guide is always available from Start here. \
-            Nothing plays or saves automatically.\n\nSet your listening volume \
-            low before choosing Play. Auditory Lab does not measure sound \
-            pressure or your brain state; these examples do not promise a \
-            listening outcome."
+            "Explore a sound in Library, build one in Workbench, or learn the ideas \
+            behind them here. Nothing plays or saves automatically. Set your listening \
+            volume low before choosing Play."
         }
         Topic::Library => {
-            "Built-ins adapt specific research conditions. Read each real Library \
-            record for its population, sources, limitations and explicit \
-            modifications. A represented condition may omit the rest of a trial \
-            sequence. Its duration describes that source condition; it is not a \
-            prescribed listening time.\n\nUser Library contains your saved \
-            recipes. Open files are temporary until you explicitly add them. \
-            Browse Library preserves your query and selection; choose Built-in \
-            using the normal collection controls. Editing a study copy creates a \
-            fresh identity and retains its lineage without claiming the original \
-            evidence for your edits."
+            "Built-in sounds are examples adapted from research. Open a sound to read \
+            what was studied and how the example differs. Its duration describes that \
+            example, not a recommended listening time. Your own saved sounds live in \
+            User Library."
         }
         Topic::PitchAndRhythm => {
-            "A carrier frequency and a repetition rate describe different things. \
-            A pulsed tone keeps its carrier phase advancing while its amplitude \
-            envelope repeats. The carrier frequency setting remains the same \
-            when repetition changes; perceived pitch and timbre can still \
-            change.\n\nIn Workbench, the real compiled preview describes the \
-            actual sound and modulation envelope. A rectangular pulse is \
-            rectangular; shaped pulse edges and sinusoidal amplitude modulation \
-            have their own meanings. The band illustrations in this guide are \
-            normalized sine schematics, not audio waveforms or measured EEG."
+            "Carrier frequency describes the tone; repetition rate describes its pulses. \
+            These close-ups use different time windows."
         }
         Topic::SoundTypes => {
-            "Steady tone: an unmodulated carrier.\n\nPulsed tone (isochronic): a \
-            carrier gated by a repeating pulse envelope, with rectangular or \
-            shaped edges.\n\nSinusoidal amplitude modulation: a smooth periodic \
-            change in carrier amplitude.\n\nBinaural pair: two tone frequencies \
-            routed separately to left and right channels. Routing does not \
-            verify separate-ear delivery.\n\nMonaural pair: two tones combined \
-            on the same route; their interaction can create beating.\n\nPulse \
-            train: repeated source pulses, distinct from gating a tone \
-            carrier.\n\nNew sound starts empty and silent. Create a pulsed tone \
-            opens a fresh example using the actual constructor settings in \
-            the compiled comparison. Live Play runs until Stop; finite playback/export timing \
-            remains editable in Workbench."
+            "Choose how to make a sound, then open its example in Workbench to edit. \
+            Playback and saving remain your choice."
         }
         Topic::RhythmBands => {
-            "These five app reference bands describe nominal rhythm rates. \
-            Empirical EEG/MEG conventions vary. The illustrations show the same \
-            one-second, zero-phase, normalized sine examples in the overview and \
-            individual views. Select each named band for its cycles/s and context. \
-            They are illustrations, not recorded EEG, rendered audio \
-            or pulse envelopes.\n\nSelected EEG/MEG associations overlap and \
-            depend on region, task and measurement. Delta occurs in slow-wave \
-            sleep; theta and gamma have been observed in memory tasks; alpha and \
-            beta appear in many resting and active contexts. This is no \
-            alertness, intelligence or therapy ranking. Playing an audio rate \
-            does not establish or predict a listener's brain state.\n\nSources: \
-            IFCN glossary (2017, corrected 2019); Osipova et al., human memory \
-            MEG observations (2006); NIH sleep-stage overview. The memory study \
-            used 4.5–8.5 and 60–90 Hz, not these exact app intervals."
+            "Delta, theta, alpha, beta and gamma are names for rhythm ranges. Each \
+            section below shows one second at an example rate. These are \
+            illustrations, not recorded brain activity; playing a matching audio rate \
+            does not establish a brain state or promise an effect."
         }
+    }
+}
+
+pub fn details(topic: Topic, construction: Construction) -> String {
+    match topic {
+        Topic::Overview => {
+            "Library is for finding and inspecting sounds. Workbench edits one sound at \
+            a time. This guide is optional and remembers your current lesson during \
+            this session. Auditory Lab does not measure sound pressure or brain \
+            activity."
+                .into()
+        }
+        Topic::Library => "Read each Library record for its population, sources, limitations and \
+            explicit adaptations. An example may represent one condition rather than \
+            an entire trial sequence. Open files are temporary until explicitly added \
+            to User Library. Editing a copy retains source lineage; the original \
+            evidence does not automatically apply to your changes."
+            .into(),
+        Topic::PitchAndRhythm => format!(
+            "{}\n\nThe carrier phase keeps advancing while the amplitude envelope \
+            repeats. Changing repetition leaves the carrier-frequency setting \
+            unchanged, but perceived pitch and timbre can still change. The \
+            illustrated envelope comes from the sound model, including its shaped \
+            edges.",
+            construction_details(Construction::PulsedTone)
+        ),
+        Topic::SoundTypes => construction_details(construction),
+        Topic::RhythmBands => "The curves are one-second, zero-phase sine schematics with equal \
+            normalized amplitude. They are not audio waveforms or pulse envelopes. \
+            EEG/MEG band conventions vary; the ranges here follow the app’s IFCN \
+            reference. Associations overlap and depend on region, task and \
+            measurement. This is not an alertness, intelligence or therapy \
+            ranking.\n\nSources: IFCN glossary (2017, corrected 2019); Osipova et al., \
+            human memory MEG observations (2006); NIH sleep-stage overview. The memory \
+            study used 4.5–8.5 and 60–90 Hz, not these exact app intervals. See the \
+            source buttons below for the original references."
+            .into(),
     }
 }
 
@@ -95,6 +114,32 @@ pub const fn construction_heading(construction: Construction) -> &'static str {
 }
 
 pub fn construction_description(construction: Construction) -> String {
+    match construction {
+        Construction::SteadyTone => "A continuous tone with a constant amplitude envelope.",
+        Construction::PulsedTone => {
+            "A continuous tone made into regular pulses by a repeating amplitude \
+            envelope."
+        }
+        Construction::SinusoidalAm => {
+            "A tone whose signal level rises and falls smoothly in a repeating cycle."
+        }
+        Construction::BinauralPair => {
+            "Two different tones sent separately to the left and right channels. \
+            Software cannot verify that they reach separate ears."
+        }
+        Construction::MonauralPair => {
+            "Two tones combined on the same route. Their interference can create a \
+            beating pattern."
+        }
+        Construction::PulseTrain => {
+            "A series of source pulses, rather than a continuous tone switched on and \
+            off."
+        }
+    }
+    .into()
+}
+
+pub fn construction_details(construction: Construction) -> String {
     let visual = construction.visual();
     let facts = visual
         .facts
@@ -102,24 +147,26 @@ pub fn construction_description(construction: Construction) -> String {
         .map(crate::voice_details)
         .collect::<Vec<_>>()
         .join("\n");
-    let meaning = match construction {
-        Construction::SteadyTone => "Continuous carrier; constant amplitude envelope.",
-        Construction::PulsedTone => "The amplitude envelope repeats while carrier phase continues.",
-        Construction::SinusoidalAm => "A smooth amplitude envelope scales the continuous carrier.",
-        Construction::BinauralPair => "Separate left/right carriers; routing does not verify ears.",
-        Construction::MonauralPair => {
-            "Two same-route carriers interfere; inspect the combined trace."
-        }
-        Construction::PulseTrain => "Repeated source pulses, with no tone carrier substituted.",
-    };
     format!(
-        "{meaning}\n{facts}\nStatic compiled example at {} Hz. Stereo waveform: {} ms; \
-        carrier/source comparison: {} ms. No device or playback. Envelope columns use \
-        the actual compiled model, not normalized rhythm-band sine illustrations.",
-        visual.timing.rate.hz(),
-        crate::compact_number(visual.waveform_seconds * 1000.0),
-        crate::compact_number(visual.carrier_seconds * 1000.0)
+        "{facts}\nSample rate: {} kHz. Sound close-up: {} ms. These static plots use \
+            the compiled construction; no playback is needed. Waveform height uses \
+            one fitted signed scale for both channels: zero is the center line, \
+            and height does not show digital full scale or listening volume. \
+            Source/modulation gain is nonnegative: zero is off; one retains the \
+            original source level.",
+        crate::compact_number(f64::from(visual.timing.rate.hz()) / 1000.0),
+        crate::compact_number(visual.waveform_seconds * 1000.0)
     )
+}
+
+pub const fn band_context(band: Band) -> &'static str {
+    match band {
+        Band::Delta => "Deep NREM sleep; slow-wave activity.",
+        Band::Theta => "Drowsiness; also waking memory tasks.",
+        Band::Alpha => "Quiet wakefulness, especially eyes closed.",
+        Band::Beta => "Waking activity; fronto-central EEG activity.",
+        Band::Gamma => "Local processing; engaged networks.",
+    }
 }
 
 pub fn band_description(band: Band) -> String {
@@ -127,43 +174,85 @@ pub fn band_description(band: Band) -> String {
         .into_iter()
         .find(|example| example.band == band)
         .unwrap_or_else(|| unreachable!("all core bands have a teaching example"));
-    let context = match band {
-        Band::Delta => "Deep NREM sleep; slow-wave activity.",
-        Band::Theta => "Drowsiness; also waking memory tasks.",
-        Band::Alpha => "Quiet wakefulness, especially eyes closed.",
-        Band::Beta => "Waking activity; fronto-central EEG activity.",
-        Band::Gamma => "Local processing; engaged networks.",
-    };
     format!(
-        "{} · {}\nIllustrative {} rhythm · {} cycles/s · one second\nZero phase; \
-        normalized signed amplitude −1 to 1. This sine diagram is not EEG, audio \
-        or a pulse envelope.\n{context}",
+        "{} · {}\nExample: {} cycles per second. Observed EEG/MEG context: {}",
         band,
         band.interval(),
-        band,
-        example.example_hz
+        example.example_hz,
+        band_context(band)
     )
+}
+
+/// Primary example quantities come from the compiled constructor facts.
+pub fn example_summary(construction: Construction) -> String {
+    use auditorylab_app::core::{CarrierFacts, ModulationFacts};
+    let visual = construction.visual();
+    let facts = visual
+        .facts
+        .first()
+        .unwrap_or_else(|| unreachable!("examples have a voice"));
+    if let Some(pair) = facts.pair {
+        return format!(
+            "Example settings: {} Hz and {} Hz tones · {} Hz frequency difference",
+            crate::compact_number(pair.first_hz),
+            crate::compact_number(pair.second_hz),
+            crate::compact_number(pair.offset_hz.abs())
+        );
+    }
+    let source = match facts.carrier {
+        CarrierFacts::Tone(rate) => format!(
+            "{} Hz tone carrier",
+            crate::compact_number(rate.requested_hz)
+        ),
+        CarrierFacts::PulseTrain(pulse) => {
+            format!("{} source pulses/s", crate::compact_number(pulse.rate_hz))
+        }
+    };
+    let modulation = match facts.modulation {
+        Some(ModulationFacts::Pulsed(pulse)) => {
+            format!(" · {} pulses/s", crate::compact_number(pulse.rate_hz))
+        }
+        Some(ModulationFacts::Sinusoidal { rate, .. }) => format!(
+            " · amplitude modulation {} cycles/s",
+            crate::compact_number(rate.requested_hz)
+        ),
+        None => String::new(),
+    };
+    format!("Example settings: {source}{modulation}")
 }
 
 pub fn carrier_caption(visual: &auditorylab_app::learning::TeachingVisual) -> String {
     format!(
-        "Same source without modulation · {} ms · {} Hz · common stereo amplitude fit",
-        crate::compact_number(visual.carrier_seconds * 1000.0),
-        visual.timing.rate.hz()
+        "Tone before pulsing · {} ms close-up · fitted signed amplitude",
+        crate::compact_number(visual.carrier_seconds * 1000.0)
     )
 }
 pub fn waveform_caption(visual: &auditorylab_app::learning::TeachingVisual) -> String {
     format!(
-        "Actual constructed sound · {} ms · {} Hz · common stereo amplitude fit",
-        crate::compact_number(visual.waveform_seconds * 1000.0),
-        visual.timing.rate.hz()
+        "Resulting sound · {} ms close-up · fitted signed amplitude",
+        crate::compact_number(visual.waveform_seconds * 1000.0)
     )
 }
-pub fn timing_caption(visual: &auditorylab_app::learning::TeachingVisual) -> String {
+/// Keep the producer's physical model meaning when selecting a plot caption.
+pub fn timing_caption(
+    visual: &auditorylab_app::learning::TeachingVisual,
+    kind: auditorylab_app::core::timing::ModelKind,
+) -> String {
+    use auditorylab_app::core::timing::ModelKind;
+    let meaning = match kind {
+        ModelKind::Steady => "Tone source gain",
+        ModelKind::PulseTrain => "Pulse source on/off timing",
+        ModelKind::Pulsed => "Pulse modulation gain",
+        ModelKind::Envelope => "Smooth amplitude modulation gain",
+    };
+    let scale = if kind == ModelKind::PulseTrain {
+        "0 off · 1 on"
+    } else {
+        "0 off · 1 original source level"
+    };
     format!(
-        "Actual source/modulation envelope · {} ms from phase origin · {} Hz · gain 0–1",
-        crate::compact_number(visual.timing.rate.seconds_in(visual.timing.frames) * 1000.0),
-        visual.timing.rate.hz()
+        "{meaning} · {} ms · {scale}",
+        crate::compact_number(visual.timing.rate.seconds_in(visual.timing.frames) * 1000.0)
     )
 }
 
@@ -171,38 +260,54 @@ pub fn timing_caption(visual: &auditorylab_app::learning::TeachingVisual) -> Str
 mod tests {
     use super::*;
     #[test]
-    fn teaching_copy_describes_actual_compiled_example_without_regenerating_identity() {
+    fn primary_facts_and_timing_captions_preserve_constructor_meaning() {
+        use auditorylab_app::core::timing::ModelKind;
+        let pulsed = Construction::PulsedTone.visual();
+        assert!(
+            example_summary(Construction::PulsedTone).contains("440 Hz tone carrier · 10 pulses/s")
+        );
+        assert!(example_summary(Construction::PulseTrain).contains("40 source pulses/s"));
+        assert!(example_summary(Construction::MonauralPair).contains("200 Hz and 206 Hz tones"));
+        assert!(timing_caption(pulsed, ModelKind::Pulsed).contains("Pulse modulation gain"));
+        assert!(
+            timing_caption(Construction::PulseTrain.visual(), ModelKind::PulseTrain)
+                .contains("Pulse source on/off timing")
+        );
+        assert!(
+            timing_caption(Construction::SinusoidalAm.visual(), ModelKind::Envelope)
+                .contains("Smooth amplitude modulation gain")
+        );
+        assert!(waveform_caption(pulsed).contains("fitted signed amplitude"));
+        assert!(!construction_details(Construction::PulseTrain).contains("carrier close-up"));
+        assert_eq!(navigation_label(Topic::Library), "Library guide");
+        for source in auditorylab_app::learning::LearningSource::ALL {
+            assert_ne!(source_label(source), "");
+            assert!(source.url().starts_with("https://"));
+        }
+    }
+
+    #[test]
+    fn teaching_keeps_technical_quantities_labelled_and_out_of_primary_copy() {
         for topic in Topic::ALL {
-            assert_eq!(Topic::ALL[topic.index()], topic);
             assert_ne!(heading(topic), "");
             assert_ne!(body(topic), "");
-            assert_eq!(
-                Topic::ALL
-                    .iter()
-                    .filter(|other| other.key() == topic.key())
-                    .count(),
-                1
-            );
+            assert!(!body(topic).contains("48000"));
         }
         for construction in Construction::ALL {
             let visual = construction.visual();
-            let text = construction_description(construction);
-            assert_ne!(construction_heading(construction), "");
+            let text = construction_details(construction);
+            assert!(text.contains("Sample rate: 48 kHz"));
             for facts in &visual.facts {
                 assert!(text.contains(&crate::voice_details(facts)));
             }
-            assert!(std::ptr::eq(visual, construction.visual()));
+            assert!(!construction_description(construction).contains("sample rate"));
             assert!(carrier_caption(visual).contains("10 ms"));
             assert!(waveform_caption(visual).contains("100 ms"));
-            assert!(timing_caption(visual).contains("gain 0–1"));
         }
-        let pitch = body(Topic::PitchAndRhythm);
-        assert!(pitch.contains("phase advancing"));
-        assert!(pitch.contains("envelope repeats"));
-        assert!(!pitch.contains("carrier, repeated"));
         assert!(
-            !pitch.contains("440"),
-            "exact values belong to the compiled facts"
+            details(Topic::PitchAndRhythm, Construction::SteadyTone)
+                .contains("phase keeps advancing")
         );
+        assert!(details(Topic::RhythmBands, Construction::SteadyTone).contains("not an alertness"));
     }
 }

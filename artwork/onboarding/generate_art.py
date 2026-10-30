@@ -10,7 +10,8 @@ Code is MPL-covered. Creative SVG masters, glyph paths, palettes and layouts in
 source/, and generated artwork, have proprietary artwork terms in root LICENSE.
 No rights to those inputs are granted by this script's software license.
 
-Python 3.9+ standard library only. Ordinary app builds use tracked exports.
+Python 3.9+ standard library only. Standalone figures use tracked exports;
+the desktop learning UI renders native labels and schematic paths.
 Run from a checkout: python3 artwork/onboarding/generate_art.py target/onboarding-art
 The default examples file is crates/app/src/learning/band_examples.json. An explicit
 --examples path permits inspecting this material outside the implementation tree.
@@ -94,7 +95,7 @@ def lettering_label(text, placement, lettering, palette):
     escaped = escape(text, quote=True)
     parts = [f'<g data-lettering="{escaped}" aria-label="{escaped}" '
              f'transform="translate({x:.3f} {placement["y"]}) scale({scale:.5f})" '
-             f'fill="none" stroke="{palette[placement["color"]]}" stroke-width=".8" '
+             f'fill="none" stroke="{palette[placement["color"]]}" stroke-width="1.15" '
              'stroke-linecap="round" stroke-linejoin="round">']
     cursor = 0
     for char in text:
@@ -150,7 +151,7 @@ def export(output, examples_path):
     palette_data = load_json(HERE / 'source/palette.json')
     if (not isinstance(palette_data.get('themes'), dict)
             or set(palette_data['themes']) != {'light', 'dark'}):
-        raise ValueError('The app consumes exactly the light and dark artwork pair')
+        raise ValueError('Standalone figures require exactly the light and dark artwork pair')
     lettering = load_json(HERE / 'source/lettering.json')
     layout = load_json(HERE / 'source/layout.json')
     definitions = glyph_definitions(lettering)

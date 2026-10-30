@@ -674,26 +674,22 @@ export component LibraryPane inherits Rectangle {
                             vertical-stretch: 0;
 
                             Button {
-                                text: Terms.action-preview-waveform;
-                                enabled: root.can-preview;
-                                triggered => { root.preview-selected(); }
-                            }
-
-                            Button {
                                 text: Actions.edit-copy.label;
                                 enabled: Actions.edit-copy.enabled;
                                 accessible-description: root.copy-reason;
-                                triggered => {
-                                    root.open-workbench();
-                                }
+                                horizontal-stretch: 0;
+                                triggered => { root.open-workbench(); }
                             }
 
                             Button {
-                                text: (Actions.export.label + "…");
-                                enabled: Actions.export.enabled;
-                                triggered => {
-                                    root.export-wav();
-                                }
+                                text: Terms.action-preview-waveform;
+                                enabled: root.can-preview;
+                                horizontal-stretch: 0;
+                                triggered => { root.preview-selected(); }
+                            }
+
+                            Rectangle {
+                                horizontal-stretch: 1;
                             }
                         }
                                 // A custom recipe has no study or summary to show.
@@ -779,11 +775,6 @@ export component LibraryPane inherits Rectangle {
                             text: Actions.edit-saved-recipe.label;
                             entry: root.library-entry;
                             activated(entry) => { root.edit-saved(entry); }
-                        }
-                        Button {
-                            text: (Actions.export-recipe.label + "…");
-                            enabled: Actions.export-recipe.enabled;
-                            triggered => { root.export-recipe(); }
                         }
 
                         if root.open-files-scope: BoundButton {
@@ -891,16 +882,32 @@ export component LibraryPane inherits Rectangle {
                             }
                         }
                         Disclosure {
-                            label: Terms.action-export-settings;
+                            label: "Export sound";
                             expanded <=> root.export-settings;
                         }
 
-                        if root.export-settings: ExportRate {
-                            choices: root.export-rates;
-                            selected <=> root.rate-index;
-                            edit-enabled: true;
-                            changed(i) => {
-                                root.rate-changed(i);
+                        if root.export-settings: VerticalBox {
+                            vertical-stretch: 0;
+                            spacing: 10px;
+                            ExportRate {
+                                choices: root.export-rates;
+                                selected <=> root.rate-index;
+                                edit-enabled: true;
+                                changed(i) => { root.rate-changed(i); }
+                            }
+
+                            Button {
+                                text: Actions.export.label + "…";
+                                enabled: Actions.export.enabled;
+                                max-width: self.preferred-width;
+                                triggered => { root.export-wav(); }
+                            }
+
+                            Button {
+                                text: Actions.export-recipe.label + "…";
+                                enabled: Actions.export-recipe.enabled;
+                                max-width: self.preferred-width;
+                                triggered => { root.export-recipe(); }
                             }
                         }
                     }

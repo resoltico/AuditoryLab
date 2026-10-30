@@ -1,14 +1,25 @@
 import { ViewCaptions } from "view-captions.slint";
 import { Button } from "button.slint";
+import { RunningTaskActions } from "running-task-actions.slint";
 
 
 import { Terms } from "vocabulary.slint";
-import { Palette, VerticalBox, HorizontalBox } from "std-widgets.slint";
+import {
+    Palette,
+    VerticalBox,
+    HorizontalBox,
+} from "std-widgets.slint";
 
 import { StableButton } from "editor.slint";
 
 
 export component TransportBar inherits Rectangle {
+    in property <bool> learning;
+    in property <bool> exporting;
+    in property <float> export-progress;
+    callback cancel-export();
+    private property <bool> quiet-guide: root.learning && !root.playback-busy && !root.exporting &&
+        root.auxiliary-error == "" && root.operation-summary == "" && root.operation-outcome == "";
     in property <string> auxiliary-error;
     in property <string> elapsed;
     in property <string> generated;
@@ -16,6 +27,7 @@ export component TransportBar inherits Rectangle {
     in property <string> operation-outcome;
     in property <string> operation-summary;
     callback play-stop();
+    callback stop-audio();
     in property <string> play-target;
     in property <bool> playback-busy;
     in property <string> player-title;
@@ -29,9 +41,11 @@ export component TransportBar inherits Rectangle {
     accessible-role: groupbox;
     accessible-label: ViewCaptions.playback-transport;
     changed preferred-height => { root.update-monitor-layout(); }
-    preferred-height: content.preferred-height;
-    min-height: content.preferred-height;
-    max-height: content.preferred-height;
+    visible: !root.quiet-guide;
+    clip: true;
+    preferred-height: root.quiet-guide ? 0px : content.preferred-height;
+    min-height: self.preferred-height;
+    max-height: self.preferred-height;
     vertical-stretch: 0;
     background: Palette.control-background;
     border-width: 1px;
@@ -42,7 +56,7 @@ export component TransportBar inherits Rectangle {
         HorizontalBox {
             vertical-stretch: 0;
             padding: 0px;
-            StableButton {
+            if !root.learning: StableButton {
                 text: root.transport-action;
                 labels: root.transport-labels;
                 primary: true;
@@ -52,6 +66,13 @@ export component TransportBar inherits Rectangle {
                 clicked => { root.play-stop(); }
             }
 
+            if root.learning: RunningTaskActions {
+                audio-busy: root.playback-busy;
+                exporting: root.exporting;
+                progress: root.export-progress;
+                stop-audio() => { root.stop-audio(); }
+                cancel-export() => { root.cancel-export(); }
+            }
             VerticalBox {
                 padding: 0px;
                 spacing: 2px;
@@ -65,7 +86,7 @@ export component TransportBar inherits Rectangle {
                     overflow: elide;
                 }
 
-                Text {
+                if !root.learning: Text {
                     min-width: 0px;
                     text: root.generated;
                     wrap: no-wrap;
@@ -73,7 +94,7 @@ export component TransportBar inherits Rectangle {
                 }
             }
                     // Sized for the longest clock, so ticking never reflows the row.
-                    Rectangle {
+                    if !root.learning: Rectangle {
                 horizontal-stretch: 0;
                 min-width: elapsed-template.preferred-width;
                 preferred-width: elapsed-template.preferred-width;
@@ -129,7 +150,7 @@ export component TransportBar inherits Rectangle {
                 accessible-live-region: polite;
             }
         }
-        Text {
+        if !root.learning: Text {
             min-width: 0px;
             text: root.guidance;
             wrap: word-wrap;

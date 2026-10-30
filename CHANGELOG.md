@@ -6,12 +6,13 @@
 - Update method filters to `pulse_train`, `pulsed` and `sinusoidal`; JSON schema 3/classifier 3 reports source and shared modulation independently.
 - AM and mixtures containing pairs can have different sample bits under component sum-then-modulate order; see [waveforms](docs/recipes.md#waveforms).
 - Exported WAV and recipe files get ordinary permissions instead of owner-only; a replaced external recipe keeps its permissions.
-- Desktop Start here offers optional, revisitable Library, sound-construction and rhythm lessons, with matching light/dark sine illustrations and native text.
-- Learning compares real compiled carrier, stereo waveform and envelope traces for six sound constructions without opening a device or creating a document.
-- Create a pulsed tone opens a quiet, unsaved Workbench example through Save/Discard/Cancel; New sound stays empty.
-- Reading Start here preserves drafts and tasks; return to Library/Workbench to Play, Save or Export. Stop and Cancel still control running work.
-- Fresh desktop profiles start with orientation; deliberate entry to work remembers one flag outside the library. Later launches start in Library.
-- Onboarding artwork is proprietary under [LICENSE](LICENSE); editable sources are included. Exporter, verifier and preview software use MPL-2.0.
+- Start here explains Library, six sound constructions and rhythm ranges with native light/dark diagrams, optional details and direct research references.
+- Sound lessons show compiled carrier/rhythm facts, fitted stereo waveforms and source/modulation timing without opening a device.
+- Open the selected example in Workbench through Save/Discard/Cancel, with title focus after success; New sound starts empty and silent.
+- Reading retains session choices, drafts and tasks; choose Library or Workbench to Play, Save or Export. Stop and Cancel remain available in notice details.
+- Fresh profiles open orientation; recording entry to work makes later launches start in Library. Preference errors preserve existing files and expose full recovery details.
+- Library groups export controls; empty Workbench provides a direct Add component starting point.
+- Editable onboarding SVGs include transparent light/dark variants and original drawing inputs under [artwork terms](LICENSE); generator and preview software use MPL-2.0.
 - Create tone, pulse-train, pair or pulsed-tone (isochronic) templates in Desktop Add component or `auditorylab new KIND`; `--output` never overwrites.
 - Pairs support shared sinusoidal or shaped pulsed modulation, with atomic component transitions within one 16-generator-lane budget.
 - Pulse widths retain duration or duty intent; raised-cosine edges and calculated previews show requested and sample-quantized timing.

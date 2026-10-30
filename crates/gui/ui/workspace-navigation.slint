@@ -10,7 +10,7 @@ export component WorkspaceNavigation inherits FocusScope {
     private property <[string]> destinations: [Views.library, Views.workbench, root.start-label];
     callback selected(int);
     function choose(index: int) {
-        root.selected(index);
+        if index != root.current { root.selected(index); }
     }
     accessible-role: tab-list;
     accessible-label: Terms.caption-workspace-navigation;
@@ -49,7 +49,7 @@ export component WorkspaceNavigation inherits FocusScope {
             accessible-item-index: index;
             accessible-item-selectable: true;
             accessible-item-selected: root.current == index;
-            accessible-action-default => { root.choose(index); root.focus(); }
+            accessible-action-default => { root.focus(); root.choose(index); }
             caption := Text {
                 width: parent.width;
                 height: parent.height;
@@ -61,7 +61,7 @@ export component WorkspaceNavigation inherits FocusScope {
             }
 
             TouchArea {
-                clicked => { root.choose(index); root.focus(); }
+                clicked => { root.focus(); root.choose(index); }
             }
         }
     }

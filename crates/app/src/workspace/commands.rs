@@ -1068,7 +1068,7 @@ impl Workspace {
                 .task()
                 .map(|task| super::status::FileActivity::from_kind(&task.kind)),
         };
-        if self.learning.is_some() {
+        if self.learning_visible {
             Self::suppress_learning_actions(&mut view);
         }
         view.operations = self.operation_views(&view);
@@ -1085,7 +1085,7 @@ impl Workspace {
                     O::SaveCopy => self.view == View::Workbench && view.can_save_copy(),
                     O::NewSound => view.can_new(),
                     O::EditSavedRecipe | O::EditExternalFile => {
-                        self.learning.is_none() && view.can_new()
+                        !self.learning_visible && view.can_new()
                     }
                     O::EditCopy => view.can_copy(),
                     O::OpenRecipe => view.can_import(),

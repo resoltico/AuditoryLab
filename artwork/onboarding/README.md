@@ -7,22 +7,22 @@
 | Path | Responsibility |
 | --- | --- |
 | `source/*.svg.in` | Preferred composition and lettering-placement masters. |
-| `source/lettering.json` | Geometric glyph outlines; runtime art needs no external font. |
-| `source/palette.json` | Paired native light/dark palettes. |
+| `source/lettering.json` | Original geometric glyph paths; standalone figures need no external font. |
+| `source/palette.json` | Paired light/dark foreground palettes for transparent figures. |
 | `source/layout.json` | Waveform slots, shared stroke/fill endpoints and dynamic label placement. |
 | `../../crates/app/src/learning/band_examples.json` | Application-owned representative rates consumed by the app and exporter. Core `Band` owns membership and interval semantics. |
 | `generate_art.py` | Bounded sine geometry, template expansion, glyph placement and output publication. |
-| `assets/*.svg` | Twelve runtime exports: two overviews and ten individual diagrams. |
+| `assets/*.svg` | Twelve standalone exports: two overviews and ten individual diagrams. |
 | `reference/` | Drawing inputs, reference compositions, generators and design previews; not runtime assets. |
 | `verify_art.py` | Independent geometry, edit, rejection, source-preservation and inventory checks. |
 
 The [root LICENSE](../../LICENSE) defines proprietary scope for creative masters, glyph/layout/palette data, generated images and identified reference drawing source. Exporter/verifier software and identified preview/build software use MPL-2.0. Copying artwork source for builds and distributing unchanged artwork with Auditory Lab are permitted under those terms; modifying or independently reusing artwork requires the owner’s permission. Standard mathematics and scientific facts are not claimed exclusively.
 
-The active masters use geometric path lettering without imported image or font assets. `reference/rhythm-context-options/` contains font-referencing SVG designs and corresponding rendered PNGs. `reference/rhythm-spectrum-studies/` contains path-lettered reference compositions. Art-bearing reference scripts mix creative drawing data with exporting logic and have the proprietary scope identified by LICENSE. The separated exporter does not embed their creative payloads in MPL software.
+The masters use original geometric path lettering without imported image or font assets. Uniform strokes, minimum glyph sizes and contrasting foregrounds define the standalone lettering. Figures have transparent backgrounds; pair light artwork with a light neutral surface and dark artwork with a dark neutral surface. `reference/rhythm-context-options/` contains font-referencing SVG designs and corresponding rendered PNGs. `reference/rhythm-spectrum-studies/` contains path-lettered reference compositions. Art-bearing reference scripts mix creative drawing data with exporting logic and have the proprietary scope identified by LICENSE. The separated exporter does not embed their creative payloads in MPL software.
 
 ## Generate and review exports
 
-Python 3.9+ standard library is sufficient. Ordinary Rust builds consume tracked SVGs and do not run Python or depend on browser/vector-authoring tools.
+Python 3.9+ standard library is sufficient. Ordinary Rust builds do not run Python or depend on browser/vector-authoring tools. The desktop renders its learning schematics and labels natively; the SVG exports are independently editable figures.
 
 From the repository root:
 
@@ -48,12 +48,12 @@ Invalid numerical types, nonfinite/nonpositive rates, excessive sampling work, m
 python3 artwork/onboarding/verify_art.py --scratch target/onboarding-art-qa
 ```
 
-The verifier checks actual path coordinates against analytic sine/quarter-cycle expectations, matching theme geometry, pulse-envelope rejection controls, rate/slot/fill edits, malformed inputs, source aliases, repeated regeneration and output modes. It also checks the complete current manifest and immutable reference-source records. Mathematical checks do not establish native decoding, accessibility or platform-package qualification.
+The verifier checks actual path coordinates against analytic sine/quarter-cycle expectations, matching theme geometry, transparent/no-glow compositions, lettering weight/size/bounds, pulse-envelope rejection controls, rate/slot/fill edits, malformed inputs, source aliases, repeated regeneration and output modes. It also checks the complete current manifest and immutable reference-source records. Mathematical checks do not establish native decoding, accessibility or platform-package qualification.
 
 `SHA256SUMS` covers every current file in this tree except itself, including maintained Markdown notes. `reference/retained-art-inventory.json` identifies immutable reference artwork, drawing generators and their source data; maintained documentation and checksum indexes are covered by the current-tree manifest instead. Review intentional changes before refreshing inventories. Floating-point libraries and rasterizers can affect exported bytes; inspect differences rather than blindly updating snapshots. Reference PNGs are appearance examples, not a cross-platform raster reproducibility contract.
 
 ## Desktop integration
 
-The native Slint UI selects bundled light/dark exports through the resolved application palette. Native text carries band names, core intervals, representative rates and qualified contexts independently of path lettering. Compact layouts retain readable text; the selected individual diagram has an enlarged horizontally scrollable presentation. Real compiled audio/envelope plots retain their actual pulse shapes.
+The desktop presents the same one-second normalized teaching curves using application-owned example rates, with native scalable band names, core intervals, representative rates and qualified contexts. It does not shrink path lettering into a reading screen. Native surfaces and palette-aware curve colors handle appearance changes. The overview and individual diagrams retain the same zero-phase sinusoidal meaning; real compiled audio/envelope plots retain their actual pulse shapes.
 
-Runtime UI references `assets/`; reference compositions and mockups remain source-only. Root LICENSE is embedded in source-built desktops and copied into native packages. [Packaging](../../docs/releasing.md) defines resource, identity, legal-equality and extracted-package checks.
+The SVGs in `assets/` are standalone authoring/export material; reference compositions and mockups remain source-only. Root LICENSE is embedded in source-built desktops and copied into native packages. [Packaging](../../docs/releasing.md) defines resource, identity, legal-equality and extracted-package checks.

@@ -1,0 +1,79 @@
+// Copyright 2026 Ervins Strauhmanis
+// SPDX-License-Identifier: MPL-2.0
+import { HorizontalBox, ProgressIndicator } from "std-widgets.slint";
+import { Button } from "button.slint";
+import { Actions } from "actions.slint";
+import { ViewCaptions } from "view-captions.slint";
+
+// Shared explicit task controls. Completed slots stay blank so late clicks
+// cannot activate a different action at the same position.
+export component RunningTaskActions inherits HorizontalBox {
+    in property <bool> audio-busy;
+    in property <bool> exporting;
+    in property <float> progress;
+    callback stop-audio();
+    callback cancel-export();
+    padding: 0px;
+    horizontal-stretch: 0;
+            // Reserved action slots never move another action into a
+            // completed Cancel/Stop target. Both control the actual running work.
+            Rectangle {
+        min-width: stop-measure.preferred-width;
+        preferred-width: self.min-width;
+        max-width: self.preferred-width;
+        min-height: stop-measure.preferred-height;
+        preferred-height: self.min-height;
+        max-height: self.preferred-height;
+        horizontal-stretch: 0;
+        stop-measure := Button {
+            visible: false;
+            text: Actions.stop.label;
+        }
+
+        Button {
+            x: 0px;
+            y: 0px;
+            width: parent.width;
+            height: parent.height;
+            visible: root.audio-busy;
+            text: Actions.stop.label;
+            enabled: Actions.stop.enabled;
+            triggered => { root.stop-audio(); }
+        }
+    }
+
+    Rectangle {
+        min-width: cancel-measure.preferred-width + 32px;
+        preferred-width: self.min-width;
+        max-width: self.preferred-width;
+        min-height: cancel-measure.preferred-height;
+        preferred-height: self.min-height;
+        max-height: self.preferred-height;
+        horizontal-stretch: 0;
+        cancel-measure := Button {
+            visible: false;
+            text: Actions.cancel-export.label;
+        }
+
+        Button {
+            x: 0px;
+            y: 0px;
+            width: cancel-measure.preferred-width;
+            height: parent.height;
+            visible: root.exporting;
+            text: Actions.cancel-export.label;
+            enabled: Actions.cancel-export.enabled;
+            triggered => { root.cancel-export(); }
+        }
+
+        ProgressIndicator {
+            x: cancel-measure.preferred-width + 8px;
+            y: 0px;
+            width: 24px;
+            height: parent.height;
+            visible: root.exporting;
+            progress: root.progress;
+            accessible-label: ViewCaptions.wav-export-progress;
+        }
+    }
+}

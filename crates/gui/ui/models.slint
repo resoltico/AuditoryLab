@@ -64,3 +64,24 @@ export struct LibraryFacet {
 export struct ControlOption { label: string, enabled: bool }
 
 export struct DateInput { from-text: string, through-text: string }
+
+// Readable application-owned rhythm facts and normalized schematic geometry.
+export struct LearningBand {
+    name: string,
+    range: string,
+    rate: string,
+    context: string,
+    // One-second schematic in the common native plot coordinates.
+    trace: string
+}
+
+// Learning axes distinguish fitted signed audio from nonnegative source/modulation gain.
+export struct LearningTrace {
+    label: string,
+    trace: string,
+    // Gain plots use zero at the bottom; signed traces use a central zero.
+    unipolar: bool
+}
+
+// User-facing source label; application-owned commands retain the destination URL.
+export struct LearningSource {label: string}

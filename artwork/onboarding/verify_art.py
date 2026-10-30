@@ -75,6 +75,22 @@ def verify_assets(folder, layout, rates):
             assert 'SPDX-License-Identifier: LicenseRef-Proprietary-Artwork' in text
             tree = ET.fromstring(text)
             assert not tree.findall('.//s:text', NS) and not tree.findall('.//s:image', NS)
+            # Inline/standalone compositions share neutral transparent geometry.
+            assert not tree.findall('.//s:rect', NS), 'No opaque poster background'
+            assert not tree.findall('.//s:filter', NS), 'No decorative blurred glow'
+            assert not tree.findall('.//s:radialGradient', NS), 'No blue wash or halo'
+            width, height = float(tree.attrib['width']), float(tree.attrib['height'])
+            for group in tree.findall('.//s:g[@data-lettering]', NS):
+                x, y, scale = map(float, re.fullmatch(
+                    r'translate\(([-.\d]+) ([-.\d]+)\) scale\(([-.\d]+)\)',
+                    group.attrib['transform']).groups())
+                weight = float(group.attrib['stroke-width'])
+                assert weight >= 1.05, 'Original lettering must retain its readable weight'
+                assert scale >= 1.65, 'Small poster lettering must not regress'
+                right = max(float(use.attrib['x']) for use in group.findall('s:use', NS)) + 7
+                half_stroke = scale * weight / 2
+                assert x - half_stroke >= 2 and x + right * scale + half_stroke <= width - 2
+                assert y - half_stroke >= 2 and y + 10 * scale + half_stroke <= height - 2
             curves = []
             for token, slot in item['wave_slots'].items():
                 hz = rates[slot['band']]
@@ -83,10 +99,7 @@ def verify_assets(folder, layout, rates):
                     assert str(hz) + ' CYCLES/S' in text
                     assert str(hz) in tree.find('s:title', NS).text
                 else:
-                    # Main source stroke is distinct from glow/fill and lettering paths.
-                    main = [p.attrib['d'] for p in tree.findall('.//s:path', NS)
-                            if p.attrib.get('stroke-width') == '2.6' and len(p.attrib.get('d', '')) > 1000]
-                    curve = main[list(item['wave_slots']).index(token)]
+                    curve = tree.find('.//s:path[@data-wave="' + slot['band'] + '"]', NS).attrib['d']
                 count = check_sine(curve, slot, hz)
                 curves.append(curve)
                 checks.append({'asset': path.name, 'band': slot['band'], 'hz': hz,
@@ -131,6 +144,21 @@ def main():
         for name in expected_files:
             assert (output / name).read_bytes() == (ART / 'assets' / name).read_bytes(), name
         checks = verify_assets(output, layout, rates)
+        # Typography controls detect low weight, unreadably small letters and clipping.
+        original_poster = (output / 'spectral-ribbon-light.svg').read_text()
+        for before, after in [('stroke-width="1.15"', 'stroke-width="0.2"'),
+                              ('scale(1.70000)', 'scale(1.00000)'),
+                              ('316.650 692)', '316.650 710)')]:
+            assert before in original_poster
+            (output / 'spectral-ribbon-light.svg').write_text(
+                original_poster.replace(before, after, 1))
+            caught = False
+            try:
+                verify_assets(output, layout, rates)
+            except AssertionError:
+                caught = True
+            assert caught, 'Lettering readability regression was not detected'
+        (output / 'spectral-ribbon-light.svg').write_text(original_poster)
         # Old pulse envelopes must fail the same sine check, even at the same rate.
         slot = {'x0': 0, 'x1': 1000, 'center_y': 100, 'amplitude': 50}
         wrong = ' '.join(('M' if i == 0 else 'L') + str(i * 10) + ' '
@@ -224,6 +252,7 @@ def main():
         assert 'outside the artwork source tree' in unsafe.stderr
     result = {'kind': 'artifact math/generation/licensing QA; not native implementation qualification',
               'runtime': sys.version, 'assets_reproduced': 12, 'wave_checks': checks,
+              'transparent_no_glow_compositions': True, 'lettering_weight_size_and_bounds': True,
               'retired_envelope_detected': True, 'edited_fill_uses_current_slot': True,
               'gamma_edit_updates_both_views_and_caption': True,
               'invalid_numeric_types_and_cost_rejected': True, 'missing_glyph_rejected': True,

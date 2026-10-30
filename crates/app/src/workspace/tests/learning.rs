@@ -1,6 +1,6 @@
 //! Exercise learning through production commands, including rejected hidden actions.
 use super::*;
-use crate::learning::{Example, LearningCommand as L, Topic};
+use crate::learning::{Construction, LearningCommand as L, Topic};
 
 #[test]
 fn learning_preserves_staged_invalid_work_and_query_and_rejects_hidden_actions() {
@@ -40,7 +40,7 @@ fn learning_preserves_staged_invalid_work_and_query_and_rejects_hidden_actions()
     assert!(!actions.can_edit());
     assert_eq!(actions.play_target, "");
     assert!(ws.take_effects().is_empty());
-    ws.apply(Command::Learning(L::ReturnToWork)).unwrap();
+    ws.apply(Command::SetView(View::Workbench)).unwrap();
     assert_eq!(ws.view(), View::Workbench);
     assert_eq!(ws.editor().document(), document);
     assert_eq!(ws.editor().input_revision(), input_revision);
@@ -60,11 +60,15 @@ fn captured_example_survives_changed_topic_cancel_and_stale_repeated_requests() 
     ws.take_effects();
     ws.apply(Command::Learning(L::Open(Topic::Overview)))
         .unwrap();
-    ws.apply(Command::Learning(L::CreateExample(Example::PulsedTone)))
-        .unwrap();
+    ws.apply(Command::Learning(L::CreateExample(
+        Construction::PulsedTone,
+    )))
+    .unwrap();
     let prompt = take_unsaved_prompt(&mut ws);
     assert!(matches!(
-        ws.apply(Command::Learning(L::CreateExample(Example::PulsedTone))),
+        ws.apply(Command::Learning(L::CreateExample(
+            Construction::PulsedTone
+        ))),
         Err(Refusal::PromptOpen)
     ));
     ws.apply(Command::Learning(L::Open(Topic::SoundTypes)))
@@ -76,8 +80,10 @@ fn captured_example_survives_changed_topic_cancel_and_stale_repeated_requests() 
     .unwrap();
     assert_eq!(ws.editor().document(), original);
     assert!(ws.learning().is_some());
-    ws.apply(Command::Learning(L::CreateExample(Example::PulsedTone)))
-        .unwrap();
+    ws.apply(Command::Learning(L::CreateExample(
+        Construction::PulsedTone,
+    )))
+    .unwrap();
     let next = take_unsaved_prompt(&mut ws);
     ws.apply(Command::Answer {
         prompt,
@@ -234,8 +240,10 @@ fn example_save_continuation_uses_real_capture_and_failure_keeps_original() {
         ws.take_effects();
         ws.apply(Command::Learning(L::Open(Topic::Overview)))
             .unwrap();
-        ws.apply(Command::Learning(L::CreateExample(Example::PulsedTone)))
-            .unwrap();
+        ws.apply(Command::Learning(L::CreateExample(
+            Construction::PulsedTone,
+        )))
+        .unwrap();
         let prompt = take_unsaved_prompt(&mut ws);
         ws.apply(Command::Answer {
             prompt,
@@ -288,8 +296,10 @@ fn invalid_staging_prevents_save_before_example_without_discarding_input() {
     ws.take_effects();
     ws.apply(Command::Learning(L::Open(Topic::Overview)))
         .unwrap();
-    ws.apply(Command::Learning(L::CreateExample(Example::PulsedTone)))
-        .unwrap();
+    ws.apply(Command::Learning(L::CreateExample(
+        Construction::PulsedTone,
+    )))
+    .unwrap();
     let prompt = take_unsaved_prompt(&mut ws);
     ws.apply(Command::Answer {
         prompt,
@@ -306,7 +316,6 @@ fn invalid_staging_prevents_save_before_example_without_discarding_input() {
 
 #[test]
 fn selecting_teaching_construction_and_projecting_never_creates_work() {
-    use crate::learning::Construction;
     let mut ws = workspace();
     let original = ws.editor().document();
     let recipe = ws.editor().draft().recipe().unwrap();
@@ -331,4 +340,94 @@ fn selecting_teaching_construction_and_projecting_never_creates_work() {
         ws.learning().unwrap().construction,
         Construction::PulseTrain
     );
+}
+
+#[test]
+fn resume_retains_session_lesson_and_choices_without_navigation_churn() {
+    let mut ws = workspace();
+    ws.apply(Command::Learning(L::Open(Topic::SoundTypes)))
+        .unwrap();
+    ws.apply(Command::Learning(L::SelectConstruction(
+        Construction::MonauralPair,
+    )))
+    .unwrap();
+    ws.apply(Command::Learning(L::SelectBand(
+        crate::core::rhythm::Band::Gamma,
+    )))
+    .unwrap();
+    let retained = ws.learning().unwrap();
+    let revision = ws.revision();
+    ws.apply(Command::Learning(L::Resume)).unwrap();
+    ws.apply(Command::Learning(L::Open(Topic::SoundTypes)))
+        .unwrap();
+    assert_eq!(ws.revision(), revision, "same destination is not new work");
+    ws.apply(Command::SetView(View::Library)).unwrap();
+    assert!(ws.learning().is_none());
+    ws.take_effects();
+    ws.apply(Command::Learning(L::Resume)).unwrap();
+    assert_eq!(ws.learning(), Some(retained));
+    assert!(ws.take_effects().is_empty(), "resume is not a departure");
+}
+
+#[test]
+fn each_example_captures_the_selected_construction_before_unsaved_decision() {
+    for construction in Construction::ALL {
+        let mut ws = workspace();
+        document(&mut ws, 321.0);
+        ws.take_effects();
+        ws.apply(Command::Learning(L::Open(Topic::SoundTypes)))
+            .unwrap();
+        ws.apply(Command::Learning(L::SelectConstruction(construction)))
+            .unwrap();
+        ws.apply(Command::Learning(L::CreateExample(construction)))
+            .unwrap();
+        let prompt = take_unsaved_prompt(&mut ws);
+        ws.apply(Command::Learning(L::SelectConstruction(
+            Construction::PulseTrain,
+        )))
+        .unwrap();
+        ws.apply(Command::Answer {
+            prompt,
+            answer: PromptAnswer::Discard,
+        })
+        .unwrap();
+        assert_eq!(
+            ws.editor().draft().components()[0].form,
+            construction.form()
+        );
+        assert!(!ws.audio_busy() && !ws.file_busy());
+        assert!(ws.learning().is_none());
+        assert!(
+            !ws.take_effects()
+                .iter()
+                .any(|effect| matches!(effect, Effect::Run(_)))
+        );
+    }
+}
+
+#[test]
+fn failed_example_capture_retains_work_and_has_a_visible_typed_status() {
+    let mut ws = workspace();
+    let (document, _) = document(&mut ws, 321.0);
+    ws.apply(Command::Learning(L::Open(Topic::SoundTypes)))
+        .unwrap();
+    ws.take_effects();
+    let lesson = ws.learning();
+    let original = ws.editor().draft().recipe().unwrap();
+    let revision = ws.revision();
+    // Exercise the production result boundary with the exact fallible identity
+    // error. No process-wide RNG override or pretend OS failure is introduced.
+    let result = ws.resolve_learning_capture(Err(crate::services::OperationError::Identity(
+        crate::identity::IdentityError::Entropy(getrandom::Error::UNSUPPORTED),
+    )));
+    assert!(matches!(result, Err(Refusal::Document(_))));
+    assert_eq!(ws.editor().document(), document);
+    assert_eq!(ws.editor().draft().recipe().unwrap(), original);
+    assert_eq!(ws.learning(), lesson);
+    assert!(ws.revision() > revision);
+    let actions = ws.action_view();
+    assert!(matches!(actions.file_status, FileStatus::Failed(
+        crate::services::OperationError::Identity(crate::identity::IdentityError::Entropy(cause))
+    ) if cause == getrandom::Error::UNSUPPORTED));
+    assert!(ws.take_effects().is_empty());
 }

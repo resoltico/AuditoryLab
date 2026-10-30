@@ -438,10 +438,16 @@ impl SlintAdapter {
                 workspace.take_effects()
             })
             .unwrap_or_default();
+        let mut shown_view = None;
         for effect in effects {
-            self.perform(effect);
+            if let Some(view) = self.perform(effect) {
+                shown_view = Some(view);
+            }
         }
         self.project();
+        if let Some(view) = shown_view {
+            self.focus_shown_view(view);
+        }
     }
 
     pub(crate) fn set_onboarding_preference(
@@ -451,14 +457,18 @@ impl SlintAdapter {
         *self.onboarding_preference.borrow_mut() = preference;
     }
 
-    fn perform(self: &Rc<Self>, effect: Effect) {
+    fn perform(self: &Rc<Self>, effect: Effect) -> Option<View> {
         match effect {
             Effect::LearningDeparted => {
-                if let Some(preference) = self.onboarding_preference.borrow_mut().take()
-                    && let Err(error) = preference.mark_seen()
-                {
-                    let notice = auditorylab_presentation::Explain::explain(&error);
-                    eprintln!("{notice}");
+                if let Some(preference) = self.onboarding_preference.borrow_mut().take() {
+                    let notice = match preference.mark_seen() {
+                        Ok(()) => String::new(),
+                        Err(error) => {
+                            let notice = auditorylab_presentation::Explain::explain(&error);
+                            eprintln!("{notice}");
+                            notice
+                        }
+                    };
                     if let Some(ui) = self.main.upgrade() {
                         ui.set_onboarding_notice(notice.into());
                     }
@@ -496,13 +506,25 @@ impl SlintAdapter {
                 }
                 self.updating.set(updating);
             }
-            Effect::ShowView(view) => {
-                if let Some(ui) = self.main.upgrade() {
-                    ui.set_tab_index(match view {
-                        View::Library => 0,
-                        View::Workbench => 1,
-                    });
-                }
+            // Focus only after projection has made the successful destination
+            // visible and installed its current document/field bindings.
+            Effect::ShowView(view) => return Some(view),
+        }
+        None
+    }
+
+    fn focus_shown_view(&self, view: View) {
+        let current =
+            self.workspace.borrow().as_ref().is_some_and(|workspace| {
+                workspace.view() == view && workspace.learning().is_none()
+            });
+        if !current || self.dialog_open.get() {
+            return;
+        }
+        if let Some(ui) = self.main.upgrade() {
+            match view {
+                View::Workbench => ui.invoke_focus_workbench(),
+                View::Library => ui.invoke_focus_workspace_navigation(),
             }
         }
     }

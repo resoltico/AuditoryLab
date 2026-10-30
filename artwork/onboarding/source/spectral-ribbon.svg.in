@@ -52,7 +52,7 @@ ${GLYPH_DEFINITIONS}
 
 
 
-<radialGradient id="field"><stop offset="0" stop-color="${FIELD}"/><stop offset="1" stop-color="${BACKGROUND}"/></radialGradient>
+
 <linearGradient id="spectrum" x1="0" x2="1" y1="0" y2="0">
 <stop offset="0.0" stop-color="${COLOR_DELTA}"/>
 <stop offset="0.25" stop-color="${COLOR_THETA}"/>
@@ -60,14 +60,13 @@ ${GLYPH_DEFINITIONS}
 <stop offset="0.75" stop-color="${COLOR_BETA}"/>
 <stop offset="1.0" stop-color="${COLOR_GAMMA}"/>
 </linearGradient>
-<radialGradient id="halo0"><stop offset="0" stop-color="${COLOR_DELTA}" stop-opacity="${HALO_OPACITY}"/><stop offset="1" stop-color="${COLOR_DELTA}" stop-opacity="0"/></radialGradient>
-<radialGradient id="halo1"><stop offset="0" stop-color="${COLOR_THETA}" stop-opacity="${HALO_OPACITY}"/><stop offset="1" stop-color="${COLOR_THETA}" stop-opacity="0"/></radialGradient>
-<radialGradient id="halo2"><stop offset="0" stop-color="${COLOR_ALPHA}" stop-opacity="${HALO_OPACITY}"/><stop offset="1" stop-color="${COLOR_ALPHA}" stop-opacity="0"/></radialGradient>
-<radialGradient id="halo3"><stop offset="0" stop-color="${COLOR_BETA}" stop-opacity="${HALO_OPACITY}"/><stop offset="1" stop-color="${COLOR_BETA}" stop-opacity="0"/></radialGradient>
-<radialGradient id="halo4"><stop offset="0" stop-color="${COLOR_GAMMA}" stop-opacity="${HALO_OPACITY}"/><stop offset="1" stop-color="${COLOR_GAMMA}" stop-opacity="0"/></radialGradient>
-<filter id="glow" x="-25%" y="-100%" width="150%" height="300%"><feGaussianBlur stdDeviation="5"/></filter></defs>
-<rect x="0" y="0" width="1400" height="720" rx="0" fill="url(#field)" stroke="none"/>
-<g data-lettering="A SPECTRUM OF RHYTHMS" aria-label="A SPECTRUM OF RHYTHMS" transform="translate(428.750 38.000) scale(3.10000)" fill="none" stroke="${INK}" stroke-width="0.9" stroke-linecap="round" stroke-linejoin="round">
+
+
+
+
+
+</defs>
+<g data-lettering="A SPECTRUM OF RHYTHMS" aria-label="A SPECTRUM OF RHYTHMS" transform="translate(428.750 38.000) scale(3.10000)" fill="none" stroke="${INK}" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round">
 <use xlink:href="#g65" x="0"/>
 <use xlink:href="#g83" x="14"/>
 <use xlink:href="#g80" x="23"/>
@@ -87,7 +86,7 @@ ${GLYPH_DEFINITIONS}
 <use xlink:href="#g77" x="159"/>
 <use xlink:href="#g83" x="168"/>
 </g>
-<g data-lettering="FREQUENCY BANDS AND EXAMPLE CONTEXTS" aria-label="FREQUENCY BANDS AND EXAMPLE CONTEXTS" transform="translate(394.000 87.000) scale(2.00000)" fill="none" stroke="${SUB}" stroke-width="0.72" stroke-linecap="round" stroke-linejoin="round">
+<g data-lettering="FREQUENCY BANDS AND EXAMPLE CONTEXTS" aria-label="FREQUENCY BANDS AND EXAMPLE CONTEXTS" transform="translate(394.000 87.000) scale(2.00000)" fill="none" stroke="${SUB}" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round">
 <use xlink:href="#g70" x="0"/>
 <use xlink:href="#g82" x="9"/>
 <use xlink:href="#g69" x="18"/>
@@ -121,15 +120,14 @@ ${GLYPH_DEFINITIONS}
 <use xlink:href="#g84" x="290"/>
 <use xlink:href="#g83" x="299"/>
 </g>
-<circle cx="170" cy="330" r="163" fill="url(#halo0)" stroke="none" stroke-width="1" opacity="1"/>
-<g data-lettering="DELTA" aria-label="DELTA" transform="translate(92.600 160.000) scale(3.60000)" fill="none" stroke="${COLOR_DELTA}" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+<g data-lettering="DELTA" aria-label="DELTA" transform="translate(92.600 160.000) scale(3.60000)" fill="none" stroke="${COLOR_DELTA}" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round">
 <use xlink:href="#g68" x="0"/>
 <use xlink:href="#g69" x="9"/>
 <use xlink:href="#g76" x="18"/>
 <use xlink:href="#g84" x="27"/>
 <use xlink:href="#g65" x="36"/>
 </g>
-<g data-lettering="0.1-&lt;4 HZ" aria-label="0.1-&lt;4 HZ" transform="translate(83.750 217.000) scale(2.30000)" fill="none" stroke="${INK}" stroke-width="0.72" stroke-linecap="round" stroke-linejoin="round">
+<g data-lettering="0.1-&lt;4 HZ" aria-label="0.1-&lt;4 HZ" transform="translate(83.750 217.000) scale(2.30000)" fill="none" stroke="${INK}" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round">
 <use xlink:href="#g48" x="0"/>
 <use xlink:href="#g46" x="9"/>
 <use xlink:href="#g49" x="18"/>
@@ -140,11 +138,10 @@ ${GLYPH_DEFINITIONS}
 <use xlink:href="#g90" x="68"/>
 </g>
 <path d="${WAVE_DELTA_FILL}" fill="${COLOR_DELTA}" opacity="${FILL_OPACITY}"/>
-<path d="${WAVE_DELTA}" fill="none" stroke="${COLOR_DELTA}" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" opacity="0.17" filter="url(#glow)"/>
-<path d="${WAVE_DELTA}" fill="none" stroke="${COLOR_DELTA}" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" opacity="1" />
+<path data-wave="delta" d="${WAVE_DELTA}" fill="none" stroke="${COLOR_DELTA}" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" opacity="1" />
 <circle cx="170" cy="440" r="3.5" fill="${COLOR_DELTA}" stroke="none" stroke-width="1" opacity="1"/>
 <path d="M170 420V451" fill="none" stroke="${COLOR_DELTA}" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" opacity="0.6" />
-<g data-lettering="DEEP NREM SLEEP" aria-label="DEEP NREM SLEEP" transform="translate(57.500 480.000) scale(1.80000)" fill="none" stroke="${INK}" stroke-width="0.8" stroke-linecap="round" stroke-linejoin="round">
+<g data-lettering="DEEP NREM SLEEP" aria-label="DEEP NREM SLEEP" transform="translate(57.500 480.000) scale(1.80000)" fill="none" stroke="${INK}" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round">
 <use xlink:href="#g68" x="0"/>
 <use xlink:href="#g69" x="9"/>
 <use xlink:href="#g69" x="18"/>
@@ -159,7 +156,7 @@ ${GLYPH_DEFINITIONS}
 <use xlink:href="#g69" x="109"/>
 <use xlink:href="#g80" x="118"/>
 </g>
-<g data-lettering="SLOW-WAVE" aria-label="SLOW-WAVE" transform="translate(102.850 540.000) scale(1.70000)" fill="none" stroke="${SUB}" stroke-width="0.72" stroke-linecap="round" stroke-linejoin="round">
+<g data-lettering="SLOW-WAVE" aria-label="SLOW-WAVE" transform="translate(102.850 540.000) scale(1.70000)" fill="none" stroke="${SUB}" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round">
 <use xlink:href="#g83" x="0"/>
 <use xlink:href="#g76" x="9"/>
 <use xlink:href="#g79" x="18"/>
@@ -170,7 +167,7 @@ ${GLYPH_DEFINITIONS}
 <use xlink:href="#g86" x="63"/>
 <use xlink:href="#g69" x="72"/>
 </g>
-<g data-lettering="ACTIVITY" aria-label="ACTIVITY" transform="translate(110.500 566.000) scale(1.70000)" fill="none" stroke="${SUB}" stroke-width="0.72" stroke-linecap="round" stroke-linejoin="round">
+<g data-lettering="ACTIVITY" aria-label="ACTIVITY" transform="translate(110.500 566.000) scale(1.70000)" fill="none" stroke="${SUB}" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round">
 <use xlink:href="#g65" x="0"/>
 <use xlink:href="#g67" x="9"/>
 <use xlink:href="#g84" x="18"/>
@@ -180,15 +177,14 @@ ${GLYPH_DEFINITIONS}
 <use xlink:href="#g84" x="54"/>
 <use xlink:href="#g89" x="63"/>
 </g>
-<circle cx="435" cy="330" r="163" fill="url(#halo1)" stroke="none" stroke-width="1" opacity="1"/>
-<g data-lettering="THETA" aria-label="THETA" transform="translate(357.600 160.000) scale(3.60000)" fill="none" stroke="${COLOR_THETA}" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+<g data-lettering="THETA" aria-label="THETA" transform="translate(357.600 160.000) scale(3.60000)" fill="none" stroke="${COLOR_THETA}" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round">
 <use xlink:href="#g84" x="0"/>
 <use xlink:href="#g72" x="9"/>
 <use xlink:href="#g69" x="18"/>
 <use xlink:href="#g84" x="27"/>
 <use xlink:href="#g65" x="36"/>
 </g>
-<g data-lettering="4-&lt;8 HZ" aria-label="4-&lt;8 HZ" transform="translate(369.450 217.000) scale(2.30000)" fill="none" stroke="${INK}" stroke-width="0.72" stroke-linecap="round" stroke-linejoin="round">
+<g data-lettering="4-&lt;8 HZ" aria-label="4-&lt;8 HZ" transform="translate(369.450 217.000) scale(2.30000)" fill="none" stroke="${INK}" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round">
 <use xlink:href="#g52" x="0"/>
 <use xlink:href="#g45" x="9"/>
 <use xlink:href="#g60" x="18"/>
@@ -197,11 +193,10 @@ ${GLYPH_DEFINITIONS}
 <use xlink:href="#g90" x="50"/>
 </g>
 <path d="${WAVE_THETA_FILL}" fill="${COLOR_THETA}" opacity="${FILL_OPACITY}"/>
-<path d="${WAVE_THETA}" fill="none" stroke="${COLOR_THETA}" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" opacity="0.17" filter="url(#glow)"/>
-<path d="${WAVE_THETA}" fill="none" stroke="${COLOR_THETA}" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" opacity="1" />
+<path data-wave="theta" d="${WAVE_THETA}" fill="none" stroke="${COLOR_THETA}" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" opacity="1" />
 <circle cx="435" cy="440" r="3.5" fill="${COLOR_THETA}" stroke="none" stroke-width="1" opacity="1"/>
 <path d="M435 420V451" fill="none" stroke="${COLOR_THETA}" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" opacity="0.6" />
-<g data-lettering="DROWSINESS" aria-label="DROWSINESS" transform="translate(355.800 480.000) scale(1.80000)" fill="none" stroke="${INK}" stroke-width="0.8" stroke-linecap="round" stroke-linejoin="round">
+<g data-lettering="DROWSINESS" aria-label="DROWSINESS" transform="translate(355.800 480.000) scale(1.80000)" fill="none" stroke="${INK}" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round">
 <use xlink:href="#g68" x="0"/>
 <use xlink:href="#g82" x="9"/>
 <use xlink:href="#g79" x="18"/>
@@ -213,7 +208,7 @@ ${GLYPH_DEFINITIONS}
 <use xlink:href="#g83" x="72"/>
 <use xlink:href="#g83" x="81"/>
 </g>
-<g data-lettering="ALSO WAKING" aria-label="ALSO WAKING" transform="translate(355.950 540.000) scale(1.70000)" fill="none" stroke="${SUB}" stroke-width="0.72" stroke-linecap="round" stroke-linejoin="round">
+<g data-lettering="ALSO WAKING" aria-label="ALSO WAKING" transform="translate(355.950 540.000) scale(1.70000)" fill="none" stroke="${SUB}" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round">
 <use xlink:href="#g65" x="0"/>
 <use xlink:href="#g76" x="9"/>
 <use xlink:href="#g83" x="18"/>
@@ -225,7 +220,7 @@ ${GLYPH_DEFINITIONS}
 <use xlink:href="#g78" x="77"/>
 <use xlink:href="#g71" x="86"/>
 </g>
-<g data-lettering="MEMORY TASKS" aria-label="MEMORY TASKS" transform="translate(348.300 566.000) scale(1.70000)" fill="none" stroke="${SUB}" stroke-width="0.72" stroke-linecap="round" stroke-linejoin="round">
+<g data-lettering="MEMORY TASKS" aria-label="MEMORY TASKS" transform="translate(348.300 566.000) scale(1.70000)" fill="none" stroke="${SUB}" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round">
 <use xlink:href="#g77" x="0"/>
 <use xlink:href="#g69" x="9"/>
 <use xlink:href="#g77" x="18"/>
@@ -238,15 +233,14 @@ ${GLYPH_DEFINITIONS}
 <use xlink:href="#g75" x="86"/>
 <use xlink:href="#g83" x="95"/>
 </g>
-<circle cx="700" cy="330" r="163" fill="url(#halo2)" stroke="none" stroke-width="1" opacity="1"/>
-<g data-lettering="ALPHA" aria-label="ALPHA" transform="translate(622.600 160.000) scale(3.60000)" fill="none" stroke="${COLOR_ALPHA}" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+<g data-lettering="ALPHA" aria-label="ALPHA" transform="translate(622.600 160.000) scale(3.60000)" fill="none" stroke="${COLOR_ALPHA}" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round">
 <use xlink:href="#g65" x="0"/>
 <use xlink:href="#g76" x="9"/>
 <use xlink:href="#g80" x="18"/>
 <use xlink:href="#g72" x="27"/>
 <use xlink:href="#g65" x="36"/>
 </g>
-<g data-lettering="8-13 HZ" aria-label="8-13 HZ" transform="translate(634.450 217.000) scale(2.30000)" fill="none" stroke="${INK}" stroke-width="0.72" stroke-linecap="round" stroke-linejoin="round">
+<g data-lettering="8-13 HZ" aria-label="8-13 HZ" transform="translate(634.450 217.000) scale(2.30000)" fill="none" stroke="${INK}" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round">
 <use xlink:href="#g56" x="0"/>
 <use xlink:href="#g45" x="9"/>
 <use xlink:href="#g49" x="18"/>
@@ -255,18 +249,17 @@ ${GLYPH_DEFINITIONS}
 <use xlink:href="#g90" x="50"/>
 </g>
 <path d="${WAVE_ALPHA_FILL}" fill="${COLOR_ALPHA}" opacity="${FILL_OPACITY}"/>
-<path d="${WAVE_ALPHA}" fill="none" stroke="${COLOR_ALPHA}" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" opacity="0.17" filter="url(#glow)"/>
-<path d="${WAVE_ALPHA}" fill="none" stroke="${COLOR_ALPHA}" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" opacity="1" />
+<path data-wave="alpha" d="${WAVE_ALPHA}" fill="none" stroke="${COLOR_ALPHA}" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" opacity="1" />
 <circle cx="700" cy="440" r="3.5" fill="${COLOR_ALPHA}" stroke="none" stroke-width="1" opacity="1"/>
 <path d="M700 420V451" fill="none" stroke="${COLOR_ALPHA}" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" opacity="0.6" />
-<g data-lettering="QUIET" aria-label="QUIET" transform="translate(661.300 467.000) scale(1.80000)" fill="none" stroke="${INK}" stroke-width="0.8" stroke-linecap="round" stroke-linejoin="round">
+<g data-lettering="QUIET" aria-label="QUIET" transform="translate(661.300 467.000) scale(1.80000)" fill="none" stroke="${INK}" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round">
 <use xlink:href="#g81" x="0"/>
 <use xlink:href="#g85" x="9"/>
 <use xlink:href="#g73" x="18"/>
 <use xlink:href="#g69" x="27"/>
 <use xlink:href="#g84" x="36"/>
 </g>
-<g data-lettering="WAKEFULNESS" aria-label="WAKEFULNESS" transform="translate(612.700 493.000) scale(1.80000)" fill="none" stroke="${INK}" stroke-width="0.8" stroke-linecap="round" stroke-linejoin="round">
+<g data-lettering="WAKEFULNESS" aria-label="WAKEFULNESS" transform="translate(612.700 493.000) scale(1.80000)" fill="none" stroke="${INK}" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round">
 <use xlink:href="#g87" x="0"/>
 <use xlink:href="#g65" x="9"/>
 <use xlink:href="#g75" x="18"/>
@@ -279,7 +272,7 @@ ${GLYPH_DEFINITIONS}
 <use xlink:href="#g83" x="81"/>
 <use xlink:href="#g83" x="90"/>
 </g>
-<g data-lettering="ESPECIALLY" aria-label="ESPECIALLY" transform="translate(625.200 540.000) scale(1.70000)" fill="none" stroke="${SUB}" stroke-width="0.72" stroke-linecap="round" stroke-linejoin="round">
+<g data-lettering="ESPECIALLY" aria-label="ESPECIALLY" transform="translate(625.200 540.000) scale(1.70000)" fill="none" stroke="${SUB}" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round">
 <use xlink:href="#g69" x="0"/>
 <use xlink:href="#g83" x="9"/>
 <use xlink:href="#g80" x="18"/>
@@ -291,7 +284,7 @@ ${GLYPH_DEFINITIONS}
 <use xlink:href="#g76" x="72"/>
 <use xlink:href="#g89" x="81"/>
 </g>
-<g data-lettering="EYES CLOSED" aria-label="EYES CLOSED" transform="translate(620.950 566.000) scale(1.70000)" fill="none" stroke="${SUB}" stroke-width="0.72" stroke-linecap="round" stroke-linejoin="round">
+<g data-lettering="EYES CLOSED" aria-label="EYES CLOSED" transform="translate(620.950 566.000) scale(1.70000)" fill="none" stroke="${SUB}" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round">
 <use xlink:href="#g69" x="0"/>
 <use xlink:href="#g89" x="9"/>
 <use xlink:href="#g69" x="18"/>
@@ -303,14 +296,13 @@ ${GLYPH_DEFINITIONS}
 <use xlink:href="#g69" x="77"/>
 <use xlink:href="#g68" x="86"/>
 </g>
-<circle cx="965" cy="330" r="163" fill="url(#halo3)" stroke="none" stroke-width="1" opacity="1"/>
-<g data-lettering="BETA" aria-label="BETA" transform="translate(903.800 160.000) scale(3.60000)" fill="none" stroke="${COLOR_BETA}" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+<g data-lettering="BETA" aria-label="BETA" transform="translate(903.800 160.000) scale(3.60000)" fill="none" stroke="${COLOR_BETA}" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round">
 <use xlink:href="#g66" x="0"/>
 <use xlink:href="#g69" x="9"/>
 <use xlink:href="#g84" x="18"/>
 <use xlink:href="#g65" x="27"/>
 </g>
-<g data-lettering="&gt;13-30 HZ" aria-label="&gt;13-30 HZ" transform="translate(878.750 217.000) scale(2.30000)" fill="none" stroke="${INK}" stroke-width="0.72" stroke-linecap="round" stroke-linejoin="round">
+<g data-lettering="&gt;13-30 HZ" aria-label="&gt;13-30 HZ" transform="translate(878.750 217.000) scale(2.30000)" fill="none" stroke="${INK}" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round">
 <use xlink:href="#g62" x="0"/>
 <use xlink:href="#g49" x="9"/>
 <use xlink:href="#g51" x="18"/>
@@ -321,11 +313,10 @@ ${GLYPH_DEFINITIONS}
 <use xlink:href="#g90" x="68"/>
 </g>
 <path d="${WAVE_BETA_FILL}" fill="${COLOR_BETA}" opacity="${FILL_OPACITY}"/>
-<path d="${WAVE_BETA}" fill="none" stroke="${COLOR_BETA}" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" opacity="0.17" filter="url(#glow)"/>
-<path d="${WAVE_BETA}" fill="none" stroke="${COLOR_BETA}" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" opacity="1" />
+<path data-wave="beta" d="${WAVE_BETA}" fill="none" stroke="${COLOR_BETA}" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" opacity="1" />
 <circle cx="965" cy="440" r="3.5" fill="${COLOR_BETA}" stroke="none" stroke-width="1" opacity="1"/>
 <path d="M965 420V451" fill="none" stroke="${COLOR_BETA}" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" opacity="0.6" />
-<g data-lettering="WAKING ACTIVITY" aria-label="WAKING ACTIVITY" transform="translate(848.900 480.000) scale(1.80000)" fill="none" stroke="${INK}" stroke-width="0.8" stroke-linecap="round" stroke-linejoin="round">
+<g data-lettering="WAKING ACTIVITY" aria-label="WAKING ACTIVITY" transform="translate(848.900 480.000) scale(1.80000)" fill="none" stroke="${INK}" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round">
 <use xlink:href="#g87" x="0"/>
 <use xlink:href="#g65" x="9"/>
 <use xlink:href="#g75" x="18"/>
@@ -341,7 +332,7 @@ ${GLYPH_DEFINITIONS}
 <use xlink:href="#g84" x="113"/>
 <use xlink:href="#g89" x="122"/>
 </g>
-<g data-lettering="FRONT-CENTRAL" aria-label="FRONT-CENTRAL" transform="translate(867.250 540.000) scale(1.70000)" fill="none" stroke="${SUB}" stroke-width="0.72" stroke-linecap="round" stroke-linejoin="round">
+<g data-lettering="FRONT-CENTRAL" aria-label="FRONT-CENTRAL" transform="translate(867.250 540.000) scale(1.70000)" fill="none" stroke="${SUB}" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round">
 <use xlink:href="#g70" x="0"/>
 <use xlink:href="#g82" x="9"/>
 <use xlink:href="#g79" x="18"/>
@@ -356,7 +347,7 @@ ${GLYPH_DEFINITIONS}
 <use xlink:href="#g65" x="99"/>
 <use xlink:href="#g76" x="108"/>
 </g>
-<g data-lettering="EEG ACTIVITY" aria-label="EEG ACTIVITY" transform="translate(878.300 566.000) scale(1.70000)" fill="none" stroke="${SUB}" stroke-width="0.72" stroke-linecap="round" stroke-linejoin="round">
+<g data-lettering="EEG ACTIVITY" aria-label="EEG ACTIVITY" transform="translate(878.300 566.000) scale(1.70000)" fill="none" stroke="${SUB}" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round">
 <use xlink:href="#g69" x="0"/>
 <use xlink:href="#g69" x="9"/>
 <use xlink:href="#g71" x="18"/>
@@ -369,15 +360,14 @@ ${GLYPH_DEFINITIONS}
 <use xlink:href="#g84" x="86"/>
 <use xlink:href="#g89" x="95"/>
 </g>
-<circle cx="1230" cy="330" r="163" fill="url(#halo4)" stroke="none" stroke-width="1" opacity="1"/>
-<g data-lettering="GAMMA" aria-label="GAMMA" transform="translate(1152.600 160.000) scale(3.60000)" fill="none" stroke="${COLOR_GAMMA}" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+<g data-lettering="GAMMA" aria-label="GAMMA" transform="translate(1152.600 160.000) scale(3.60000)" fill="none" stroke="${COLOR_GAMMA}" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round">
 <use xlink:href="#g71" x="0"/>
 <use xlink:href="#g65" x="9"/>
 <use xlink:href="#g77" x="18"/>
 <use xlink:href="#g77" x="27"/>
 <use xlink:href="#g65" x="36"/>
 </g>
-<g data-lettering="&gt;30-80 HZ" aria-label="&gt;30-80 HZ" transform="translate(1143.750 217.000) scale(2.30000)" fill="none" stroke="${INK}" stroke-width="0.72" stroke-linecap="round" stroke-linejoin="round">
+<g data-lettering="&gt;30-80 HZ" aria-label="&gt;30-80 HZ" transform="translate(1143.750 217.000) scale(2.30000)" fill="none" stroke="${INK}" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round">
 <use xlink:href="#g62" x="0"/>
 <use xlink:href="#g51" x="9"/>
 <use xlink:href="#g48" x="18"/>
@@ -388,18 +378,17 @@ ${GLYPH_DEFINITIONS}
 <use xlink:href="#g90" x="68"/>
 </g>
 <path d="${WAVE_GAMMA_FILL}" fill="${COLOR_GAMMA}" opacity="${FILL_OPACITY}"/>
-<path d="${WAVE_GAMMA}" fill="none" stroke="${COLOR_GAMMA}" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" opacity="0.17" filter="url(#glow)"/>
-<path d="${WAVE_GAMMA}" fill="none" stroke="${COLOR_GAMMA}" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" opacity="1" />
+<path data-wave="gamma" d="${WAVE_GAMMA}" fill="none" stroke="${COLOR_GAMMA}" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" opacity="1" />
 <circle cx="1230" cy="440" r="3.5" fill="${COLOR_GAMMA}" stroke="none" stroke-width="1" opacity="1"/>
 <path d="M1230 420V451" fill="none" stroke="${COLOR_GAMMA}" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" opacity="0.6" />
-<g data-lettering="LOCAL" aria-label="LOCAL" transform="translate(1191.300 467.000) scale(1.80000)" fill="none" stroke="${INK}" stroke-width="0.8" stroke-linecap="round" stroke-linejoin="round">
+<g data-lettering="LOCAL" aria-label="LOCAL" transform="translate(1191.300 467.000) scale(1.80000)" fill="none" stroke="${INK}" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round">
 <use xlink:href="#g76" x="0"/>
 <use xlink:href="#g79" x="9"/>
 <use xlink:href="#g67" x="18"/>
 <use xlink:href="#g65" x="27"/>
 <use xlink:href="#g76" x="36"/>
 </g>
-<g data-lettering="PROCESSING" aria-label="PROCESSING" transform="translate(1150.800 493.000) scale(1.80000)" fill="none" stroke="${INK}" stroke-width="0.8" stroke-linecap="round" stroke-linejoin="round">
+<g data-lettering="PROCESSING" aria-label="PROCESSING" transform="translate(1150.800 493.000) scale(1.80000)" fill="none" stroke="${INK}" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round">
 <use xlink:href="#g80" x="0"/>
 <use xlink:href="#g82" x="9"/>
 <use xlink:href="#g79" x="18"/>
@@ -411,7 +400,7 @@ ${GLYPH_DEFINITIONS}
 <use xlink:href="#g78" x="72"/>
 <use xlink:href="#g71" x="81"/>
 </g>
-<g data-lettering="ENGAGED NEURAL" aria-label="ENGAGED NEURAL" transform="translate(1128.000 540.000) scale(1.70000)" fill="none" stroke="${SUB}" stroke-width="0.72" stroke-linecap="round" stroke-linejoin="round">
+<g data-lettering="ENGAGED NEURAL" aria-label="ENGAGED NEURAL" transform="translate(1128.000 540.000) scale(1.70000)" fill="none" stroke="${SUB}" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round">
 <use xlink:href="#g69" x="0"/>
 <use xlink:href="#g78" x="9"/>
 <use xlink:href="#g71" x="18"/>
@@ -426,7 +415,7 @@ ${GLYPH_DEFINITIONS}
 <use xlink:href="#g65" x="104"/>
 <use xlink:href="#g76" x="113"/>
 </g>
-<g data-lettering="NETWORKS" aria-label="NETWORKS" transform="translate(1170.500 566.000) scale(1.70000)" fill="none" stroke="${SUB}" stroke-width="0.72" stroke-linecap="round" stroke-linejoin="round">
+<g data-lettering="NETWORKS" aria-label="NETWORKS" transform="translate(1170.500 566.000) scale(1.70000)" fill="none" stroke="${SUB}" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round">
 <use xlink:href="#g78" x="0"/>
 <use xlink:href="#g69" x="9"/>
 <use xlink:href="#g84" x="18"/>
@@ -437,8 +426,7 @@ ${GLYPH_DEFINITIONS}
 <use xlink:href="#g83" x="63"/>
 </g>
 <path d="M54 344H1362" fill="none" stroke="${LINE}" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" opacity="0.5" />
-<rect x="55" y="599" width="1290" height="6" rx="3" fill="url(#spectrum)" stroke="none"/>
-<g data-lettering="SLOWER RHYTHMS" aria-label="SLOWER RHYTHMS" transform="translate(56.000 630.000) scale(2.00000)" fill="none" stroke="${SUB}" stroke-width="0.72" stroke-linecap="round" stroke-linejoin="round">
+<g data-lettering="SLOWER RHYTHMS" aria-label="SLOWER RHYTHMS" transform="translate(56.000 630.000) scale(2.00000)" fill="none" stroke="${SUB}" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round">
 <use xlink:href="#g83" x="0"/>
 <use xlink:href="#g76" x="9"/>
 <use xlink:href="#g79" x="18"/>
@@ -453,7 +441,7 @@ ${GLYPH_DEFINITIONS}
 <use xlink:href="#g77" x="104"/>
 <use xlink:href="#g83" x="113"/>
 </g>
-<g data-lettering="FASTER RHYTHMS" aria-label="FASTER RHYTHMS" transform="translate(1104.000 630.000) scale(2.00000)" fill="none" stroke="${SUB}" stroke-width="0.72" stroke-linecap="round" stroke-linejoin="round">
+<g data-lettering="FASTER RHYTHMS" aria-label="FASTER RHYTHMS" transform="translate(1104.000 630.000) scale(2.00000)" fill="none" stroke="${SUB}" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round">
 <use xlink:href="#g70" x="0"/>
 <use xlink:href="#g65" x="9"/>
 <use xlink:href="#g83" x="18"/>
@@ -468,7 +456,7 @@ ${GLYPH_DEFINITIONS}
 <use xlink:href="#g77" x="104"/>
 <use xlink:href="#g83" x="113"/>
 </g>
-<g data-lettering="ONE SECOND PER SECTION - NORMALIZED SCHEMATIC WAVES" aria-label="ONE SECOND PER SECTION - NORMALIZED SCHEMATIC WAVES" transform="translate(313.900 668.000) scale(1.80000)" fill="none" stroke="${SUB}" stroke-width="0.72" stroke-linecap="round" stroke-linejoin="round">
+<g data-lettering="ONE SECOND PER SECTION - NORMALIZED SCHEMATIC WAVES" aria-label="ONE SECOND PER SECTION - NORMALIZED SCHEMATIC WAVES" transform="translate(313.900 668.000) scale(1.80000)" fill="none" stroke="${SUB}" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round">
 <use xlink:href="#g79" x="0"/>
 <use xlink:href="#g78" x="9"/>
 <use xlink:href="#g69" x="18"/>
@@ -514,7 +502,7 @@ ${GLYPH_DEFINITIONS}
 <use xlink:href="#g69" x="413"/>
 <use xlink:href="#g83" x="422"/>
 </g>
-<g data-lettering="ASSOCIATIONS OVERLAP. NO LISTENING EFFECT IS IMPLIED." aria-label="ASSOCIATIONS OVERLAP. NO LISTENING EFFECT IS IMPLIED." transform="translate(361.750 700.000) scale(1.50000)" fill="none" stroke="${SUB}" stroke-width="0.72" stroke-linecap="round" stroke-linejoin="round">
+<g data-lettering="ASSOCIATIONS OVERLAP. NO LISTENING EFFECT IS IMPLIED." aria-label="ASSOCIATIONS OVERLAP. NO LISTENING EFFECT IS IMPLIED." transform="translate(316.650 692) scale(1.70000)" fill="none" stroke="${SUB}" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round">
 <use xlink:href="#g65" x="0"/>
 <use xlink:href="#g83" x="9"/>
 <use xlink:href="#g83" x="18"/>

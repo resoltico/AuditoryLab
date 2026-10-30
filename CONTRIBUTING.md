@@ -52,7 +52,7 @@ TMPDIR="$PWD/target/tmp" cargo mutants --file crates/core/src/render/synthesis.r
   --timeout 60 --cargo-arg=--locked --output target/mutations
 ```
 
-Use `--re` or a bounded shard for the question being investigated. Each selected shard checks its unmutated baseline. Keep Nyquist/pulse-width guards under mutation. Equivalent exclusions use operator/function names with a reason, without line/column numbers. Update CI scopes when code moves; `model/finite.rs` owns finite-value invariants and `model/catalog_id.rs` owns catalog-name grammar. Lint capping is disabled, so unsafe-code policies still apply to generated mutants. Each worker adds a compiler directory; parallel work needs explicit authorization and a concrete benefit.
+Use `--re` or a bounded shard for the question being investigated. Each selected shard checks its unmutated baseline. Keep Nyquist/pulse-width guards under mutation. Equivalent exclusions use operator/function names with a reason, without line/column numbers. Update CI scopes when code moves; `model/finite.rs` owns finite-value invariants and `model/catalog.rs` owns catalog-name grammar. Lint capping is disabled, so unsafe-code policies still apply to generated mutants. Each worker adds a compiler directory; parallel work needs explicit authorization and a concrete benefit.
 
 ## Ownership and implementation
 

@@ -5,11 +5,12 @@ import {
     ComboBox,
     ScrollView,
     VerticalBox,
+    HorizontalBox,
 } from "std-widgets.slint";
 import { Button } from "button.slint";
-import { ModelLane } from "models.slint";
+import { Disclosure } from "editor.slint";
+import { LearningTrace, LearningBand, LearningSource } from "models.slint";
 
-// Native widgets own their transient selection; application projection owns the lesson.
 component LearningChoice inherits ComboBox {
     in property <int> selection;
     public function sync-selection() {
@@ -18,49 +19,106 @@ component LearningChoice inherits ComboBox {
     }
     changed selection => { root.sync-selection(); }
     changed model => { root.sync-selection(); }
+    init => { root.sync-selection(); }
 }
 
-component LearningActionCard inherits Rectangle {
-    in property <string> heading;
-    in property <string> explanation;
-    in property <string> action;
+// A visible contents item. Text wraps and follows the native application font.
+component LessonTab inherits Rectangle {
+    in property <string> label;
+    in property <bool> selected;
+    in property <bool> focused;
     in property <length> ui-size;
     callback activated();
-    background: Palette.control-background;
-    border-color: Palette.border;
-    border-width: 1px;
-    border-radius: 8px;
-    min-width: 0px;
-    preferred-height: contents.preferred-height;
-    min-height: self.preferred-height;
-    contents := VerticalBox {
-        padding: 18px;
-        spacing: 10px;
+    accessible-role: tab;
+    accessible-label: root.label;
+    accessible-item-selectable: true;
+    accessible-item-selected: root.selected;
+    accessible-action-default => { root.activated(); }
+    Rectangle {
+        width: parent.width;
+        height: parent.height;
+        background: root.selected ? Palette.accent-background.with-alpha(0.12) : Palette.background;
+        border-radius: 6px;
+        border-width: root.focused ? 2px : 0px;
+        border-color: Palette.accent-background;
         Text {
-            text: root.heading;
-            font-weight: 600;
-            font-size: root.ui-size * 1.15;
+            x: 12px;
+            width: parent.width - 24px;
+            height: parent.height;
+            text: root.label;
+            font-size: root.ui-size;
+            font-weight: root.selected ? 600 : 400;
             color: Palette.foreground;
             wrap: word-wrap;
-            min-width: 0px;
+            vertical-alignment: center;
         }
 
-        Text {
-            text: root.explanation;
-            color: Palette.foreground;
-            wrap: word-wrap;
-            min-width: 0px;
-        }
-
-        Button {
-            text: root.action;
-            max-width: self.preferred-width;
-            triggered => { root.activated(); }
+        TouchArea {
+            clicked => { root.activated(); }
         }
     }
 }
 
-// Instructional text stays native and readable independently of SVG path lettering.
+component LessonPlot inherits Rectangle {
+    in property <string> trace;
+    in property <color> ink: Palette.accent-background;
+    in property <bool> unipolar;
+    in property <string> label;
+    in property <length> ui-size;
+    preferred-height: root.ui-size * 8;
+    min-height: self.preferred-height;
+    max-height: self.preferred-height;
+    background: Palette.control-background;
+    border-radius: 6px;
+    accessible-role: image;
+    accessible-label: root.label;
+    Text {
+        x: 4px;
+        y: 4px;
+        width: root.ui-size * 2;
+        text: root.unipolar ? "1" : "+1";
+        font-size: root.ui-size;
+        color: Palette.foreground;
+    }
+
+    if !root.unipolar: Text {
+        x: 4px;
+        y: parent.height / 2 - self.preferred-height / 2;
+        text: "0";
+        font-size: root.ui-size;
+        color: Palette.foreground;
+    }
+    Text {
+        x: 4px;
+        y: parent.height - self.preferred-height - 4px;
+        width: root.ui-size * 2;
+        text: root.unipolar ? "0" : "−1";
+        font-size: root.ui-size;
+        color: Palette.foreground;
+    }
+
+    Rectangle {
+        x: root.ui-size * 2.5;
+        y: root.unipolar ? parent.height - 8px : parent.height / 2;
+        width: parent.width - self.x - 8px;
+        height: 1px;
+        background: Palette.border;
+    }
+
+    Path {
+        x: root.ui-size * 2.5;
+        y: 8px;
+        width: parent.width - self.x - 8px;
+        height: parent.height - 16px;
+        viewbox-width: 1024;
+        viewbox-height: 100;
+        fit: fill;
+        commands: root.trace;
+        stroke: root.ink;
+        stroke-width: 2px;
+    }
+}
+
 export component LearningPane inherits Rectangle {
     in property <bool> active;
     in property <int> topic;
@@ -69,153 +127,255 @@ export component LearningPane inherits Rectangle {
     in property <int> construction;
     in property <[string]> constructions;
     in property <string> construction-description;
-    in property <[ModelLane]> traces;
-    callback select-construction(int);
+    in property <string> example-summary;
+    in property <[LearningTrace]> traces;
     in property <string> heading;
     in property <string> body;
+    in property <string> details;
+    in property <string> example-action;
     in property <string> band-description;
     in property <[string]> topics;
-    in property <[string]> bands;
+    in property <[LearningBand]> band-items;
+    in property <[LearningSource]> sources;
+    in property <bool> preference-notice;
     in property <length> ui-size;
+    callback select-construction(int);
     callback open-topic(int);
     callback select-band(int);
     callback browse-library();
     callback create-example();
-    callback return-to-work();
-    in-out property <bool> enlarged: false;
-    private property <bool> dark: Palette.color-scheme == ColorScheme.dark;
-    private property <image> light-overview:
-        @image-url("../../../artwork/onboarding/assets/spectral-ribbon-light.svg");
-    private property <[image]> light-details: [
-        @image-url("../../../artwork/onboarding/assets/delta-rhythm-light.svg"),
-        @image-url("../../../artwork/onboarding/assets/theta-rhythm-light.svg"),
-        @image-url("../../../artwork/onboarding/assets/alpha-rhythm-light.svg"),
-        @image-url("../../../artwork/onboarding/assets/beta-rhythm-light.svg"),
-        @image-url("../../../artwork/onboarding/assets/gamma-rhythm-light.svg"),
-    ];
-    private property <image> dark-overview:
-        @image-url("../../../artwork/onboarding/assets/spectral-ribbon-dark.svg");
-    private property <[image]> dark-details: [
-        @image-url("../../../artwork/onboarding/assets/delta-rhythm-dark.svg"),
-        @image-url("../../../artwork/onboarding/assets/theta-rhythm-dark.svg"),
-        @image-url("../../../artwork/onboarding/assets/alpha-rhythm-dark.svg"),
-        @image-url("../../../artwork/onboarding/assets/beta-rhythm-dark.svg"),
-        @image-url("../../../artwork/onboarding/assets/gamma-rhythm-dark.svg"),
-    ];
+    callback open-guide();
+    callback open-source(int);
+    callback open-preference-notice();
+    in-out property <length> scroll-y <=> reader.content-y;
+    private property <bool> details-open: false;
+    in property <bool> compact;
+    // Required rail height is independent of the responsive mode it selects.
+    out property <length> wide-navigation-height:
+        root.topics.length * (root.ui-size * 3.6 + 8px) +
+        (root.preference-notice ? root.ui-size * 2.5 : 0px);
+    private property <[color]> band-colors: Palette.color-scheme == ColorScheme.dark ?
+        [#8ebcff, #71dbc2, #d0df84, #ffc08a, #ddb1ff] :
+        [#245b91, #096658, #5c6816, #914610, #70339c];
     visible: root.active;
     background: Palette.background;
-    public function focus-start() { back.focus(); }
-    public function sync-choices() {
-        topic-picker.sync-selection();
-        band-picker.sync-selection();
-        construction-picker.sync-selection();
-    }
+    changed topic-key => { reader.content-y = 0px; root.details-open = false; }
+    public function focus-start() { navigation.focus(); }
+    public function focus-preference-notice() { preference-notice-button.focus(); }
+
     VerticalBox {
-        padding: 16px;
-        spacing: 18px;
-        header := Rectangle {
-            private property <bool> compact: root.width < root.ui-size * 55;
-            preferred-height: self.compact ? back.height + topic-picker.height + 8px :
-                max(back.height,topic-picker.height);
-            min-height: self.preferred-height;
-            max-height: self.preferred-height;
-            private property <length> inset: max(0px,(self.width - 1000px) / 2);
-            back := Button {
-                x: header.inset;
-                width: min(self.preferred-width,parent.width);
-                height: self.preferred-height;
-                text: "Return to work";
-                triggered => { root.return-to-work(); }
+        padding: root.compact ? 12px : 20px;
+        spacing: root.compact ? 0px : 16px;
+        content := Rectangle {
+            min-height: 0px;
+            preference-notice-button := Button {
+                visible: root.preference-notice;
+                x: root.compact ? (navigation.width + 8px) * 2 / 3 : 0px;
+                y: root.compact ? root.ui-size * 2.5 + 8px :
+                    root.topics.length * (root.ui-size * 3.6 + 8px);
+                width: root.compact ? (navigation.width - 16px) / 3 : navigation.width;
+                height: root.ui-size * 2.5;
+                text: "Preference notice";
+                accessible-label: "Start here preference notice · Details";
+                accessible-live-region: polite;
+                triggered => { root.open-preference-notice(); }
             }
 
-            topic-picker := LearningChoice {
-                x: header.compact ? header.inset : back.x + back.width + 16px;
-                y: header.compact ? back.height + 8px : 0px;
-                width: min(root.ui-size * 30,parent.width - self.x - header.inset);
-                height: self.preferred-height;
-                model: root.topics;
-                selection: root.topic;
-                accessible-label: "Learning topic";
-                selected(_) => { root.open-topic(self.current-index); }
+            navigation := FocusScope {
+                x: 0px;
+                y: 0px;
+                key-pressed(event) => {
+                    if event.text == Key.Home { root.open-topic(0); return accept; }
+                    if event.text == Key.End {
+                        root.open-topic(root.topics.length - 1);
+                        return accept;
+                    }
+                    if root.compact {
+                        if event.text == Key.UpArrow {
+                            if root.topic >= 3 { root.open-topic(root.topic - 3); }
+                            return accept;
+                        }
+                        if event.text == Key.DownArrow {
+                            if root.topic + 3 < root.topics.length {
+                                root.open-topic(root.topic + 3);
+                            }
+                            return accept;
+                        }
+                        if event.text == Key.LeftArrow {
+                            if mod(root.topic,3) > 0 { root.open-topic(root.topic - 1); }
+                            return accept;
+                        }
+                        if event.text == Key.RightArrow {
+                            if mod(root.topic,3) < 2 && root.topic + 1 < root.topics.length {
+                                root.open-topic(root.topic + 1);
+                            }
+                            return accept;
+                        }
+                    } else {
+                        if event.text == Key.UpArrow || event.text == Key.LeftArrow {
+                            if root.topic > 0 { root.open-topic(root.topic - 1); }
+                            return accept;
+                        }
+                        if event.text == Key.DownArrow || event.text == Key.RightArrow {
+                            if root.topic + 1 < root.topics.length {
+                                root.open-topic(root.topic + 1);
+                            }
+                            return accept;
+                        }
+                    }
+                    return reject;
+                }
+                width: root.compact ? parent.width : min(root.ui-size * 17,230px);
+                height: root.compact ? (root.ui-size * 2.5 + 8px) * 2 : parent.height;
+                accessible-role: tab-list;
+                accessible-label: "Learning topics";
+                for title[index] in root.topics: LessonTab {
+                    x: root.compact ? mod(index,3) * (navigation.width + 8px) / 3 : 0px;
+                    y: root.compact ? floor(index / 3) * (root.ui-size * 2.5 + 8px) :
+                        index * (root.ui-size * 3.6 + 8px);
+                    width: root.compact ? (navigation.width - 16px) / 3 : navigation.width;
+                    height: root.compact ? root.ui-size * 2.5 : root.ui-size * 3.6;
+                    label: title;
+                    accessible-item-index: index;
+                    selected: root.topic == index;
+                    focused: navigation.has-focus && root.topic == index;
+                    ui-size: root.ui-size;
+                    activated => {
+                        navigation.focus();
+                        if index != root.topic { root.open-topic(index); }
+                    }
+                }
             }
-        }
 
-        reader := ScrollView {
-            content-width: self.visible-width;
-            content-height: reading-column.preferred-height;
-            reading-column := VerticalBox {
-                x: max(0px,(reader.visible-width - self.width) / 2);
-                width: min(reader.visible-width,1000px);
-                height: self.preferred-height;
-                padding: 12px;
-                spacing: 22px;
-                Text {
-                    text: root.heading;
-                    font-size: root.ui-size * 1.9;
-                    font-weight: 700;
-                    color: Palette.foreground;
-                    wrap: word-wrap;
-                    min-width: 0px;
-                    max-width: 780px;
-                    vertical-stretch: 0;
-                    accessible-role: text;
-                }
-
-                if root.topic-key == "overview" || root.topic-key == "library": Text {
-                    text: root.body;
-                    color: Palette.foreground;
-                    wrap: word-wrap;
-                    min-width: 0px;
-                    max-width: 780px;
-                    vertical-stretch: 0;
-                    accessible-role: text;
-                }
-
-                if root.topic-key == "overview" || root.topic-key == "library": VerticalBox {
-                    spacing: 14px;
-                    vertical-stretch: 0;
-                    max-width: 780px;
-                    LearningActionCard {
-                        heading: "Explore existing sounds";
-                        explanation: "Inspect real recipes and their source details before " +
-                            "choosing a sound.";
-                        action: "Browse Library";
-                        ui-size: root.ui-size;
-                        activated => { root.browse-library(); }
+            reader := ScrollView {
+                accessible-role: tab-panel;
+                accessible-label: "Lesson content · " + root.heading;
+                x: root.compact ? 0px : navigation.width + 24px;
+                y: root.compact ? navigation.height + 12px : 0px;
+                width: parent.width - self.x;
+                height: parent.height - self.y;
+                content-width: self.visible-width;
+                content-height: reading-column.preferred-height;
+                reading-column := VerticalBox {
+                    x: 0px;
+                    y: 0px;
+                    width: min(reader.visible-width,1000px);
+                    height: self.preferred-height;
+                    padding: 4px;
+                    spacing: 20px;
+                    Text {
+                        text: root.heading;
+                        font-size: root.ui-size * 1.8;
+                        font-weight: 600;
+                        color: Palette.foreground;
+                        wrap: word-wrap;
+                        min-width: 0px;
+                        vertical-stretch: 0;
+                        accessible-role: text;
                     }
 
-                    LearningActionCard {
-                        heading: "Build your first sound";
-                        explanation: "Open a fresh example in Workbench. You choose when to " +
-                            "play or save it.";
-                        action: "Create a pulsed tone";
-                        ui-size: root.ui-size;
-                        activated => { root.create-example(); }
+                    if root.topic-key == "sound-types": LearningChoice {
+                        preferred-height: root.ui-size * 2.6;
+                        max-height: self.preferred-height;
+                        model: root.constructions;
+                        selection: root.construction;
+                        max-width: root.ui-size * 30;
+                        accessible-label: "Sound construction";
+                        selected(_) => { root.select-construction(self.current-index); }
                     }
-                }
-                sound-page := Rectangle {
-                    visible: root.topic-key == "pitch-and-rhythm" ||
-                        root.topic-key == "sound-types";
-                    preferred-height: self.visible ? sound-content.preferred-height : 0px;
-                    min-height: self.preferred-height;
-                    max-height: self.preferred-height;
-                    sound-content := VerticalBox {
+
+                    Text {
+                        text: root.body;
+                        font-size: root.ui-size * 1.08;
+                        color: Palette.foreground;
+                        wrap: word-wrap;
+                        min-width: 0px;
+                        vertical-stretch: 0;
+                        accessible-role: text;
+                    }
+
+                    if root.topic-key == "overview": VerticalBox {
+                        padding: 0px;
                         spacing: 14px;
-                        construction-picker := LearningChoice {
-                            visible: root.topic-key == "sound-types";
-                            preferred-height: self.visible ? root.ui-size * 2.6 : 0px;
-                            max-height: self.preferred-height;
-                            model: root.constructions;
-                            selection: root.construction;
-                            max-width: root.ui-size * 30;
-                            accessible-label: "Sound construction";
-                            selected(_) => { root.select-construction(self.current-index); }
+                        vertical-stretch: 0;
+                        Text {
+                            text: "Explore the Library";
+                            font-size: root.ui-size * 1.2;
+                            font-weight: 600;
+                            color: Palette.foreground;
+                        }
+
+                        Text {
+                            text: "Inspect a ready-made sound and the research behind it.";
+                            color: Palette.foreground;
+                            wrap: word-wrap;
+                            min-width: 0px;
+                        }
+
+                        Button {
+                            text: "Browse Library";
+                            max-width: self.preferred-width;
+                            triggered => { root.browse-library(); }
+                        }
+
+                        Text {
+                            text: "Build a sound";
+                            font-size: root.ui-size * 1.2;
+                            font-weight: 600;
+                            color: Palette.foreground;
+                        }
+
+                        Text {
+                            text: "Start with a pulsed tone, then change it in Workbench. " +
+                                "Nothing plays automatically.";
+                            color: Palette.foreground;
+                            wrap: word-wrap;
+                            min-width: 0px;
+                        }
+
+                        Button {
+                            text: root.example-action;
+                            max-width: self.preferred-width;
+                            triggered => { root.create-example(); }
+                        }
+                    }
+                    if root.topic-key == "library": Button {
+                        text: "Browse Library";
+                        max-width: self.preferred-width;
+                        triggered => { root.browse-library(); }
+                    }
+                    if root.topic-key == "pitch-and-rhythm" ||
+                        root.topic-key == "sound-types": VerticalBox {
+                        vertical-stretch: 0;
+                        padding: 0px;
+                        spacing: 16px;
+
+                        Text {
+                            text: root.construction-description;
+                            color: Palette.foreground;
+                            wrap: word-wrap;
+                            min-width: 0px;
+                            vertical-stretch: 0;
+                            accessible-role: text;
+                        }
+
+                        Text {
+                            text: root.example-summary;
+                            font-weight: 600;
+                            color: Palette.foreground;
+                            wrap: word-wrap;
+                            min-width: 0px;
+                            vertical-stretch: 0;
+                            accessible-role: text;
                         }
 
                         for lane in root.traces: VerticalBox {
+                            padding: 0px;
                             spacing: 6px;
                             Text {
                                 text: lane.label;
+                                font-size: root.ui-size;
+                                font-weight: 600;
                                 wrap: word-wrap;
                                 min-width: 0px;
                                 vertical-stretch: 0;
@@ -223,76 +383,146 @@ export component LearningPane inherits Rectangle {
                                 accessible-role: text;
                             }
 
-                            Rectangle {
-                                preferred-height: root.ui-size * 7;
-                                min-height: self.preferred-height;
-                                max-height: self.preferred-height;
-                                background: Palette.control-background;
-                                border-width: 1px;
-                                border-color: Palette.border;
-                                accessible-role: image;
-                                accessible-label: "Compiled example: " + lane.label;
-                                Path {
-                                    width: parent.width;
-                                    height: parent.height;
-                                    viewbox-width: 1024;
-                                    viewbox-height: 100;
-                                    fit: fill;
-                                    commands: lane.trace;
-                                    stroke: Palette.accent-background;
-                                    stroke-width: 2px;
+                            LessonPlot {
+                                trace: lane.trace;
+                                unipolar: lane.unipolar;
+                                label: lane.label;
+                                ui-size: root.ui-size;
+                            }
+                        }
+                        Button {
+                            text: root.example-action;
+                            max-width: self.preferred-width;
+                            triggered => { root.create-example(); }
+                        }
+                    }
+
+                    if root.topic-key == "rhythm-bands": VerticalBox {
+                        vertical-stretch: 0;
+                        padding: 0px;
+                        spacing: 14px;
+                        HorizontalBox {
+                            padding: 0px;
+                            spacing: 0px;
+                            for item[index] in root.band-items: VerticalBox {
+                                padding: 3px;
+                                spacing: 6px;
+                                min-width: 0px;
+                                horizontal-stretch: 1;
+                                Text {
+                                    text: item.name;
+                                    font-size: root.ui-size * 1.12;
+                                    font-weight: 600;
+                                    color: root.band-colors[index];
+                                    wrap: word-wrap;
+                                    min-width: 0px;
+                                    horizontal-alignment: center;
+                                }
+
+                                Text {
+                                    text: item.range;
+                                    color: Palette.foreground;
+                                    wrap: word-wrap;
+                                    min-width: 0px;
+                                    horizontal-alignment: center;
                                 }
                             }
                         }
-                        Text {
-                            text: root.construction-description;
-                            wrap: word-wrap;
-                            min-width: 0px;
-                            max-width: 780px;
-                            vertical-stretch: 0;
-                            color: Palette.foreground;
-                            accessible-role: text;
-                        }
-                    }
-                }
 
-                if root.topic-key == "pitch-and-rhythm" || root.topic-key == "sound-types": Button {
-                    text: "Create a pulsed tone";
-                    max-width: self.preferred-width;
-                    triggered => { root.create-example(); }
-                }
-                band-page := Rectangle {
-                    // Keep controls alive: toolkit initialization must not overwrite the
-                    // application's selected band when this topic becomes visible.
-                    visible: root.topic-key == "rhythm-bands";
-                    preferred-height: self.visible ? band-content.preferred-height : 0px;
-                    min-height: self.preferred-height;
-                    max-height: self.preferred-height;
-                    band-content := VerticalBox {
-                        spacing: 16px;
-                        overview-frame := Rectangle {
-                            horizontal-stretch: 1;
-                            preferred-width: reading-column.width - 24px;
-                            preferred-height: self.width * 720 / 1400;
+                        spectrum := Rectangle {
+                            preferred-height: root.ui-size * 10;
                             min-height: self.preferred-height;
                             max-height: self.preferred-height;
-                            Image {
+                            background: Palette.control-background;
+                            border-radius: 6px;
+                            accessible-role: image;
+                            accessible-label: "Five normalized illustrative sine waves, " +
+                                "one second per section, Delta through Gamma.";
+                            Rectangle {
+                                y: parent.height / 2;
                                 width: parent.width;
-                                height: parent.height;
-                                source: root.dark ? root.dark-overview : root.light-overview;
-                                image-fit: contain;
-                                accessible-role: image;
-                                accessible-label: "Five normalized illustrative sine waves, " +
-                                    "one second per section, Delta through Gamma.";
+                                height: 1px;
+                                background: Palette.border;
+                            }
+
+                            for item[index] in root.band-items: Path {
+                                x: parent.width * index / 5;
+                                width: parent.width / 5;
+                                y: 10px;
+                                height: parent.height - 20px;
+                                viewbox-width: 1024;
+                                viewbox-height: 100;
+                                fit: fill;
+                                commands: item.trace;
+                                stroke: root.band-colors[index];
+                                stroke-width: 2.5px;
                             }
                         }
 
-                        band-picker := LearningChoice {
-                            model: root.bands;
-                            selection: root.band;
-                            max-width: root.ui-size * 22;
-                            accessible-label: "Rhythm band illustration";
-                            selected(_) => { root.select-band(self.current-index); }
+                        Text {
+                            text: "Observed EEG/MEG contexts";
+                            font-weight: 600;
+                            color: Palette.foreground;
+                            wrap: word-wrap;
+                            min-width: 0px;
+                        }
+
+                        if !root.compact: HorizontalBox {
+                            padding: 0px;
+                            spacing: 0px;
+                            for item in root.band-items: VerticalBox {
+                                padding: 4px;
+                                spacing: 6px;
+                                min-width: 0px;
+                                horizontal-stretch: 1;
+                                Text {
+                                    text: item.rate;
+                                    color: Palette.foreground;
+                                    font-weight: 600;
+                                    wrap: word-wrap;
+                                    min-width: 0px;
+                                    horizontal-alignment: center;
+                                }
+
+                                Text {
+                                    text: item.name + ": " + item.context;
+                                    color: Palette.foreground;
+                                    wrap: word-wrap;
+                                    min-width: 0px;
+                                    horizontal-alignment: center;
+                                }
+                            }
+                        }
+                        if root.compact: VerticalBox {
+                            padding: 0px;
+                            spacing: 10px;
+                            for item in root.band-items: Text {
+                                text: item.name + " · " + item.rate + " — " + item.context;
+                                color: Palette.foreground;
+                                wrap: word-wrap;
+                                min-width: 0px;
+                                vertical-stretch: 0;
+                                accessible-role: text;
+                            }
+                        }
+                        Text {
+                            text: "Slower rhythms → faster rhythms · One second per section";
+                            color: Palette.foreground;
+                            wrap: word-wrap;
+                            min-width: 0px;
+                            vertical-stretch: 0;
+                        }
+
+                        HorizontalBox {
+                            padding: 0px;
+                            spacing: 8px;
+                            for item[index] in root.band-items: Button {
+                                text: item.name;
+                                checked: root.band == index;
+                                min-width: 0px;
+                                horizontal-stretch: 1;
+                                triggered => { root.select-band(index); }
+                            }
                         }
 
                         Text {
@@ -300,48 +530,56 @@ export component LearningPane inherits Rectangle {
                             color: Palette.foreground;
                             wrap: word-wrap;
                             min-width: 0px;
-                            max-width: 780px;
                             vertical-stretch: 0;
                             accessible-role: text;
                         }
 
-                        Button {
-                            text: root.enlarged ? "Compact illustration" : "Enlarge illustration";
-                            max-width: self.preferred-width;
-                            checked: root.enlarged;
-                            triggered => { root.enlarged = !root.enlarged; }
+                        LessonPlot {
+                            trace: root.band-items[root.band].trace;
+                            ink: root.band-colors[root.band];
+                            label: root.band-description;
+                            ui-size: root.ui-size;
                         }
 
-                        detail-scroll := ScrollView {
-                            preferred-height: root.enlarged ? root.ui-size * 28 : root.ui-size * 16;
-                            min-height: self.preferred-height;
-                            content-width: self.visible-width * (root.enlarged ? 1.6 : 1);
-                            content-height: self.visible-height;
-                            Image {
-                                width: detail-scroll.content-width;
-                                height: detail-scroll.content-height;
-                                source: root.dark ? root.dark-details[root.band] :
-                                    root.light-details[root.band];
-                                image-fit: contain;
-                                accessible-role: image;
-                                accessible-label: "Band illustration. " + root.band-description;
-                            }
+                        Text {
+                            text: "One second · Normalized amplitude −1 to 1";
+                            color: Palette.foreground;
+                            wrap: word-wrap;
+                            min-width: 0px;
+                            vertical-stretch: 0;
                         }
                     }
-                }
 
-                if root.topic-key != "overview" && root.topic-key != "library": Text {
-                    text: root.body;
-                    color: Palette.foreground;
-                    wrap: word-wrap;
-                    min-width: 0px;
-                    max-width: 780px;
-                    vertical-stretch: 0;
-                    accessible-role: text;
-                }
+                    if root.details != "": Disclosure {
+                        label: "Technical details and sources";
+                        expanded <=> root.details-open;
+                    }
 
-                Rectangle {
-                    min-height: 12px;
+                    if root.details-open: Text {
+                        text: root.details;
+                        color: Palette.foreground;
+                        wrap: word-wrap;
+                        min-width: 0px;
+                        vertical-stretch: 0;
+                        accessible-role: text;
+                    }
+                    if root.details-open && root.topic-key == "rhythm-bands": VerticalBox {
+                        padding: 0px;
+                        spacing: 8px;
+                        for source[index] in root.sources: Button {
+                            text: source.label;
+                            max-width: self.preferred-width;
+                            triggered => { root.open-source(index); }
+                        }
+                    }
+                    if root.details-open: Button {
+                        text: "Desktop guide";
+                        max-width: self.preferred-width;
+                        triggered => { root.open-guide(); }
+                    }
+                    Rectangle {
+                        min-height: 20px;
+                    }
                 }
             }
         }

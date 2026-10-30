@@ -739,10 +739,81 @@ pub(crate) fn project_captions(
 }
 
 impl SlintAdapter {
+    fn initialize_learning_choices(ui: &MainWindow) {
+        use auditorylab_app::learning::{Construction, Topic};
+        use auditorylab_presentation::learning as text;
+        // Choices have no changing inputs. Retain their model identity so unrelated
+        // document/progress updates cannot rebuild an open native picker.
+        if ui.get_learning_topics().row_count() == 0 {
+            ui.set_learning_topics(
+                Rc::new(VecModel::from(
+                    Topic::ALL
+                        .into_iter()
+                        .map(|topic| SharedString::from(text::navigation_label(topic)))
+                        .collect::<Vec<_>>(),
+                ))
+                .into(),
+            );
+            let examples = auditorylab_app::learning::band_examples();
+            ui.set_learning_band_items(
+                Rc::new(VecModel::from(
+                    examples
+                        .into_iter()
+                        .map(|example| {
+                            use std::fmt::Write;
+                            let mut trace = String::new();
+                            for (index, amplitude) in
+                                example.normalized_wave().into_iter().enumerate()
+                            {
+                                let command = if index == 0 { 'M' } else { 'L' };
+                                // The app owns the one-second sine schematic; the renderer only
+                                // maps signed unit amplitude to its common plot coordinates.
+                                let _ = write!(
+                                    trace,
+                                    "{command}{index} {:.4}",
+                                    50.0 - amplitude * 50.0
+                                );
+                            }
+                            crate::generated::LearningBand {
+                                name: example.band.to_string().into(),
+                                range: example.band.interval().into(),
+                                rate: format!("{} cycles/s", example.example_hz).into(),
+                                context: text::band_context(example.band).into(),
+                                trace: trace.into(),
+                            }
+                        })
+                        .collect::<Vec<_>>(),
+                ))
+                .into(),
+            );
+            ui.set_learning_sources(
+                Rc::new(VecModel::from(
+                    auditorylab_app::learning::LearningSource::ALL
+                        .into_iter()
+                        .map(|source| crate::generated::LearningSource {
+                            label: text::source_label(source).into(),
+                        })
+                        .collect::<Vec<_>>(),
+                ))
+                .into(),
+            );
+            ui.set_learning_constructions(
+                Rc::new(VecModel::from(
+                    Construction::ALL
+                        .into_iter()
+                        .map(|construction| {
+                            SharedString::from(text::construction_heading(construction))
+                        })
+                        .collect::<Vec<_>>(),
+                ))
+                .into(),
+            );
+        }
+    }
+
     fn project_learning(&self, ui: &MainWindow) {
-        use auditorylab_app::learning::Topic;
-        let topics = Topic::ALL;
-        ui.set_learning_overview_index(i32::try_from(Topic::Overview.index()).unwrap_or(0));
+        use auditorylab_app::learning::{Construction, Topic};
+        use auditorylab_presentation::learning as text;
         let workspace = self.workspace.borrow();
         let Some(workspace) = workspace.as_ref() else {
             return;
@@ -753,81 +824,65 @@ impl SlintAdapter {
             auditorylab_app::workspace::View::Library => 0,
             auditorylab_app::workspace::View::Workbench => 1,
         });
-        ui.set_learning_topics(
-            Rc::new(VecModel::from(
-                topics
-                    .iter()
-                    .map(|topic| {
-                        SharedString::from(auditorylab_presentation::learning::heading(*topic))
-                    })
-                    .collect::<Vec<_>>(),
-            ))
-            .into(),
-        );
+        Self::initialize_learning_choices(ui);
+        let Some(learning) = learning else {
+            return;
+        };
+        let topic_changed = ui.get_learning_topic_key() != learning.topic.key();
+        let construction_changed = ui.get_learning_construction()
+            != i32::try_from(learning.construction.index()).unwrap_or(0);
         let examples = auditorylab_app::learning::band_examples();
-        ui.set_learning_bands(
-            Rc::new(VecModel::from(
-                examples
-                    .iter()
-                    .map(|example| SharedString::from(example.band.to_string()))
-                    .collect::<Vec<_>>(),
-            ))
-            .into(),
-        );
-        if let Some(learning) = learning {
-            ui.set_learning_topic_key(learning.topic.key().into());
-            Self::project_learning_visuals(ui, learning);
-            ui.set_learning_topic(
-                i32::try_from(
-                    topics
-                        .iter()
-                        .position(|t| *t == learning.topic)
-                        .unwrap_or(0),
-                )
+        let band_index = i32::try_from(
+            examples
+                .iter()
+                .position(|e| e.band == learning.band)
                 .unwrap_or(0),
-            );
-            ui.set_learning_band(
-                i32::try_from(
-                    examples
-                        .iter()
-                        .position(|e| e.band == learning.band)
-                        .unwrap_or(0),
-                )
-                .unwrap_or(0),
-            );
-            ui.set_learning_heading(
-                auditorylab_presentation::learning::heading(learning.topic).into(),
-            );
-            ui.set_learning_body(auditorylab_presentation::learning::body(learning.topic).into());
-            ui.set_learning_band_description(
-                auditorylab_presentation::learning::band_description(learning.band).into(),
-            );
+        )
+        .unwrap_or(0);
+        if ui.get_learning_band() != band_index || ui.get_learning_band_description().is_empty() {
+            ui.set_learning_band(band_index);
+            ui.set_learning_band_description(text::band_description(learning.band).into());
         }
-        ui.invoke_sync_learning_choices();
+        if topic_changed || construction_changed {
+            ui.set_learning_topic_key(learning.topic.key().into());
+            ui.set_learning_topic(i32::try_from(learning.topic.index()).unwrap_or(0));
+            ui.set_learning_construction(i32::try_from(learning.construction.index()).unwrap_or(0));
+            ui.set_learning_heading(text::heading(learning.topic).into());
+            ui.set_learning_body(text::body(learning.topic).into());
+            ui.set_learning_details(text::details(learning.topic, learning.construction).into());
+            ui.set_learning_example_action(if learning.topic == Topic::SoundTypes {
+                "Open this example in Workbench".into()
+            } else {
+                "Create a pulsed tone".into()
+            });
+            let construction = if learning.topic == Topic::PitchAndRhythm {
+                Construction::PulsedTone
+            } else {
+                learning.construction
+            };
+            ui.set_learning_example_summary(
+                if matches!(learning.topic, Topic::PitchAndRhythm | Topic::SoundTypes) {
+                    text::example_summary(construction).into()
+                } else {
+                    "".into()
+                },
+            );
+            Self::project_learning_visuals(ui, learning);
+        }
     }
-}
 
-impl SlintAdapter {
     fn project_learning_visuals(
         ui: &MainWindow,
         learning: auditorylab_app::learning::LearningState,
     ) {
         use auditorylab_app::learning::{Construction, Topic};
         use auditorylab_presentation::learning as text;
-        ui.set_learning_constructions(
-            Rc::new(VecModel::from(
-                Construction::ALL
-                    .into_iter()
-                    .map(|construction| {
-                        SharedString::from(text::construction_heading(construction))
-                    })
-                    .collect::<Vec<_>>(),
-            ))
-            .into(),
-        );
-        ui.set_learning_construction(i32::try_from(learning.construction.index()).unwrap_or(0));
         if !matches!(learning.topic, Topic::PitchAndRhythm | Topic::SoundTypes) {
-            ui.set_learning_traces(Rc::new(VecModel::from(Vec::<ModelLane>::new())).into());
+            if ui.get_learning_traces().row_count() != 0 {
+                ui.set_learning_traces(
+                    Rc::new(VecModel::from(Vec::<crate::generated::LearningTrace>::new())).into(),
+                );
+            }
             return;
         }
         let construction = if learning.topic == Topic::PitchAndRhythm {
@@ -842,35 +897,69 @@ impl SlintAdapter {
         let mut rows = Vec::new();
         if learning.topic == Topic::PitchAndRhythm {
             let trace = fitted_learning_waveform(&visual.carrier);
-            rows.push(ModelLane {
-                component: String::new().into(),
+            rows.push(crate::generated::LearningTrace {
                 label: text::carrier_caption(visual).into(),
                 trace: trace[0].as_str().into(),
+                unipolar: false,
+            });
+        }
+        let mut envelopes = Vec::new();
+        for (index, lane) in visual.timing.lanes.iter().enumerate() {
+            if lane.kind == auditorylab_app::core::timing::ModelKind::Steady
+                && lane.facts.pair.is_some()
+            {
+                // These are individual tone-source gains, not a combined beat
+                // envelope. They add no useful comparison to the pair lesson.
+                continue;
+            }
+            if visual.timing.lanes[..index]
+                .iter()
+                .any(|other| other.kind == lane.kind && other.columns == lane.columns)
+            {
+                continue;
+            }
+            let columns: Vec<_> = lane
+                .columns
+                .iter()
+                .map(|extent| {
+                    let gain = auditorylab_app::core::waveform::Extent {
+                        min: 2.0 * extent.min - 1.0,
+                        max: 2.0 * extent.max - 1.0,
+                    };
+                    [gain; 2]
+                })
+                .collect();
+            let [trace, _] = scope::paths(&columns, 1.0);
+            envelopes.push(crate::generated::LearningTrace {
+                label: text::timing_caption(visual, lane.kind).into(),
+                trace: trace.into(),
+                unipolar: true,
+            });
+        }
+        if learning.topic == Topic::PitchAndRhythm {
+            rows.append(&mut envelopes);
+        }
+        let trace = fitted_learning_waveform(&visual.waveform);
+        let identical = visual
+            .waveform
+            .iter()
+            .all(|channels| channels[0] == channels[1]);
+        if identical {
+            rows.push(crate::generated::LearningTrace {
+                label: format!("{} · Both channels", text::waveform_caption(visual)).into(),
+                trace: trace[0].as_str().into(),
+                unipolar: false,
             });
         } else {
-            let trace = fitted_learning_waveform(&visual.waveform);
             for (channel, path) in ["Left", "Right"].into_iter().zip(trace) {
-                rows.push(ModelLane {
-                    component: String::new().into(),
+                rows.push(crate::generated::LearningTrace {
                     label: format!("{} · {channel}", text::waveform_caption(visual)).into(),
                     trace: path.into(),
+                    unipolar: false,
                 });
             }
         }
-        for lane in &visual.timing.lanes {
-            let columns: Vec<_> = lane.columns.iter().map(|extent| [*extent; 2]).collect();
-            let [trace, _] = scope::paths(&columns, 1.0);
-            rows.push(ModelLane {
-                component: String::new().into(),
-                label: format!(
-                    "{} · {}",
-                    text::timing_caption(visual),
-                    auditorylab_presentation::workspace::monitor::model_view_lane_label(lane)
-                )
-                .into(),
-                trace: trace.into(),
-            });
-        }
+        rows.append(&mut envelopes);
         ui.set_learning_traces(Rc::new(VecModel::from(rows)).into());
     }
 }
