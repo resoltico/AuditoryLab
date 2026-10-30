@@ -8,7 +8,7 @@ import {
     HorizontalBox,
 } from "std-widgets.slint";
 import { Button } from "button.slint";
-import { Disclosure } from "editor.slint";
+import { Section } from "editor.slint";
 import { LearningTrace, LearningBand, LearningSource } from "models.slint";
 
 component LearningChoice inherits ComboBox {
@@ -148,7 +148,6 @@ export component LearningPane inherits Rectangle {
     callback open-source(int);
     callback open-preference-notice();
     in-out property <length> scroll-y <=> reader.content-y;
-    private property <bool> details-open: false;
     in property <bool> compact;
     // Required rail height is independent of the responsive mode it selects.
     out property <length> wide-navigation-height:
@@ -159,7 +158,7 @@ export component LearningPane inherits Rectangle {
         [#245b91, #096658, #5c6816, #914610, #70339c];
     visible: root.active;
     background: Palette.background;
-    changed topic-key => { reader.content-y = 0px; root.details-open = false; }
+    changed topic-key => { reader.content-y = 0px; }
     public function focus-start() { navigation.focus(); }
     public function focus-preference-notice() { preference-notice-button.focus(); }
 
@@ -550,32 +549,32 @@ export component LearningPane inherits Rectangle {
                         }
                     }
 
-                    if root.details != "": Disclosure {
-                        label: "Technical details and sources";
-                        expanded <=> root.details-open;
-                    }
-
-                    if root.details-open: Text {
-                        text: root.details;
-                        color: Palette.foreground;
-                        wrap: word-wrap;
-                        min-width: 0px;
-                        vertical-stretch: 0;
-                        accessible-role: text;
-                    }
-                    if root.details-open && root.topic-key == "rhythm-bands": VerticalBox {
-                        padding: 0px;
-                        spacing: 8px;
-                        for source[index] in root.sources: Button {
-                            text: source.label;
-                            max-width: self.preferred-width;
-                            triggered => { root.open-source(index); }
+                    if root.details != "": Section {
+                        title: "Details and sources";
+                        ui-size: root.ui-size;
+                        Text {
+                            text: root.details;
+                            color: Palette.foreground;
+                            wrap: word-wrap;
+                            min-width: 0px;
+                            vertical-stretch: 0;
+                            accessible-role: text;
                         }
-                    }
-                    if root.details-open: Button {
-                        text: "Desktop guide";
-                        max-width: self.preferred-width;
-                        triggered => { root.open-guide(); }
+
+                        if root.topic-key == "rhythm-bands": VerticalBox {
+                            padding: 0px;
+                            spacing: 8px;
+                            for source[index] in root.sources: Button {
+                                text: source.label;
+                                max-width: self.preferred-width;
+                                triggered => { root.open-source(index); }
+                            }
+                        }
+                        Button {
+                            text: "Desktop guide";
+                            max-width: self.preferred-width;
+                            triggered => { root.open-guide(); }
+                        }
                     }
                     Rectangle {
                         min-height: 20px;

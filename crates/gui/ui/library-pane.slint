@@ -20,7 +20,7 @@ import {
     LibraryFacet,
     ModelLane,
 } from "models.slint";
-import { Disclosure, ExportRate } from "editor.slint";
+import { Section, ExportRate } from "editor.slint";
 
 
 export component LibraryPane inherits Rectangle {
@@ -61,7 +61,6 @@ export component LibraryPane inherits Rectangle {
     callback edit-saved(EntryAddress);
     in property <[string]> export-rates;
     callback export-recipe();
-    in-out property <bool> export-settings;
     callback export-wav();
     in property <string> file-activity;
     in-out property <string> focused-library-key;
@@ -101,7 +100,6 @@ export component LibraryPane inherits Rectangle {
     callback rate-changed(int);
     in-out property <int> rate-index;
     in property <string> recipe-timing;
-    in-out property <bool> research;
     callback resize-library-pane(float);
     callback rhythm-filter(int, int);
     callback search(string);
@@ -692,85 +690,7 @@ export component LibraryPane inherits Rectangle {
                                 horizontal-stretch: 1;
                             }
                         }
-                                // A custom recipe has no study or summary to show.
-                                if root.studied != "": Text {
-                            min-width: 0px;
-                            text: root.studied;
-                            wrap: word-wrap;
-                            vertical-stretch: 0;
-                        }
-                        if root.summary != "": VerticalBox {
-                            padding: 0px;
-                            vertical-stretch: 0;
-                            summary-disclosure := Disclosure {
-                                label: Terms.caption-research-summary;
-                            }
-
-                            if summary-disclosure.expanded: Text {
-                                min-width: 0px;
-                                text: root.summary;
-                                wrap: word-wrap;
-                                vertical-stretch: 0;
-                            }
-                        }
-                        Rectangle {
-                            height: 1px;
-                            background: Palette.border;
-                            vertical-stretch: 0;
-                        }
-
-                        Text {
-                            text: Terms.caption-classification;
-                            font-weight: 600;
-                            vertical-stretch: 0;
-                        }
-
-                        Text {
-                            text: root.library-classification;
-                            wrap: word-wrap;
-                            min-width: 0px;
-                            vertical-stretch: 0;
-                        }
-
-                        metadata-disclosure := Disclosure {
-                            label: Terms.caption-source-dates-details;
-                        }
-
-                        if metadata-disclosure.expanded: VerticalBox {
-                            vertical-stretch: 0;
-                            Rectangle {
-                                height: 1px;
-                                background: Palette.border;
-                                vertical-stretch: 0;
-                            }
-
-                            if root.library-dates != "": Text {
-                                text: root.library-dates;
-                                wrap: word-wrap;
-                                vertical-stretch: 0;
-                                min-width: 0px;
-                            }
-                            utc-dates := Disclosure {
-                                label: ViewCaptions.exact-utc-dates;
-                            }
-
-                            if utc-dates.expanded: TextEdit {
-                                text: root.library-dates-utc;
-                                read-only: true;
-                                wrap: word-wrap;
-                                accessible-label: ViewCaptions.exact-utc-dates-description;
-                                min-width: 0px;
-                                height: root.ui-size * 8;
-                                vertical-stretch: 0;
-                            }
-                            if root.library-key != "": Text {
-                                text: root.library-key;
-                                wrap: word-wrap;
-                                vertical-stretch: 0;
-                                min-width: 0px;
-                            }
-                        }
-                        if root.library-token != "" && !root.library-trashed: BoundButton {
+                                if root.library-token != "" && !root.library-trashed: BoundButton {
                             enabled: Actions.edit-saved-recipe.enabled;
                             text: Actions.edit-saved-recipe.label;
                             entry: root.library-entry;
@@ -828,25 +748,9 @@ export component LibraryPane inherits Rectangle {
                                 }
                             }
                         }
-                        Disclosure {
-                            label: Terms.caption-research-citation-and-sound-adaptations;
-                            expanded <=> root.research;
-                        }
-
-                        if root.research && root.can-open-study: Button {
-                            text: Terms.action-open-study-source;
-                            triggered => { root.open-study(); }
-                        }
-                        if root.research: Button {
-                            text: Terms.action-read-selectable-research-and-recipe-details-dialog;
-                            triggered => { root.show-research(); }
-                        }
-                        library-pattern := Disclosure {
-                            label: Terms.caption-waveform-pattern;
-                        }
-
-                        if library-pattern.expanded: VerticalBox {
-                            vertical-stretch: 0;
+                        Section {
+                            title: Terms.caption-waveform-pattern;
+                            ui-size: root.ui-size;
                             Text {
                                 min-width: 0px;
                                 text: root.model-caption;
@@ -855,6 +759,8 @@ export component LibraryPane inherits Rectangle {
                             }
 
                             for lane in root.model-lanes: VerticalBox {
+                                padding: 0px;
+                                spacing: 4px;
                                 vertical-stretch: 0;
                                 Text {
                                     min-width: 0px;
@@ -864,12 +770,14 @@ export component LibraryPane inherits Rectangle {
                                 }
 
                                 Rectangle {
-                                    height: 30px;
+                                    height: root.ui-size * 2.5;
+                                    border-radius: 4px;
                                     background: Palette.control-background;
                                     accessible-role: image;
                                     accessible-label: lane.label + Terms.caption-calculated-pattern;
                                     Path {
-                                        width: parent.width;
+                                        x: 4px;
+                                        width: parent.width - 8px;
                                         height: parent.height;
                                         viewbox-width: 1024;
                                         viewbox-height: 100;
@@ -881,33 +789,115 @@ export component LibraryPane inherits Rectangle {
                                 }
                             }
                         }
-                        Disclosure {
-                            label: "Export sound";
-                            expanded <=> root.export-settings;
+
+                        // A custom recipe has no study or summary to show.
+                        if root.studied != "" || root.summary != "" || root.can-open-study: Section {
+                            title: Terms.caption-research-summary;
+                            ui-size: root.ui-size;
+                            if root.studied != "": Text {
+                                min-width: 0px;
+                                text: root.studied;
+                                font-weight: 600;
+                                wrap: word-wrap;
+                                vertical-stretch: 0;
+                            }
+                            if root.summary != "": Text {
+                                min-width: 0px;
+                                text: root.summary;
+                                wrap: word-wrap;
+                                vertical-stretch: 0;
+                            }
+                            HorizontalBox {
+                                padding: 0px;
+                                vertical-stretch: 0;
+                                if root.can-open-study: Button {
+                                    text: Terms.action-open-study-source;
+                                    horizontal-stretch: 0;
+                                    triggered => { root.open-study(); }
+                                }
+                                Button {
+                                    text: Terms.action-read-selectable-research-and-recipe-details-dialog;
+                                    horizontal-stretch: 0;
+                                    triggered => { root.show-research(); }
+                                }
+                                Rectangle {
+                                    horizontal-stretch: 1;
+                                }
+                            }
                         }
 
-                        if root.export-settings: VerticalBox {
-                            vertical-stretch: 0;
-                            spacing: 10px;
-                            ExportRate {
-                                choices: root.export-rates;
-                                selected <=> root.rate-index;
-                                edit-enabled: true;
-                                changed(i) => { root.rate-changed(i); }
+                        Section {
+                            title: Terms.caption-classification;
+                            ui-size: root.ui-size;
+                            Text {
+                                text: root.library-classification;
+                                wrap: word-wrap;
+                                min-width: 0px;
+                                vertical-stretch: 0;
                             }
+                        }
 
-                            Button {
-                                text: Actions.export.label + "…";
-                                enabled: Actions.export.enabled;
-                                max-width: self.preferred-width;
-                                triggered => { root.export-wav(); }
+                        Section {
+                            title: Terms.caption-export-sound;
+                            ui-size: root.ui-size;
+                            HorizontalBox {
+                                padding: 0px;
+                                vertical-stretch: 0;
+                                ExportRate {
+                                    horizontal-stretch: 0;
+                                    choices: root.export-rates;
+                                    selected <=> root.rate-index;
+                                    edit-enabled: true;
+                                    changed(i) => { root.rate-changed(i); }
+                                }
+                                Rectangle {
+                                    horizontal-stretch: 1;
+                                }
                             }
+                            HorizontalBox {
+                                padding: 0px;
+                                vertical-stretch: 0;
+                                Button {
+                                    text: Actions.export.label + "…";
+                                    enabled: Actions.export.enabled;
+                                    horizontal-stretch: 0;
+                                    triggered => { root.export-wav(); }
+                                }
+                                Button {
+                                    text: Actions.export-recipe.label + "…";
+                                    enabled: Actions.export-recipe.enabled;
+                                    horizontal-stretch: 0;
+                                    triggered => { root.export-recipe(); }
+                                }
+                                Rectangle {
+                                    horizontal-stretch: 1;
+                                }
+                            }
+                        }
 
-                            Button {
-                                text: Actions.export-recipe.label + "…";
-                                enabled: Actions.export-recipe.enabled;
-                                max-width: self.preferred-width;
-                                triggered => { root.export-recipe(); }
+                        Section {
+                            title: Terms.caption-source-dates-details;
+                            ui-size: root.ui-size;
+                            if root.library-dates != "": Text {
+                                text: root.library-dates;
+                                wrap: word-wrap;
+                                vertical-stretch: 0;
+                                min-width: 0px;
+                            }
+                            TextEdit {
+                                text: root.library-dates-utc;
+                                read-only: true;
+                                wrap: word-wrap;
+                                accessible-label: ViewCaptions.exact-utc-dates-description;
+                                min-width: 0px;
+                                height: root.ui-size * 6;
+                                vertical-stretch: 0;
+                            }
+                            if root.library-key != "": Text {
+                                text: root.library-key;
+                                wrap: word-wrap;
+                                vertical-stretch: 0;
+                                min-width: 0px;
                             }
                         }
                     }

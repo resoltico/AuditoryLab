@@ -11,29 +11,31 @@ import {
     ComboBox,
 } from "std-widgets.slint";
 import { ParameterRow, MetadataRow } from "models.slint";
-// A compact disclosure: as wide as its label, aligned with the content it opens.
-export component Disclosure inherits Rectangle {
-    in-out property <bool> expanded: false;
-    in property <string> label;
-    in property <string> accessible-name: root.label;
-    min-width: toggle.min-width;
-    preferred-width: toggle.preferred-width;
-    max-width: toggle.preferred-width;
-    min-height: toggle.min-height;
-    preferred-height: toggle.preferred-height;
-    max-height: toggle.preferred-height;
-    horizontal-stretch: 0;
-    toggle := Button {
-        x: 0px;
-        y: 0px;
-        width: parent.width;
-        height: parent.height;
-        text: (root.expanded ? "▼ " : "▶ ") + root.label;
-        accessible-label: root.accessible-name + (root.expanded ? Terms.caption-expanded :
-            Terms.caption-collapsed);
-        accessible-expanded: root.expanded;
-        triggered => { root.expanded = !root.expanded; }
+// A titled part of a page. Sections are always open: the page shows what it
+// has, ordered by use, and the title rule separates it from its neighbours.
+export component Section inherits VerticalBox {
+    in property <string> title;
+    in property <length> ui-size: 13px;
+    padding: 0px;
+    padding-top: 6px;
+    spacing: 8px;
+    vertical-stretch: 0;
+    Rectangle {
+        height: 1px;
+        background: Palette.border;
     }
+
+    Text {
+        text: root.title;
+        font-size: root.ui-size * 0.92;
+        font-weight: 700;
+        color: Palette.foreground.with-alpha(0.72);
+        wrap: word-wrap;
+        min-width: 0px;
+        accessible-role: text;
+    }
+
+    @children
 }
 // Uncommitted text, caret and focus stay local. Model refreshes replace only
 // unfocused text. An edit keeps the binding it started with, so a late commit

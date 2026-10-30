@@ -11,9 +11,9 @@ import {
     HorizontalBox,
     ScrollView,
 } from "std-widgets.slint";
-import { ComponentRow, MetadataRow, ModelLane } from "models.slint";
+import { ComponentRow, ControlOption, MetadataRow, ModelLane } from "models.slint";
 import {
-    Disclosure,
+    Section,
     ParameterControl,
     MetadataField,
     NotesField,
@@ -40,7 +40,6 @@ export component WorkbenchPane inherits Rectangle {
     in property <string> document;
     in property <int> document-reset;
     in property <string> draft-brief;
-    in property <string> draft-location;
     in property <string> draft-location-details;
     in property <MetadataRow> duration-field;
     in property <[string]> routing-choices;
@@ -59,8 +58,6 @@ export component WorkbenchPane inherits Rectangle {
     in property <[ModelLane]> model-lanes;
     in property <[string]> modulation-choices;
     callback new-draft();
-    in-out property <bool> notes;
-    callback open-component-menu();
     in property <string> pair-add-reason;
     in property <string> peak;
     callback rate-changed(int);
@@ -72,7 +69,9 @@ export component WorkbenchPane inherits Rectangle {
     callback restore-parameter(string);
     in property <string> retained-warning;
     in property <string> save-reason;
-    in-out property <bool> saved-audio;
+    callback save-recipe();
+    in property <[ControlOption]> add-choices;
+    callback add-component(string, int);
     callback set-carrier(string, int);
     function has-pulse(row: ComponentRow) -> bool {
         return row.source-width >= 0 || row.modulation-width >= 0;
@@ -108,24 +107,16 @@ export component WorkbenchPane inherits Rectangle {
             width: editor-scroll.visible-width;
             padding: 16px;
             spacing: 14px;
-            Text {
-                text: ViewCaptions.workbench;
-                font-size: root.ui-size * 1.6;
-                font-weight: 600;
-                vertical-stretch: 0;
-            }
-
+            // The document's title is the page heading; its state and the
+            // document actions sit beside it.
             HorizontalBox {
                 padding: 0px;
                 vertical-stretch: 0;
-                Text {
-                    text: root.title-field.label;
-                    vertical-alignment: center;
-                }
-
                 title-input := MetadataField {
                     field: root.title-field;
-
+                    font-size: root.ui-size * 1.4;
+                    min-height: max(32px, root.ui-size * 3);
+                    horizontal-stretch: 1;
                     reset-key: root.document-reset;
                     enabled: root.can-edit;
                     edits-suspended: root.edits-suspended;
@@ -134,31 +125,25 @@ export component WorkbenchPane inherits Rectangle {
                     commit-field(owner, value) => { root.commit-metadata(owner, value); }
                     restore-field(owner) => { root.restore-metadata(owner); }
                 }
-            }
 
-            HorizontalBox {
-                vertical-stretch: 0;
                 if root.components.length > 0 || root.dirty: Text {
-                    min-width: 0px;
                     text: ViewCaptions.editor-status;
-                    wrap: word-wrap;
+                    font-weight: 600;
                     vertical-alignment: center;
-                    horizontal-stretch: 1;
+                    horizontal-stretch: 0;
                 }
 
-                if root.components.length > 0: Button {
-                    text: (Actions.add-component.label + "…");
-                    enabled: Actions.add-component.enabled;
-                    triggered => { root.open-component-menu(); }
-                }
-
-                if root.components.length == 0 && !root.dirty: Rectangle {
-                    horizontal-stretch: 1;
+                Button {
+                    text: Actions.save.label;
+                    enabled: Actions.save.enabled;
+                    primary: true;
+                    horizontal-stretch: 0;
+                    accessible-description: root.save-reason;
+                    triggered => { root.save-recipe(); }
                 }
 
                 Button {
                     horizontal-stretch: 0;
-                    max-width: self.preferred-width;
                     text: Actions.new-sound.label;
                     enabled: Actions.new-sound.enabled;
                     triggered => {
@@ -167,40 +152,24 @@ export component WorkbenchPane inherits Rectangle {
                 }
             }
 
-            if root.components.length == 0: Rectangle {
-                background: Palette.control-background;
-                border-color: Palette.border;
-                border-width: 1px;
-                border-radius: 8px;
-                min-width: 0px;
-                preferred-height: empty-content.preferred-height;
-                min-height: self.preferred-height;
+            if root.components.length == 0: VerticalBox {
+                padding: 0px;
+                padding-top: 12px;
+                spacing: 10px;
                 vertical-stretch: 0;
-                empty-content := VerticalBox {
-                    padding: 24px;
-                    spacing: 12px;
-                    Text {
-                        text: "Build your sound";
-                        font-size: root.ui-size * 1.3;
-                        font-weight: 600;
-                        wrap: word-wrap;
-                        min-width: 0px;
-                    }
+                Text {
+                    text: "Build a sound";
+                    font-size: root.ui-size * 1.3;
+                    font-weight: 600;
+                    wrap: word-wrap;
+                    min-width: 0px;
+                }
 
-                    Text {
-                        text: "Start with a tone, a pulsed tone or a pair of tones. " +
-                            "Add components and adjust their settings here. " +
-                            "You choose when to play or save.";
-                        wrap: word-wrap;
-                        min-width: 0px;
-                    }
-
-                    Button {
-                        text: Actions.add-component.label + "…";
-                        enabled: Actions.add-component.enabled;
-                        max-width: self.preferred-width;
-                        triggered => { root.open-component-menu(); }
-                    }
+                Text {
+                    text: "Pick a starting component. You can add more and change every " +
+                        "setting afterwards. Nothing plays until you press Play.";
+                    wrap: word-wrap;
+                    min-width: 0px;
                 }
             }
 
@@ -264,16 +233,10 @@ export component WorkbenchPane inherits Rectangle {
                 wrap: word-wrap;
                 vertical-stretch: 0;
             }
-            Text {
-                min-width: 0px;
-                text: root.draft-location;
-                wrap: word-wrap;
-                vertical-stretch: 0;
-            }
-
             if root.components.length > 0: Text {
                 min-width: 0px;
                 text: root.draft-brief;
+                color: Palette.foreground.with-alpha(0.72);
                 wrap: word-wrap;
                 vertical-stretch: 0;
             }
@@ -285,242 +248,218 @@ export component WorkbenchPane inherits Rectangle {
                 font-size: root.ui-size * 0.93;
                 vertical-stretch: 0;
             }
-            for row in root.components: component-view := VerticalBox {
-                private property <bool> pattern-expanded: false;
-                private property <bool> options-expanded: false;
-                spacing: 4px;
+            for row in root.components: Rectangle {
+                border-width: 1px;
+                border-color: Palette.border;
+                border-radius: 8px;
+                background: Palette.control-background;
+                min-height: card.preferred-height;
                 vertical-stretch: 0;
-                Rectangle {
-                    height: 1px;
-                    background: Palette.border;
-                }
-
-                Text {
-                    text: row.heading;
-                    font-weight: 700;
-                    vertical-stretch: 0;
-                }
-
-                Text {
-                    min-width: 0px;
-                    text: row.context;
-                    wrap: word-wrap;
-                    vertical-stretch: 0;
-                }
-
-                if !root.has-pulse(row): Disclosure {
-                    label: Terms.caption-waveform-pattern;
-                    expanded <=> component-view.pattern-expanded;
-                }
-
-                if root.has-pulse(row): Text {
-                    text: Terms.caption-waveform-pattern;
-                    font-weight: 600;
-                    vertical-stretch: 0;
-                }
-
-                if component-view.pattern-expanded || root.has-pulse(row): VerticalBox {
-                    vertical-stretch: 0;
-                    Text {
-                        min-width: 0px;
-                        text: root.model-caption;
-                        wrap: word-wrap;
-                        vertical-stretch: 0;
-                    }
-
-                    VerticalBox {
+                card := VerticalBox {
+                    padding: 14px;
+                    spacing: 8px;
+                    HorizontalBox {
                         padding: 0px;
-                        spacing: 0px;
                         vertical-stretch: 0;
-                        for lane in root.model-lanes: VerticalBox {
-                            padding: 0px;
-                            spacing: 0px;
-                            vertical-stretch: 0;
-                            if lane.component == row.id: VerticalBox {
-                                vertical-stretch: 0;
-                                Text {
-                                    min-width: 0px;
-                                    text: lane.label;
-                                    wrap: word-wrap;
-                                    vertical-stretch: 0;
-                                }
-
-                                Rectangle {
-                                    height: 36px;
-                                    background: Palette.control-background;
-                                    accessible-role: image;
-                                    accessible-label: lane.label +
-                                        Terms.caption-calculated-pattern;
-                                    Path {
-                                        width: parent.width;
-                                        height: parent.height;
-                                        viewbox-width: 1024;
-                                        viewbox-height: 100;
-                                        fit: fill;
-                                        commands: lane.trace;
-                                        stroke: Palette.accent-background;
-                                        stroke-width: 2px;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                if !root.has-pulse(row): Disclosure {
-                    label: Terms.caption-routing-modulation-and-component-options;
-                    expanded <=> component-view.options-expanded;
-                }
-                if root.has-pulse(row): Text {
-                    text: Terms.caption-routing-modulation-and-component-options;
-                    font-weight: 600;
-                    vertical-stretch: 0;
-                }
-                        // Labels beside choices sized to their content; the
-                        // shared column keeps the three choices aligned.
-                        if component-view.options-expanded || root.has-pulse(row): GridLayout {
-                    spacing: 6px;
-                    vertical-stretch: 0;
-                    Row {
-                        if row.routing-editable: Text {
-                            text: ViewCaptions.channel-routing;
-                            vertical-alignment: center;
-                        }
-                        if row.routing-editable: ComboBox {
-                            enabled: root.can-edit;
-                            model: root.routing-choices;
-                            current-index: row.route;
-                            accessible-label: row.name + Terms.caption-channel-routing-suffix;
-                            selected(value) => { root.set-routing(row.key, self.current-index); }
-                        }
-                        Rectangle {
+                        VerticalLayout {
                             horizontal-stretch: 1;
-                        }
-                    }
+                            alignment: center;
+                            Text {
+                                text: row.heading;
+                                font-weight: 700;
+                                font-size: root.ui-size * 1.08;
+                                min-width: 0px;
+                                wrap: word-wrap;
+                            }
 
-                    Row {
-                        if row.carrier >= 0: Text {
-                            text: ViewCaptions.carrier;
-                            vertical-alignment: center;
-                        }
-                        if row.carrier >= 0: ComboBox {
-                            enabled: root.can-edit;
-                            model: root.carrier-choices;
-                            current-index: row.carrier;
-                            accessible-label: row.name + Terms.caption-carrier-suffix;
-                            selected(value) => { root.set-carrier(row.key, self.current-index); }
-                        }
-                    }
-
-                    Row {
-                        if row.modulation >= 0: Text {
-                            text: ViewCaptions.modulation;
-                            vertical-alignment: center;
-                        }
-                        if row.modulation >= 0: ComboBox {
-                            enabled: root.can-edit;
-                            model: root.modulation-choices;
-                            current-index: row.modulation;
-                            accessible-label: row.name + Terms.caption-modulation-suffix;
-                            selected(value) => { root.set-modulation(row.key, self.current-index); }
-                        }
-                    }
-
-                    Row {
-                        if row.source-width >= 0: Text {
-                            text: Terms.caption-source-pulse-width;
-                            vertical-alignment: center;
-                        }
-                        if row.source-width >= 0: ComboBox {
-                            enabled: root.can-edit;
-                            model: root.pulse-width-choices;
-                            current-index: row.source-width;
-                            accessible-label: row.name + ": " + Terms.caption-source-pulse-width;
-                            selected(value) => {
-                                root.set-pulse-option(row.key, 0, self.current-index);
+                            Text {
+                                min-width: 0px;
+                                text: row.context;
+                                color: Palette.foreground.with-alpha(0.72);
+                                wrap: word-wrap;
                             }
                         }
-                    }
 
-                    Row {
-                        if row.source-shape >= 0: Text {
-                            text: Terms.caption-source-pulse-shape;
-                            vertical-alignment: center;
-                        }
-                        if row.source-shape >= 0: ComboBox {
-                            enabled: root.can-edit;
-                            model: root.pulse-shape-choices;
-                            current-index: row.source-shape;
-                            accessible-label: row.name + ": " + Terms.caption-source-pulse-shape;
-                            selected(value) => {
-                                root.set-pulse-option(row.key, 1, self.current-index);
-                            }
-                        }
-                    }
-
-                    Row {
-                        if row.modulation-width >= 0: Text {
-                            text: Terms.caption-mod-width;
-                            vertical-alignment: center;
-                        }
-                        if row.modulation-width >= 0: ComboBox {
-                            enabled: root.can-edit;
-                            model: root.pulse-width-choices;
-                            current-index: row.modulation-width;
-                            accessible-label: row.name + ": " + Terms.caption-mod-width;
-                            selected(value) => {
-                                root.set-pulse-option(row.key, 2, self.current-index);
-                            }
-                        }
-                    }
-
-                    Row {
-                        if row.modulation-shape >= 0: Text {
-                            text: Terms.caption-mod-shape;
-                            vertical-alignment: center;
-                        }
-                        if row.modulation-shape >= 0: ComboBox {
-                            enabled: root.can-edit;
-                            model: root.pulse-shape-choices;
-                            current-index: row.modulation-shape;
-                            accessible-label: row.name + ": " + Terms.caption-mod-shape;
-                            selected(value) => {
-                                root.set-pulse-option(row.key, 3, self.current-index);
-                            }
-                        }
-                    }
-
-                    Row {
                         Button {
-                            col: 1;
                             text: Actions.remove-component.label;
                             enabled: Actions.remove-component.enabled;
+                            horizontal-stretch: 0;
                             accessible-label: (Actions.remove-component.label + " ") + row.name;
                             triggered => { root.remove-component(row.key); }
                         }
                     }
-                }
-                for parameter in row.parameters: ParameterControl {
-                    parameter: parameter;
-                    owner: row.key;
-                    context: row.name;
-                    compact: root.compact;
-                    ui-size: root.ui-size;
-                    edit-enabled: root.can-edit;
-                    edits-suspended: root.edits-suspended;
-                    stage(owner, value) => { root.stage-parameter(owner, value); }
-                    commit(owner, value) => { root.commit-parameter(owner, value); }
-                    restore(owner) => { root.restore-parameter(owner); }
-                    slide(owner, value) => { root.slide(owner, value); }
-                }
-                if row.error != "": Text {
-                    min-width: 0px;
-                    text: row.error;
-                    color: Palette.foreground;
-                    accessible-live-region: polite;
-                    wrap: word-wrap;
-                    vertical-stretch: 0;
+
+                    for lane in root.model-lanes: VerticalBox {
+                        padding: 0px;
+                        spacing: 2px;
+                        vertical-stretch: 0;
+                        if lane.component == row.id: Text {
+                            min-width: 0px;
+                            text: lane.label;
+                            font-size: root.ui-size * 0.92;
+                            color: Palette.foreground.with-alpha(0.72);
+                            wrap: word-wrap;
+                        }
+                        if lane.component == row.id: Rectangle {
+                            height: root.ui-size * 3.5;
+                            border-radius: 4px;
+                            background: Palette.background;
+                            accessible-role: image;
+                            accessible-label: lane.label + Terms.caption-calculated-pattern;
+                            Path {
+                                x: 4px;
+                                width: parent.width - 8px;
+                                height: parent.height;
+                                viewbox-width: 1024;
+                                viewbox-height: 100;
+                                fit: fill;
+                                commands: lane.trace;
+                                stroke: Palette.accent-background;
+                                stroke-width: 2px;
+                            }
+                        }
+                    }
+
+                    for parameter in row.parameters: ParameterControl {
+                        parameter: parameter;
+                        owner: row.key;
+                        context: row.name;
+                        compact: root.compact;
+                        ui-size: root.ui-size;
+                        edit-enabled: root.can-edit;
+                        edits-suspended: root.edits-suspended;
+                        stage(owner, value) => { root.stage-parameter(owner, value); }
+                        commit(owner, value) => { root.commit-parameter(owner, value); }
+                        restore(owner) => { root.restore-parameter(owner); }
+                        slide(owner, value) => { root.slide(owner, value); }
+                    }
+                    if row.error != "": Text {
+                        min-width: 0px;
+                        text: row.error;
+                        color: Palette.foreground;
+                        accessible-live-region: polite;
+                        wrap: word-wrap;
+                        vertical-stretch: 0;
+                    }
+
+                    // Labels beside choices sized to their content; the shared
+                    // column keeps the choices aligned.
+                        GridLayout {
+                        spacing: 6px;
+                        vertical-stretch: 0;
+                        Row {
+                            if row.routing-editable: Text {
+                                text: ViewCaptions.channel-routing;
+                                vertical-alignment: center;
+                            }
+                            if row.routing-editable: ComboBox {
+                                enabled: root.can-edit;
+                                model: root.routing-choices;
+                                current-index: row.route;
+                                accessible-label: row.name + Terms.caption-channel-routing-suffix;
+                                selected(value) => { root.set-routing(row.key, self.current-index); }
+                            }
+                            Rectangle {
+                                horizontal-stretch: 1;
+                            }
+                        }
+
+                        Row {
+                            if row.carrier >= 0: Text {
+                                text: ViewCaptions.carrier;
+                                vertical-alignment: center;
+                            }
+                            if row.carrier >= 0: ComboBox {
+                                enabled: root.can-edit;
+                                model: root.carrier-choices;
+                                current-index: row.carrier;
+                                accessible-label: row.name + Terms.caption-carrier-suffix;
+                                selected(value) => { root.set-carrier(row.key, self.current-index); }
+                            }
+                        }
+
+                        Row {
+                            if row.modulation >= 0: Text {
+                                text: ViewCaptions.modulation;
+                                vertical-alignment: center;
+                            }
+                            if row.modulation >= 0: ComboBox {
+                                enabled: root.can-edit;
+                                model: root.modulation-choices;
+                                current-index: row.modulation;
+                                accessible-label: row.name + Terms.caption-modulation-suffix;
+                                selected(value) => { root.set-modulation(row.key, self.current-index); }
+                            }
+                        }
+
+                        Row {
+                            if row.source-width >= 0: Text {
+                                text: Terms.caption-source-pulse-width;
+                                vertical-alignment: center;
+                            }
+                            if row.source-width >= 0: ComboBox {
+                                enabled: root.can-edit;
+                                model: root.pulse-width-choices;
+                                current-index: row.source-width;
+                                accessible-label: row.name + ": " + Terms.caption-source-pulse-width;
+                                selected(value) => {
+                                    root.set-pulse-option(row.key, 0, self.current-index);
+                                }
+                            }
+                        }
+
+                        Row {
+                            if row.source-shape >= 0: Text {
+                                text: Terms.caption-source-pulse-shape;
+                                vertical-alignment: center;
+                            }
+                            if row.source-shape >= 0: ComboBox {
+                                enabled: root.can-edit;
+                                model: root.pulse-shape-choices;
+                                current-index: row.source-shape;
+                                accessible-label: row.name + ": " + Terms.caption-source-pulse-shape;
+                                selected(value) => {
+                                    root.set-pulse-option(row.key, 1, self.current-index);
+                                }
+                            }
+                        }
+
+                        Row {
+                            if row.modulation-width >= 0: Text {
+                                text: Terms.caption-mod-width;
+                                vertical-alignment: center;
+                            }
+                            if row.modulation-width >= 0: ComboBox {
+                                enabled: root.can-edit;
+                                model: root.pulse-width-choices;
+                                current-index: row.modulation-width;
+                                accessible-label: row.name + ": " + Terms.caption-mod-width;
+                                selected(value) => {
+                                    root.set-pulse-option(row.key, 2, self.current-index);
+                                }
+                            }
+                        }
+
+                        Row {
+                            if row.modulation-shape >= 0: Text {
+                                text: Terms.caption-mod-shape;
+                                vertical-alignment: center;
+                            }
+                            if row.modulation-shape >= 0: ComboBox {
+                                enabled: root.can-edit;
+                                model: root.pulse-shape-choices;
+                                current-index: row.modulation-shape;
+                                accessible-label: row.name + ": " + Terms.caption-mod-shape;
+                                selected(value) => {
+                                    root.set-pulse-option(row.key, 3, self.current-index);
+                                }
+                            }
+                        }
+
+                    }
                 }
             }
+
             if root.components.length > 0: Text {
                 min-width: 0px;
                 text: root.peak;
@@ -528,26 +467,116 @@ export component WorkbenchPane inherits Rectangle {
                 vertical-stretch: 0;
             }
 
-            settings := Disclosure {
-                label: Terms.caption-sound-settings-notes-and-saved-exported-audio;
+            Section {
+                title: root.components.length == 0 ? Terms.caption-choose-component :
+                    Terms.caption-add-component;
+                ui-size: root.ui-size;
+                // Every component kind is offered at once, in a grid of equal buttons.
+                add-grid := Rectangle {
+                    property <int> columns: root.compact ? 2 : 3;
+                    property <length> gap: 8px;
+                    property <length> cell-width: (self.width - (self.columns - 1) * self.gap) /
+                        self.columns;
+                    property <length> cell-height: max(32px, 2.5rem);
+                    height: ceil(root.add-choices.length / self.columns) *
+                        (self.cell-height + self.gap) - self.gap;
+                    for choice[index] in root.add-choices: Button {
+                        x: mod(index, add-grid.columns) * (add-grid.cell-width + add-grid.gap);
+                        y: floor(index / add-grid.columns) * (add-grid.cell-height + add-grid.gap);
+                        width: add-grid.cell-width;
+                        text: choice.label;
+                        enabled: choice.enabled && Actions.add-component.enabled;
+                        accessible-description: root.add-reason;
+                        triggered => { root.add-component(root.document, index); }
+                    }
+                }
             }
 
-            if settings.expanded: VerticalBox {
-                vertical-stretch: 0;
+            Section {
+                title: Terms.action-saved-audio-duration-fades-and-export-rate;
+                ui-size: root.ui-size;
                 Text {
-                    text: root.draft-location-details;
                     min-width: 0px;
+                    text: Terms.caption-saved-audio-help;
                     wrap: word-wrap;
                     vertical-stretch: 0;
                 }
 
-                Button {
-                    text: (Actions.export-recipe.label + "…");
-                    enabled: Actions.export-recipe.enabled;
-                    triggered => { root.export-recipe(); }
+                HorizontalBox {
+                    padding: 0px;
+                    vertical-stretch: 0;
+                    Text {
+                        text: root.duration-field.label;
+                        vertical-alignment: center;
+                    }
+
+                    MetadataField {
+                        field: root.duration-field;
+
+                        reset-key: root.document-reset;
+                        enabled: root.can-edit;
+                        edits-suspended: root.edits-suspended;
+                        accessible-label: Terms.action-saved-duration;
+                        horizontal-stretch: 0;
+                        preferred-width: root.ui-size * 10;
+                        stage-field(owner, value) => { root.stage-metadata(owner, value); }
+                        commit-field(owner, value) => { root.commit-metadata(owner, value); }
+                        restore-field(owner) => { root.restore-metadata(owner); }
+                    }
+
+                    Text {
+                        text: root.fade-field.label;
+                        vertical-alignment: center;
+                    }
+
+                    MetadataField {
+                        field: root.fade-field;
+
+                        reset-key: root.document-reset;
+                        enabled: root.can-edit;
+                        edits-suspended: root.edits-suspended;
+                        accessible-label: Terms.action-saved-fade;
+                        horizontal-stretch: 0;
+                        preferred-width: root.ui-size * 10;
+                        stage-field(owner, value) => { root.stage-metadata(owner, value); }
+                        commit-field(owner, value) => { root.commit-metadata(owner, value); }
+                        restore-field(owner) => { root.restore-metadata(owner); }
+                    }
+
+                    Rectangle { }
                 }
 
-                HorizontalLayout {
+                if root.duration-field.diagnostic != "": Text {
+                    min-width: 0px;
+                    text: root.duration-field.diagnostic;
+                    wrap: word-wrap;
+                    vertical-stretch: 0;
+                }
+                if root.fade-field.diagnostic != "": Text {
+                    min-width: 0px;
+                    text: root.fade-field.diagnostic;
+                    wrap: word-wrap;
+                    vertical-stretch: 0;
+                }
+                HorizontalBox {
+                    padding: 0px;
+                    vertical-stretch: 0;
+                    ExportRate {
+                        horizontal-stretch: 0;
+                        choices: root.export-rates;
+                        selected <=> root.rate-index;
+                        edit-enabled: true;
+                        changed(i) => {
+                            root.rate-changed(i);
+                        }
+                    }
+
+                    Rectangle { }
+                }
+
+                HorizontalBox {
+                    padding: 0px;
+                    vertical-stretch: 0;
                     Button {
                         horizontal-stretch: 0;
                         text: (Actions.export.label + "…");
@@ -556,6 +585,13 @@ export component WorkbenchPane inherits Rectangle {
                         triggered => {
                             root.export-wav();
                         }
+                    }
+
+                    Button {
+                        horizontal-stretch: 0;
+                        text: (Actions.export-recipe.label + "…");
+                        enabled: Actions.export-recipe.enabled;
+                        triggered => { root.export-recipe(); }
                     }
 
                     Rectangle { }
@@ -567,122 +603,55 @@ export component WorkbenchPane inherits Rectangle {
                     wrap: word-wrap;
                     vertical-stretch: 0;
                 }
-                Disclosure {
-                    label: ViewCaptions.sound-notes;
-                    expanded <=> root.notes;
-                }
+            }
 
-                if root.notes: VerticalBox {
+            Section {
+                title: ViewCaptions.sound-notes;
+                ui-size: root.ui-size;
+                if root.based-on != "": Text {
+                    min-width: 0px;
+                    text: root.based-on;
+                    wrap: word-wrap;
                     vertical-stretch: 0;
-                    if root.based-on != "": Text {
-                        min-width: 0px;
-                        text: root.based-on;
-                        wrap: word-wrap;
-                        vertical-stretch: 0;
-                    }
-                    if root.based-on != "": Button {
+                }
+                if root.based-on != "": HorizontalBox {
+                    padding: 0px;
+                    vertical-stretch: 0;
+                    Button {
+                        horizontal-stretch: 0;
                         text: Terms.action-show-copied-from-snapshot-in-library;
                         triggered => {
                             root.based-on-source();
                         }
                     }
-                    Text {
-                        text: Terms.caption-your-notes-about-this-sound;
-                        vertical-stretch: 0;
-                    }
 
-                    NotesField {
-                        field: root.summary-field;
-
-                        reset-key: root.document-reset;
-                        enabled: root.can-edit;
-                        edits-suspended: root.edits-suspended;
-                        accessible-label: Terms.caption-custom-recipe-notes;
-                        stage-field(owner, value) => { root.stage-metadata(owner, value); }
-                        commit-field(owner, value) => { root.commit-metadata(owner, value); }
-                        restore-field(owner) => { root.restore-metadata(owner); }
-                    }
-                }
-                Disclosure {
-                    label: Terms.action-saved-audio-duration-fades-and-export-rate;
-                    expanded <=> root.saved-audio;
+                    Rectangle { }
                 }
 
-                if root.saved-audio: VerticalBox {
-                    vertical-stretch: 0;
-                    Text {
-                        min-width: 0px;
-                        text: Terms.caption-saved-audio-help;
-                        wrap: word-wrap;
-                        vertical-stretch: 0;
-                    }
+                NotesField {
+                    field: root.summary-field;
 
-                    HorizontalBox {
-                        padding: 0px;
-                        vertical-stretch: 0;
-                        Text {
-                            text: root.duration-field.label;
-                            vertical-alignment: center;
-                        }
-
-                        MetadataField {
-                            field: root.duration-field;
-
-                            reset-key: root.document-reset;
-                            enabled: root.can-edit;
-                            edits-suspended: root.edits-suspended;
-                            accessible-label: Terms.action-saved-duration;
-                            horizontal-stretch: 0;
-                            preferred-width: root.ui-size * 10;
-                            stage-field(owner, value) => { root.stage-metadata(owner, value); }
-                            commit-field(owner, value) => { root.commit-metadata(owner, value); }
-                            restore-field(owner) => { root.restore-metadata(owner); }
-                        }
-
-                        Text {
-                            text: root.fade-field.label;
-                            vertical-alignment: center;
-                        }
-
-                        MetadataField {
-                            field: root.fade-field;
-
-                            reset-key: root.document-reset;
-                            enabled: root.can-edit;
-                            edits-suspended: root.edits-suspended;
-                            accessible-label: Terms.action-saved-fade;
-                            horizontal-stretch: 0;
-                            preferred-width: root.ui-size * 10;
-                            stage-field(owner, value) => { root.stage-metadata(owner, value); }
-                            commit-field(owner, value) => { root.commit-metadata(owner, value); }
-                            restore-field(owner) => { root.restore-metadata(owner); }
-                        }
-
-                        Rectangle { }
-                    }
-
-                    if root.duration-field.diagnostic != "": Text {
-                        min-width: 0px;
-                        text: root.duration-field.diagnostic;
-                        wrap: word-wrap;
-                        vertical-stretch: 0;
-                    }
-                    if root.fade-field.diagnostic != "": Text {
-                        min-width: 0px;
-                        text: root.fade-field.diagnostic;
-                        wrap: word-wrap;
-                        vertical-stretch: 0;
-                    }
-                    ExportRate {
-                        choices: root.export-rates;
-                        selected <=> root.rate-index;
-                        edit-enabled: true;
-                        changed(i) => {
-                            root.rate-changed(i);
-                        }
-                    }
+                    reset-key: root.document-reset;
+                    enabled: root.can-edit;
+                    edits-suspended: root.edits-suspended;
+                    accessible-label: Terms.caption-custom-recipe-notes;
+                    stage-field(owner, value) => { root.stage-metadata(owner, value); }
+                    commit-field(owner, value) => { root.commit-metadata(owner, value); }
+                    restore-field(owner) => { root.restore-metadata(owner); }
                 }
             }
+
+            Section {
+                title: Terms.caption-document-location;
+                ui-size: root.ui-size;
+                Text {
+                    text: root.draft-location-details;
+                    min-width: 0px;
+                    wrap: word-wrap;
+                    vertical-stretch: 0;
+                }
+            }
+
             Rectangle {
                 vertical-stretch: 1;
             }
