@@ -152,7 +152,7 @@ export component MainWindow inherits Window {
         if root.learning-visible && !root.monitor-open {
             root.focus-learning();
         } else {
-            monitor-opener.focus-button();
+            transport.focus-monitor();
         }
     }
     in property <bool> can-change-waveform;
@@ -720,8 +720,7 @@ export component MainWindow inherits Window {
         toolbar := HorizontalBox {
             changed preferred-height => { root.update-monitor-layout(); }
             vertical-stretch: 0;
-            min-height: root.ui-size * 3;
-            padding: 4px;
+            padding: 8px;
             workspace-navigation := WorkspaceNavigation {
                 current: root.learning-visible ? 2 : root.tab-index;
                 text-size: root.ui-size;
@@ -763,25 +762,6 @@ export component MainWindow inherits Window {
                 enabled: Actions.save.enabled;
                 accessible-description: root.save-reason;
                 triggered => { root.save-recipe(); }
-            }
-            Rectangle {
-                preferred-width: monitor-opener.visible ? monitor-opener.preferred-width : 0px;
-                min-width: self.preferred-width;
-                max-width: self.preferred-width;
-                preferred-height: monitor-opener.visible ? monitor-opener.preferred-height : 0px;
-                min-height: self.preferred-height;
-                max-height: self.preferred-height;
-                monitor-opener := StableButton {
-                    x: 0px;
-                    y: 0px;
-                    visible: !root.learning-visible || root.monitor-open;
-                    text: root.monitor-open ? Terms.action-hide-monitor : Terms.action-show-monitor;
-                    labels: [Terms.action-hide-monitor, Terms.action-show-monitor];
-                    accessible-name: (root.monitor-open ? Terms.action-hide-output-monitor :
-                        Terms.action-show-output-monitor);
-                    expanded: root.monitor-open;
-                    clicked => { root.monitor-open = !root.monitor-open; root.window-changed(); }
-                }
             }
         }
 
@@ -1062,6 +1042,9 @@ export component MainWindow inherits Window {
 
         transport := TransportBar {
             learning: root.learning-visible;
+            compact: root.compact;
+            monitor-open <=> root.monitor-open;
+            monitor-toggled => { root.window-changed(); }
             exporting: root.exporting;
             export-progress: root.progress;
             cancel-export() => { root.cancel-file(); }

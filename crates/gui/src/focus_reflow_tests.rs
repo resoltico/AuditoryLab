@@ -149,7 +149,11 @@ fn monitor_handoff_and_deactivation_preserve_numeric_entry() {
     ui.invoke_add_component(ui.get_document(), 0);
     let staged = || field_state(&h, ParameterId::ToneFrequency).0;
     let committed = || field_state(&h, ParameterId::ToneFrequency).1;
-    ui.invoke_focus_monitor_opener();
+    WindowInner::from_pub(ui.window()).set_focus_item(
+        &h.field("Sound title"),
+        true,
+        FocusReason::Programmatic,
+    );
     // Navigate the real component tree, proving the target by its staged field.
     for _ in 0..60 {
         h.key(Key::Tab);

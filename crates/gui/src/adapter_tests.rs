@@ -1180,6 +1180,56 @@ fn action_button(ui: &MainWindow, label: &str) -> ItemRc {
     .unwrap_or_else(|| panic!("visible accessible action {label:?}"))
 }
 
+#[test]
+fn toolbar_controls_share_one_height_and_centre_line() {
+    use slint::private_unstable_api::re_exports::AccessibleRole;
+    let h = Harness::new();
+    let ui = h.ui();
+    ui.set_monitor_open(false);
+    ui.window().set_size(slint::LogicalSize::new(1280.0, 900.0));
+    for text_size in [13.0, 26.0] {
+        ui.set_ui_size(text_size);
+        for tab in [0, 1] {
+            ui.invoke_tab_changed(tab);
+            h.settle();
+            let bounds = |item: &ItemRc| {
+                let geometry = item.geometry();
+                let origin = item.map_to_window(geometry.origin);
+                (origin.y, geometry.size.height)
+            };
+            let (tab_y, tab_height) = bounds(&labelled(ui, "Library"));
+            let window = WindowInner::from_pub(ui.window());
+            let mut row = Vec::new();
+            let _ = window.window_item_rc().unwrap().visit_descendants(|item| {
+                if item.is_visible()
+                    && item.is_accessible()
+                    && matches!(
+                        item.accessible_role(),
+                        AccessibleRole::Button | AccessibleRole::Tab
+                    )
+                {
+                    let (y, height) = bounds(item);
+                    if y < tab_y + tab_height && y + height > tab_y {
+                        let label = item
+                            .accessible_string_property(AccessibleStringProperty::Label)
+                            .unwrap_or_default();
+                        row.push((label, y, height));
+                    }
+                }
+                ControlFlow::<()>::Continue(())
+            });
+            assert!(row.len() >= 4, "tabs and page actions share the row: {row:?}");
+            for (label, y, height) in &row {
+                assert!(
+                    (height - tab_height).abs() < 0.5 && (y - tab_y).abs() < 0.5,
+                    "{label:?} at y={y} h={height}; tabs at y={tab_y} h={tab_height} \
+                     (text {text_size}, tab {tab})"
+                );
+            }
+        }
+    }
+}
+
 fn assert_library_play_during_file(save: bool) {
     let (h, dir) = controlled_harness();
     let ui = h.ui();
@@ -2788,6 +2838,7 @@ fn desktop_review_screenshots() {
     std::fs::create_dir_all(&destination).unwrap();
     render_library_review(&h, &destination);
     render_learning_review(&h, &destination);
+    render_workbench_review(&h, &destination);
     assert!(!h.adapter.inspect(|w| w.audio_busy() || w.file_busy()));
 }
 
@@ -2830,6 +2881,31 @@ fn render_library_review(h: &Harness, destination: &std::path::Path) {
         h.settle();
         save_desktop_review_frame(ui, destination, name);
     }
+}
+
+fn render_workbench_review(h: &Harness, destination: &std::path::Path) {
+    use slint::private_unstable_api::re_exports::ColorScheme;
+    let ui = h.ui();
+    ui.set_monitor_open(false);
+    WindowInner::from_pub(ui.window())
+        .context()
+        .set_color_scheme(ColorScheme::Light);
+    ui.set_ui_size(13.0);
+    ui.window().set_size(slint::LogicalSize::new(1280.0, 900.0));
+    h.workbench();
+    save_desktop_review_frame(ui, destination, "workbench-empty");
+    ui.invoke_open_learning(3);
+    h.settle();
+    ui.invoke_create_learning_example();
+    h.settle();
+    save_desktop_review_frame(ui, destination, "workbench-example");
+    ui.set_ui_size(26.0);
+    ui.window().set_size(slint::LogicalSize::new(800.0, 600.0));
+    h.settle();
+    save_desktop_review_frame(ui, destination, "workbench-example-large");
+    ui.set_ui_size(13.0);
+    ui.invoke_tab_changed(0);
+    h.settle();
 }
 
 fn render_learning_review(h: &Harness, destination: &std::path::Path) {

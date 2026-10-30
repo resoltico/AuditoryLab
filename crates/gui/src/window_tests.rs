@@ -1114,7 +1114,8 @@ slint::slint! {
         in property <string> family;
         in property <length> size;
         default-font-family:root.family;default-font-size:root.size;
-        out property <length> natural-height:max(measure.min-height,measure.preferred-height);
+        // The application's single control height: 2.5 times the text size, at least 32px.
+        out property <length> natural-height:max(32px, 2.5rem);
         out property <length> widget-minimum-height:measure.min-height;
         out property <length> widget-preferred-height:measure.preferred-height;
         measure := Button {text:"Details…";}

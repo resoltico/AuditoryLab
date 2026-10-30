@@ -285,8 +285,8 @@ export component StableButton inherits Rectangle {
     preferred-width: root.stable-width;
     max-width: root.stable-width;
     min-height: button.min-height;
-    preferred-height: button.preferred-height;
-    max-height: button.preferred-height;
+    preferred-height: button.min-height;
+    max-height: button.min-height;
     horizontal-stretch: 0;
     measure := VerticalLayout {
         visible: false;

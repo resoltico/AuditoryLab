@@ -10,8 +10,7 @@ macro_rules! chrome {
 }
 chrome! {
     Action {
-        ShowMonitor => ("action-show-monitor", "Show monitor"),
-        HideMonitor => ("action-hide-monitor", "Hide monitor"),
+        Monitor => ("action-monitor", "Monitor"),
         Quit => ("action-quit", "Quit"),
         Licenses => ("action-licenses", "Licenses"),
         PurgeConfirmation => ("action-purge-confirmation", "Permanently delete saved recipe?"),
@@ -121,6 +120,7 @@ chrome! {
         SamplesCommonSymmetricScale => ("caption-samples-common-symmetric-scale", " samples, \
             common symmetric scale ±"),
         DetailsDialog => ("caption-details-dialog", "Details…"),
+        AudioDetailsDialog => ("caption-audio-details-dialog", "Audio details…"),
         FullAudioDiagnosticsAndCaptureSource => ("caption-full-audio-diagnostics-and-capture-sourc\
             e", "Full \
             audio diagnostics and capture source"),
