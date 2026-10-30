@@ -1,4 +1,4 @@
-schema_version = 4
+schema_version = 5
 
 [document]
 id = "00000000-0000-4000-8000-000000000005"
@@ -7,17 +7,22 @@ id = "00000000-0000-4000-8000-000000000005"
 title = "6 Hz interaural tone pair"
 notes = "Selected study sound condition. Requires separate left/right presentation."
 
-[sound]
+[timing]
 duration_seconds = 60.0
 fade_seconds = 0.1
 
 [[sound.component]]
-kind = "binaural_pair"
 id = 1
-left_hz = 200.0
+
+[sound.component.source]
+kind = "binaural_pair"
+first_hz = 200.0
 offset_hz = 6.0
-left_peak_dbfs = -20.0
-right_peak_dbfs = -20.0
+first_peak_dbfs = -20.0
+second_peak_dbfs = -20.0
+
+[sound.component.modulation]
+kind = "none"
 
 [[source]]
 key = "ioannou-2015"

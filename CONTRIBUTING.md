@@ -38,7 +38,7 @@ After other builds/tests finish, run once on the intended source:
 cargo test -p auditorylab-app --profile dist --locked callback_cost -- --ignored --nocapture
 ```
 
-This opens no device. It warms up 100 callbacks and measures 3,000 per configuration, using distinct carrier/modulation schedules, full target replacements and bounded transition slots. Coverage includes 48/768 kHz, 64/256/1024/4096 frames and none/quantities/waveform monitoring. The median must fit half the buffer period; p99/maximum are reported. Investigate a failure before rerunning or changing its limit.
+This opens no device. It warms up 100 callbacks and measures 3,000 per configuration, using distinct carrier/modulation schedules, full target replacements and atomic components and at most 32 lane-equivalents during transitions. Coverage includes source and shared-pair families, rectangular/shaped pulse intent, f32 device conversion, 48/768 kHz, 64/256/1024/4096 frames and none/quantities/waveform monitoring. The median must fit half the buffer period; p99/maximum are reported. Investigate a failure before rerunning or changing its limit.
 
 ## Mutation testing
 

@@ -40,8 +40,8 @@ fn display_preserves_stable_identifiers_and_nested_sources_preserve_types() {
     for (error, code) in [
         (StructureError::Identity { id }, "structure.identity"),
         (
-            StructureError::ComponentBudget { count: 17 },
-            "structure.component_budget",
+            StructureError::VoiceBudget { count: 17 },
+            "structure.voice_budget",
         ),
         (
             StructureError::VoiceBudget { count: 18 },
@@ -66,7 +66,7 @@ fn display_preserves_stable_identifiers_and_nested_sources_preserve_types() {
         Some(&issue)
     );
     let voice = VoiceError::Frequency {
-        parameter: P::GateRate,
+        parameter: P::ModulationPulseRate,
         hz: 24_000.0,
         sample_rate_hz: 48_000,
     };
@@ -101,7 +101,12 @@ fn display_preserves_stable_identifiers_and_nested_sources_preserve_types() {
 
 #[test]
 fn frequency_failures_identify_their_own_quantity() {
-    for parameter in [P::ToneFrequency, P::ClickRate, P::AmRate, P::GateRate] {
+    for parameter in [
+        P::ToneFrequency,
+        P::SourcePulseRate,
+        P::ModulationRate,
+        P::ModulationPulseRate,
+    ] {
         let error = VoiceError::Frequency {
             parameter,
             hz: 24_000.0,

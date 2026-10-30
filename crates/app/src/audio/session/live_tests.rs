@@ -3,14 +3,18 @@ use crate as auditorylab_app;
 use crate::audio::session::{LiveGenerator, LiveUpdateError};
 use crate::test_recipes as common;
 use crate::workspace::controls;
-use auditorylab_app::core::{CarrierKind, ComponentForm, Ears, ParameterId, SampleRate, Target};
+use auditorylab_app::core::{
+    CarrierKind, ChannelRouting, ComponentForm, ParameterId, SampleRate, Target,
+};
 use auditorylab_app::document::editing::Draft;
 
-fn component(frequency_hz: f64, ears: Ears) -> ComponentForm {
-    ComponentForm::Tone {
-        frequency_hz: finite(frequency_hz),
-        ears,
-        peak_dbfs: finite(-30.0),
+fn component(frequency_hz: f64, route: ChannelRouting) -> ComponentForm {
+    ComponentForm {
+        source: auditorylab_core::SoundSource::Tone {
+            frequency_hz: finite(frequency_hz),
+            route,
+            peak_dbfs: finite(-30.0),
+        },
         modulation: None,
     }
 }
@@ -31,7 +35,7 @@ fn difference(generator: &LiveGenerator) -> f64 {
         .flatten()
         .filter_map(|voice| match voice.facts.carrier {
             auditorylab_app::core::CarrierFacts::Tone(rate) => Some(rate.realized_hz),
-            auditorylab_app::core::CarrierFacts::Clicks(_) => None,
+            auditorylab_app::core::CarrierFacts::PulseTrain(_) => None,
         })
         .collect();
     assert_eq!(rates.len(), 2);
@@ -47,8 +51,12 @@ fn generated_quantities_follow_accepted_definitions_and_metadata_does_not_retarg
     let right = draft
         .add_node(controls::default_component(CarrierKind::Tone))
         .unwrap();
-    draft.replace(left, component(380.0, Ears::Left)).unwrap();
-    draft.replace(right, component(420.0, Ears::Right)).unwrap();
+    draft
+        .replace(left, component(380.0, ChannelRouting::Left))
+        .unwrap();
+    draft
+        .replace(right, component(420.0, ChannelRouting::Right))
+        .unwrap();
     let mut generator = LiveGenerator::new(&(target(&draft)));
     let control = generator.control();
     assert_eq!(control.update(&target(&draft)).unwrap(), 1);
@@ -62,14 +70,20 @@ fn generated_quantities_follow_accepted_definitions_and_metadata_does_not_retarg
         1,
         "metadata is not part of the target"
     );
-    draft.replace(right, component(428.0, Ears::Right)).unwrap();
+    draft
+        .replace(right, component(428.0, ChannelRouting::Right))
+        .unwrap();
     assert_eq!(control.update(&target(&draft)).unwrap(), 2);
     generator.render(&mut [[0.0; 2]; 720]);
     let mid = difference(&generator);
     assert!(mid > 40.0 && mid < 48.0);
-    draft.replace(right, component(439.0, Ears::Right)).unwrap();
+    draft
+        .replace(right, component(439.0, ChannelRouting::Right))
+        .unwrap();
     assert_eq!(control.update(&target(&draft)).unwrap(), 3);
-    draft.replace(right, component(448.0, Ears::Right)).unwrap();
+    draft
+        .replace(right, component(448.0, ChannelRouting::Right))
+        .unwrap();
     assert_eq!(control.update(&target(&draft)).unwrap(), 4);
     generator.render(&mut std::vec![[0.0; 2]; 4000]);
     let settled = generator.observation().unwrap();
@@ -77,7 +91,7 @@ fn generated_quantities_follow_accepted_definitions_and_metadata_does_not_retarg
     assert_eq!(difference(&generator), 68.0);
     // An invalid edit never becomes a target, so nothing changes.
     draft
-        .replace(right, component(30_000.0, Ears::Right))
+        .replace(right, component(30_000.0, ChannelRouting::Right))
         .unwrap();
     assert!(draft.check(SampleRate::DEFAULT).target().is_none());
     assert_eq!(generator.observation().unwrap(), settled);
@@ -96,28 +110,38 @@ fn generated_interaural_structure_ignores_titles_and_rejects_other_mixtures() {
     for (voices, expected) in [
         (vec![], false),
         (
-            vec![component(380.0, Ears::Both), component(420.0, Ears::Both)],
+            vec![
+                component(380.0, ChannelRouting::Both),
+                component(420.0, ChannelRouting::Both),
+            ],
             false,
         ),
         (
-            vec![component(380.0, Ears::Left), component(420.0, Ears::Right)],
+            vec![
+                component(380.0, ChannelRouting::Left),
+                component(420.0, ChannelRouting::Right),
+            ],
             false,
         ),
     ] {
         let mut recipe = common::silent(1.0, 0.0).into_builder();
-        recipe.content.sound = auditorylab_core::Sound::new(
-            recipe.content.sound.duration_seconds(),
-            recipe.content.sound.fade_seconds(),
-            voices
-                .into_iter()
-                .enumerate()
-                .map(|(index, voice)| auditorylab_app::core::Component {
-                    id: auditorylab_app::core::ComponentId::numbered(index).unwrap(),
-                    form: voice,
-                })
-                .collect(),
-        )
-        .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
+        recipe.content.sound = {
+            let fixture = auditorylab_core::test_support::FiniteFixture::new(
+                recipe.content.timing.duration_seconds,
+                recipe.content.timing.fade_seconds,
+                voices
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, voice)| auditorylab_app::core::Component {
+                        id: auditorylab_app::core::ComponentId::numbered(index).unwrap(),
+                        form: voice,
+                    })
+                    .collect(),
+            )
+            .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
+            recipe.content.timing = fixture.timing;
+            fixture.sound
+        };
         let snapshot = auditorylab_app::services::read_source(
             recipe.build().unwrap().to_toml().unwrap().as_bytes(),
             "called binaural even if not a pair",
@@ -127,7 +151,7 @@ fn generated_interaural_structure_ignores_titles_and_rejects_other_mixtures() {
         let observation = sound.signal().observation(0).unwrap();
         assert_eq!(
             auditorylab_app::core::rhythm::realized(&observation)
-                .interaural()
+                .binaural_carriers()
                 .is_some(),
             expected
         );

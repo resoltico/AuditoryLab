@@ -156,13 +156,12 @@ pub(crate) fn further_evidence(recipe: &Recipe) -> String {
 #[must_use]
 pub fn component(component: &Component) -> String {
     let form = component.form;
-    if let Some(pair) = form.pair() {
-        let kind = form
-            .pair_kind()
-            .unwrap_or_else(|| unreachable!("pair kind"));
+    let mut text = if let Some(pair) = form.pair() {
         format!(
             "{}, first {} Hz, beat offset {} Hz, second {} Hz, peaks {} / {} dBFS",
-            kind.phrase(),
+            form.pair_kind()
+                .unwrap_or_else(|| unreachable!("pair source"))
+                .phrase(),
             pair.first_hz,
             pair.offset_hz,
             pair.first_hz.get() + pair.offset_hz.get(),
@@ -171,51 +170,43 @@ pub fn component(component: &Component) -> String {
         )
     } else {
         voice(form)
-    }
-}
-
-fn voice(form: ComponentForm) -> String {
-    let carrier = match form {
-        ComponentForm::Tone { frequency_hz, .. } => format!(
-            "{} {frequency_hz} Hz",
-            auditorylab_core::CarrierKind::Tone.phrase()
-        ),
-        ComponentForm::Clicks {
-            rate_hz,
-            width_seconds,
-            ..
-        } => format!(
-            "{} {rate_hz} Hz, {width_seconds} s wide",
-            auditorylab_core::CarrierKind::Clicks.phrase()
-        ),
-        _ => unreachable!("primitive description"),
     };
-    let mut text = format!(
+    if let Some(modulation) = form.modulation {
+        let _ = write!(
+            text,
+            ", {}",
+            match modulation {
+                Modulation::Sinusoidal { rate_hz, depth } => format!(
+                    "sinusoidal AM {rate_hz} Hz, depth {}%",
+                    crate::compact_number(depth.get() * 100.0)
+                ),
+                Modulation::Pulsed { pulse } => format!(
+                    "shared pulsed modulation {}",
+                    crate::sound::pulse_spec(pulse)
+                ),
+            }
+        );
+    }
+    text
+}
+fn voice(form: ComponentForm) -> String {
+    let carrier = match form.source {
+        auditorylab_core::SoundSource::Tone { frequency_hz, .. } => {
+            format!("tone {frequency_hz} Hz")
+        }
+        auditorylab_core::SoundSource::PulseTrain { pulse, .. } => {
+            format!("pulse train {}", crate::sound::pulse_spec(pulse))
+        }
+        _ => unreachable!("primitive source"),
+    };
+    format!(
         "{carrier}, peak {} dBFS, {}",
         form.get(auditorylab_core::ParameterId::PeakLevel)
             .unwrap_or_else(|| unreachable!("primitive level")),
         form.route()
             .unwrap_or_else(|| unreachable!("primitive route"))
             .phrase()
-    );
-    if let Some(modulation) = form.modulation() {
-        let _ = write!(
-            text,
-            ", {}",
-            match modulation {
-                Modulation::Am { rate_hz, depth } =>
-                    format!("{} {rate_hz} Hz, depth {depth}", modulation.kind().phrase()),
-                Modulation::Gate {
-                    rate_hz,
-                    width_seconds,
-                } => format!(
-                    "{} {rate_hz} Hz, {width_seconds} s open",
-                    modulation.kind().phrase()
-                ),
-            }
-        );
-    }
-    text
+    )
 }
 
 /// Derived descriptions of immutable snapshot content.

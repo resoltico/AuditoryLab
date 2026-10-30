@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use super::*;
-use crate::{CarrierFacts, Ears, Modulation, ModulationFacts, ParameterId, Voice};
+use crate::{
+    CarrierFacts, ChannelRouting, ComponentForm, Modulation, ModulationFacts, ParameterId,
+};
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -14,32 +16,38 @@ fn id(n: u32) -> crate::ComponentId {
     crate::ComponentId::new(n).unwrap()
 }
 
-fn tone(frequency_hz: f64, peak_dbfs: f64) -> Voice {
-    Voice {
-        ears: Ears::Both,
-        peak_dbfs,
-        carrier: crate::Carrier::Tone { frequency_hz },
-        modulation: None,
-    }
-}
-
-fn clicks(rate_hz: f64, width_seconds: f64) -> Voice {
-    Voice {
-        ears: Ears::Both,
-        peak_dbfs: -30.0,
-        carrier: crate::Carrier::Clicks {
-            rate_hz,
-            width_seconds,
+fn tone(frequency_hz: f64, peak_dbfs: f64) -> ComponentForm {
+    crate::ComponentForm {
+        source: crate::SoundSource::Tone {
+            route: ChannelRouting::Both,
+            peak_dbfs: crate::test_support::finite(peak_dbfs),
+            frequency_hz: crate::test_support::finite(frequency_hz),
         },
         modulation: None,
     }
 }
 
-fn gate(width_seconds: f64) -> Voice {
-    Voice {
-        modulation: Some(Modulation::Gate {
-            rate_hz: crate::test_support::finite(40.0),
-            width_seconds: crate::test_support::finite(width_seconds),
+fn clicks(rate_hz: f64, width_seconds: f64) -> ComponentForm {
+    crate::ComponentForm {
+        source: crate::SoundSource::PulseTrain {
+            route: ChannelRouting::Both,
+            peak_dbfs: crate::test_support::finite(-30.0),
+            pulse: crate::test_support::rectangular_pulse(rate_hz, width_seconds),
+        },
+        modulation: None,
+    }
+}
+
+fn gate(width_seconds: f64) -> ComponentForm {
+    crate::ComponentForm {
+        modulation: Some(Modulation::Pulsed {
+            pulse: crate::PulseSpec {
+                rate_hz: crate::test_support::finite(40.0),
+                width: crate::PulseWidth::Duration {
+                    seconds: crate::test_support::finite(width_seconds),
+                },
+                shape: crate::PulseShape::Rectangular {},
+            },
         }),
         ..tone(1000.0, -30.0)
     }
@@ -56,7 +64,7 @@ fn requested_and_realized_pulse_widths_keep_their_rate() {
     ] {
         let check = crate::test_support::check(rate(hz), &[(id(1), component)]);
         let facts = check.voices()[0].1.as_ref().unwrap();
-        let ((CarrierFacts::Clicks(pulse), _) | (_, Some(ModulationFacts::Gate(pulse)))) =
+        let ((CarrierFacts::PulseTrain(pulse), _) | (_, Some(ModulationFacts::Pulsed(pulse)))) =
             (facts.carrier, facts.modulation)
         else {
             panic!("pulse facts")
@@ -96,7 +104,12 @@ fn one_pass_reports_every_row_and_keeps_the_first_whole_target_error() {
             (id(3).into(), Some(&[ParameterId::PeakLevel][..])),
             (
                 id(4).into(),
-                Some(&[ParameterId::ClickRate, ParameterId::ClickWidth][..])
+                Some(
+                    &[
+                        ParameterId::SourcePulseRate,
+                        ParameterId::SourcePulseDuration
+                    ][..]
+                )
             ),
         ]
     );
@@ -111,15 +124,15 @@ fn one_pass_reports_every_row_and_keeps_the_first_whole_target_error() {
         }) if *voice_id == id(1).into()
     ));
     // Coupled and modulation constraints name every participating quantity.
-    let sideband = Voice {
-        modulation: Some(Modulation::Am {
+    let sideband = crate::ComponentForm {
+        modulation: Some(Modulation::Sinusoidal {
             rate_hz: crate::test_support::finite(10_000.0),
             depth: crate::test_support::finite(0.5),
         }),
         ..tone(16_000.0, -30.0)
     };
-    let depth = Voice {
-        modulation: Some(Modulation::Am {
+    let depth = crate::ComponentForm {
+        modulation: Some(Modulation::Sinusoidal {
             rate_hz: crate::test_support::finite(40.0),
             depth: crate::test_support::finite(1.5),
         }),
@@ -129,12 +142,15 @@ fn one_pass_reports_every_row_and_keeps_the_first_whole_target_error() {
     for (component, parameters) in [
         (
             sideband,
-            &[ParameterId::ToneFrequency, ParameterId::AmRate][..],
+            &[ParameterId::ToneFrequency, ParameterId::ModulationRate][..],
         ),
-        (depth, &[ParameterId::AmDepth][..]),
+        (depth, &[ParameterId::ModulationDepth][..]),
         (
             gate_width,
-            &[ParameterId::GateRate, ParameterId::GateWidth][..],
+            &[
+                ParameterId::ModulationPulseRate,
+                ParameterId::ModulationPulseDuration,
+            ][..],
         ),
     ] {
         let check = crate::test_support::check(rate(48_000), &[(id(9), component)]);
@@ -153,39 +169,46 @@ fn identity_count_and_mix_errors_stay_global_with_their_established_precedence()
     );
     // Left precedes right; neither is attributed to a field.
     let loud = [
-        (
-            id(1),
-            Voice {
-                ears: Ears::Right,
-                ..tone(440.0, -3.0)
-            },
-        ),
-        (
-            id(2),
-            Voice {
-                ears: Ears::Right,
-                ..tone(441.0, -3.0)
-            },
-        ),
-        (
-            id(3),
-            Voice {
-                ears: Ears::Left,
-                ..tone(442.0, -3.0)
-            },
-        ),
-        (
-            id(4),
-            Voice {
-                ears: Ears::Left,
-                ..tone(443.0, -3.0)
-            },
-        ),
+        (id(1), {
+            let mut value = tone(440.0, -3.0);
+            let crate::SoundSource::Tone { route, .. } = &mut value.source else {
+                panic!("tone fixture")
+            };
+            *route = ChannelRouting::Right;
+            value
+        }),
+        (id(2), {
+            let mut value = tone(441.0, -3.0);
+            let crate::SoundSource::Tone { route, .. } = &mut value.source else {
+                panic!("tone fixture")
+            };
+            *route = ChannelRouting::Right;
+            value
+        }),
+        (id(3), {
+            let mut value = tone(442.0, -3.0);
+            let crate::SoundSource::Tone { route, .. } = &mut value.source else {
+                panic!("tone fixture")
+            };
+            *route = ChannelRouting::Left;
+            value
+        }),
+        (id(4), {
+            let mut value = tone(443.0, -3.0);
+            let crate::SoundSource::Tone { route, .. } = &mut value.source else {
+                panic!("tone fixture")
+            };
+            *route = ChannelRouting::Left;
+            value
+        }),
     ];
     let check = crate::test_support::check(rate(48_000), &loud);
     assert!(matches!(
         check.result(),
-        Err(SoundError::Peak { ear: Ear::Left, .. })
+        Err(SoundError::Peak {
+            channel: Channel::Left,
+            ..
+        })
     ));
     assert_eq!(check.result().unwrap_err().parameters(), []);
     assert!(check.voices().iter().all(|(_, row)| row.is_ok()));
@@ -197,7 +220,7 @@ fn identity_count_and_mix_errors_stay_global_with_their_established_precedence()
         if count > Sound::MAX_COMPONENTS {
             assert_eq!(
                 crate::test_support::sound(&rows),
-                Err(crate::StructureError::ComponentBudget { count })
+                Err(crate::StructureError::VoiceBudget { count })
             );
         } else {
             assert_eq!(
@@ -212,7 +235,7 @@ fn identity_count_and_mix_errors_stay_global_with_their_established_precedence()
 
 #[test]
 fn finite_entry_points_select_envelope_errors_before_voice_errors() {
-    let sound = Sound::new(
+    let sound = crate::test_support::FiniteFixture::new(
         crate::test_support::finite(0.0),
         crate::test_support::finite(0.0),
         (vec![tone(30_000.0, -30.0)])
@@ -220,7 +243,7 @@ fn finite_entry_points_select_envelope_errors_before_voice_errors() {
             .enumerate()
             .map(|(index, voice)| crate::Component {
                 id: crate::ComponentId::numbered(index).unwrap(),
-                form: crate::test_support::form(voice),
+                form: voice,
             })
             .collect(),
     )
@@ -236,7 +259,7 @@ fn finite_entry_points_select_envelope_errors_before_voice_errors() {
     // An already valid target checks only its envelope.
     let target = {
         let base = sound.clone();
-        Sound::new(
+        crate::test_support::FiniteFixture::new(
             base.duration_seconds(),
             base.fade_seconds(),
             (vec![tone(440.0, -30.0)])
@@ -244,7 +267,7 @@ fn finite_entry_points_select_envelope_errors_before_voice_errors() {
                 .enumerate()
                 .map(|(index, voice)| crate::Component {
                     id: crate::ComponentId::numbered(index).unwrap(),
-                    form: crate::test_support::form(voice),
+                    form: voice,
                 })
                 .collect(),
         )
@@ -277,7 +300,7 @@ fn finite_entry_points_select_envelope_errors_before_voice_errors() {
 
 #[test]
 fn a_valid_mix_with_zero_duration_is_a_target_but_not_a_finite_signal() {
-    let sound = Sound::new(
+    let sound = crate::test_support::FiniteFixture::new(
         crate::test_support::finite(0.0),
         crate::test_support::finite(0.0),
         (vec![tone(440.0, -30.0), clicks(40.0, 0.001)])
@@ -285,7 +308,7 @@ fn a_valid_mix_with_zero_duration_is_a_target_but_not_a_finite_signal() {
             .enumerate()
             .map(|(index, voice)| crate::Component {
                 id: crate::ComponentId::numbered(index).unwrap(),
-                form: crate::test_support::form(voice),
+                form: voice,
             })
             .collect(),
     )
@@ -302,7 +325,7 @@ fn a_valid_mix_with_zero_duration_is_a_target_but_not_a_finite_signal() {
     assert_eq!(ids, [id(1).into(), id(2).into()]);
     let via_sound = {
         let base = sound.clone();
-        Sound::new(
+        crate::test_support::FiniteFixture::new(
             crate::test_support::finite(1.0),
             crate::test_support::finite(0.1),
             base.components().to_vec(),
@@ -374,19 +397,22 @@ fn voice_error_retains_the_owner_after_pair_expansion_and_without_a_pair() {
     use crate::{Component, ComponentForm, Lane};
     let bad = Component {
         id: id(9),
-        form: crate::test_support::form(tone(30_000.0, -20.0)),
+        form: tone(30_000.0, -20.0),
     };
     let pair = Component {
         id: id(7),
-        form: ComponentForm::BinauralPair {
-            left_hz: crate::test_support::finite(200.0),
-            offset_hz: crate::test_support::finite(10.0),
-            left_peak_dbfs: crate::test_support::finite(-20.0),
-            right_peak_dbfs: crate::test_support::finite(-20.0),
+        form: ComponentForm {
+            source: crate::SoundSource::BinauralPair {
+                first_hz: crate::test_support::finite(200.0),
+                offset_hz: crate::test_support::finite(10.0),
+                first_peak_dbfs: crate::test_support::finite(-20.0),
+                second_peak_dbfs: crate::test_support::finite(-20.0),
+            },
+            modulation: None,
         },
     };
     for components in [vec![pair, bad], vec![bad]] {
-        let sound = Sound::new(
+        let sound = crate::test_support::FiniteFixture::new(
             crate::test_support::finite(1.0),
             crate::test_support::finite(0.0),
             components,

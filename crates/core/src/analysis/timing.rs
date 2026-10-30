@@ -10,11 +10,11 @@ use alloc::vec::Vec;
 pub enum ModelKind {
     /// A continuous carrier, with no invented low-rate pulsing.
     Steady,
-    /// Exact frame-quantized click schedule.
-    Clicks,
-    /// Exact frame-quantized gate schedule.
-    Gate,
-    /// Am amplitude envelope bounds, not carrier waveform samples.
+    /// Exact frame-quantized pulse-source envelope.
+    PulseTrain,
+    /// Shared frame-quantized pulse-modulation envelope.
+    Pulsed,
+    /// Sinusoidal amplitude envelope bounds, not carrier waveform samples.
     Envelope,
 }
 /// One independently attributed process. Dense periods aggregate into bounded columns.
@@ -63,7 +63,17 @@ pub(crate) fn project(mix: &CompiledMix, bins: usize) -> TimingModel {
     };
     for entry in mix.entries() {
         let (id, voice, facts) = (entry.id, &entry.voice, &entry.facts);
-        if voice.amplitude == 0.0 {
+        if !mix
+            .components()
+            .find(|component| component.id == id.component)
+            .is_some_and(|component| {
+                component
+                    .lanes
+                    .iter()
+                    .flatten()
+                    .any(|lane| lane.voice.amplitude > 0.0)
+            })
+        {
             continue;
         }
         let mut lane = |kind, envelope: &dyn Fn(u64, u64) -> Extent| {
@@ -83,11 +93,18 @@ pub(crate) fn project(mix: &CompiledMix, bins: usize) -> TimingModel {
             });
         };
         if let Carrier::Pulse(pulse) = voice.carrier {
-            lane(ModelKind::Clicks, &|s, e| pulse.extent(s, e));
+            lane(ModelKind::PulseTrain, &|s, e| pulse.extent(s, e));
         }
-        match voice.modulation {
-            Some(Modulator::Gate(pulse)) => lane(ModelKind::Gate, &|s, e| pulse.extent(s, e)),
-            Some(Modulator::Am { step, depth }) if depth > 0.0 => {
+        let modulation = if id.lane == crate::Lane::Primary {
+            mix.components()
+                .find(|component| component.id == id.component)
+                .and_then(|component| component.modulation)
+        } else {
+            None
+        };
+        match modulation {
+            Some(Modulator::Pulsed(pulse)) => lane(ModelKind::Pulsed, &|s, e| pulse.extent(s, e)),
+            Some(Modulator::Sinusoidal { step, depth }) if depth > 0.0 => {
                 lane(ModelKind::Envelope, &|s, e| envelope(step, depth, s, e));
             }
             _ if matches!(voice.carrier, Carrier::Tone { .. }) => {

@@ -104,8 +104,8 @@ impl SearchIndex {
             facts.push(band.key().into());
         }
         let mut numbers = vec![
-            recipe.sound().duration_seconds().get(),
-            recipe.sound().fade_seconds().get(),
+            recipe.timing().duration_seconds.get(),
+            recipe.timing().fade_seconds.get(),
         ];
         for component in recipe.sound().components() {
             component_terms(component, &mut facts, &mut numbers);
@@ -194,9 +194,9 @@ const fn method_search_terms(method: Method) -> &'static str {
     match method {
         Method::Binaural => "binaural interaural pair",
         Method::Monaural => "monaural pair",
-        Method::Clicks => "click clicks",
-        Method::Gate => "gate gated rectangular",
-        Method::Am => "am amplitude modulation sinusoidal",
+        Method::PulseTrain => "pulse train repetition",
+        Method::Pulsed => "pulse pulsed modulation",
+        Method::Sinusoidal => "am amplitude modulation sinusoidal",
         Method::SteadyTone => "steady tone",
     }
 }
@@ -405,42 +405,38 @@ fn component_terms(
     facts: &mut Vec<String>,
     numbers: &mut Vec<f64>,
 ) {
-    use crate::core::{Ears, Modulation, ParameterId};
+    use crate::core::{ChannelRouting, Modulation, ParameterId, SoundSource};
 
     let form = component.form;
-    if let Some(kind) = form.primitive_kind() {
-        facts.push(
-            match kind {
-                crate::core::CarrierKind::Tone => "tone carrier frequency",
-                crate::core::CarrierKind::Clicks => "click clicks rate width",
-            }
-            .into(),
-        );
-        if let Some(modulation) = form.modulation() {
-            facts.push(
-                match modulation {
-                    Modulation::Am { .. } => "sinusoidal amplitude modulation am depth rate",
-                    Modulation::Gate { .. } => "rectangular gate rate width",
-                }
-                .into(),
-            );
+    let source = match form.source {
+        SoundSource::Tone { .. } => "tone carrier frequency",
+        SoundSource::PulseTrain { pulse, .. } => {
+            pulse_terms(pulse, facts);
+            "pulse train repetition"
         }
-    } else {
-        facts.push(
-            if form.route().is_none() {
-                "pair left right"
-            } else {
-                "pair"
+        SoundSource::BinauralPair { .. } => "pair left right",
+        SoundSource::MonauralPair { .. } => "pair",
+    };
+    facts.push(source.into());
+    if let Some(modulation) = form.modulation {
+        let modulation = match modulation {
+            Modulation::Sinusoidal { .. } => "sinusoidal amplitude modulation am depth rate",
+            Modulation::Pulsed { pulse } => {
+                pulse_terms(pulse, facts);
+                if matches!(form.source, SoundSource::Tone { .. }) {
+                    facts.push(crate::core::vocabulary::PULSED_TONE.phrase.into());
+                }
+                "pulse pulsed modulation"
             }
-            .into(),
-        );
+        };
+        facts.push(modulation.into());
     }
-    if let Some(ears) = form.route() {
+    if let Some(route) = form.route() {
         facts.push(
-            match ears {
-                Ears::Left => "left",
-                Ears::Right => "right",
-                Ears::Both => "both ears",
+            match route {
+                ChannelRouting::Left => "left",
+                ChannelRouting::Right => "right",
+                ChannelRouting::Both => "both channels",
             }
             .into(),
         );
@@ -454,4 +450,22 @@ fn component_terms(
     if let Some(pair) = component.form.pair() {
         numbers.push(pair.first_hz.get() + pair.offset_hz.get());
     }
+}
+
+fn pulse_terms(pulse: crate::core::PulseSpec, facts: &mut Vec<String>) {
+    use crate::core::{PulseShape, PulseWidth};
+    facts.push(
+        match pulse.width {
+            PulseWidth::Duration { .. } => "duration seconds width",
+            PulseWidth::DutyCycle { .. } => "duty cycle fraction width",
+        }
+        .into(),
+    );
+    facts.push(
+        match pulse.shape {
+            PulseShape::Rectangular {} => "rectangular",
+            PulseShape::RaisedCosine { .. } => "raised_cosine raised cosine rise fall",
+        }
+        .into(),
+    );
 }

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use super::*;
-use auditorylab_core::{ComponentForm, ComponentId, Ears, SampleRate, Target};
+use auditorylab_core::{ChannelRouting, ComponentForm, ComponentId, SampleRate, Target};
 use std::sync::Barrier;
 
 const TERMINALS: [Outcome; 11] = [
@@ -20,15 +20,17 @@ const TERMINALS: [Outcome; 11] = [
 ];
 
 fn tone(frequency_hz: f64) -> Target {
-    crate::core::Sound::new(
+    auditorylab_core::test_support::FiniteFixture::new(
         finite(1.0),
         finite(0.0),
         vec![crate::core::Component {
             id: ComponentId::new(1).unwrap(),
-            form: ComponentForm::Tone {
-                frequency_hz: finite(frequency_hz),
-                ears: Ears::Both,
-                peak_dbfs: finite(-30.0),
+            form: ComponentForm {
+                source: auditorylab_core::SoundSource::Tone {
+                    frequency_hz: finite(frequency_hz),
+                    route: ChannelRouting::Both,
+                    peak_dbfs: finite(-30.0),
+                },
                 modulation: None,
             },
         }],

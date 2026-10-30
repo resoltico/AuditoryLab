@@ -1,13 +1,13 @@
 # Formats
 
-Auditory Lab reads recipe schema **4**, emits CLI JSON output **2**, uses nominal classifier revision **2**, and stores User Library layout **1**. These are separate contracts.
+Auditory Lab reads recipe schema **5**, emits CLI JSON output **3**, uses nominal classifier revision **3**, and stores User Library layout **1**. These are separate contracts.
 
 ## Recipe schema
 
-A portable recipe is UTF-8 TOML, at most 65,536 bytes including metadata. A UTF-8 byte-order mark is accepted. Unsupported versions, unknown/duplicate keys, mistyped fields and nonfinite numbers are rejected. A required `[sound]` table contains the finite envelope and ordered components. Nonfinite numeric input produces a format error naming its key, line and column.
+A portable recipe is UTF-8 TOML, at most 65,536 bytes including metadata. A UTF-8 byte-order mark is accepted. Unsupported versions, unknown/duplicate keys, mistyped fields and nonfinite numbers are rejected. Required `[sound]` and `[timing]` tables separate ordered sound components from finite duration and overall fade. Nonfinite numeric input produces a format error naming its key, line and column.
 
 ```toml
-schema_version = 4
+schema_version = 5
 
 [document]
 id = "00000000-0000-4000-8000-000000000001"
@@ -15,9 +15,11 @@ id = "00000000-0000-4000-8000-000000000001"
 [description]
 title = "Silent example"
 
-[sound]
+[timing]
 duration_seconds = 2.0
 fade_seconds = 0.01
+
+[sound]
 component = []
 ```
 
@@ -25,39 +27,42 @@ Use New or Edit a copy in the desktop, or CLI `library add --as-copy`, to alloca
 
 | Section / field | Contract |
 | --- | --- |
-| `schema_version` | Required integer, exactly 4. |
+| `schema_version` | Required integer, exactly 5. |
 | `[document] id` | Required canonical lowercase UUIDv4. |
 | `document.created_at`, `document.modified_at` | Optional declared history; omission means Unknown. |
 | `[description] title`, `notes` | Optional section; a supplied title must be nonempty. Notes are optional. |
-| `[sound] duration_seconds`, `fade_seconds` | Required finite seconds. Acoustic validity is checked separately at a rate. |
+| `[timing] duration_seconds`, `fade_seconds` | Required finite seconds. Acoustic validity is checked separately at a rate. |
 | `[[sound.component]] id` | Unique positive u32 authored owner; source order determines summation. |
 | `[[source]]` | Unique nonempty `key`, nonempty `label` and `citation`, and a DOI and/or explicit HTTP(S) `url`. |
 | `[[evidence]]` | Bibliography key, scope, population, condition role, measures, methods, summary, limitations and adaptation. |
 | `[[lineage]]` | Flat ancestor title/note, optional `document_id`/`catalog_id` and referenced `source_keys`. |
 
-There are at most 16 authored components and 16 expanded voices. A raw tone/click uses one voice; a pair uses two. Metadata allows 16 sources, 32 evidence records and 16 lineage descriptors. References must name existing bibliography keys. Copying refuses ancestry overflow.
+One authored budget permits 16 generator lanes: a tone or pulse train costs one; an explicit pair costs two. The maximum of 16 components follows from this budget. Crossfades run at most 32 lane-equivalents. Metadata allows 16 sources, 32 evidence records and 16 lineage descriptors. References must name existing bibliography keys. Copying refuses ancestry overflow.
 
 ### Components
 
-| `kind` | Required fields besides `id` |
+Every `[[sound.component]]` requires a positive `id`, a `[sound.component.source]` table and a `[sound.component.modulation]` table. Components sum in authored order. Unknown or inapplicable fields are errors.
+
+| Source `kind` | Required source fields |
 | --- | --- |
-| `tone` | `ears`, `frequency_hz`, `peak_dbfs` |
-| `clicks` | `ears`, `rate_hz`, `width_seconds`, `peak_dbfs` |
-| `binaural_pair` | `left_hz`, signed `offset_hz`, `left_peak_dbfs`, `right_peak_dbfs` |
-| `monaural_pair` | `ears`, `first_hz`, signed `offset_hz`, `first_peak_dbfs`, `second_peak_dbfs` |
+| `tone` | `route`, `frequency_hz`, `peak_dbfs` |
+| `pulse_train` | `route`, `peak_dbfs`, nested `pulse` |
+| `binaural_pair` | `first_hz`, signed `offset_hz`, `first_peak_dbfs`, `second_peak_dbfs` |
+| `monaural_pair` | `route`, `first_hz`, signed `offset_hz`, `first_peak_dbfs`, `second_peak_dbfs` |
 
-Human component references use the authored `id`, including after removal/restore. A pair's secondary lane is named as that component's second tone.
+`route` means digital channel routing: `left`, `right` or `both`. Both sends identical component samples to both channels. A binaural pair fixes the first carrier to the left channel and the second to the right. The second carrier is `first_hz + offset_hz`; a monaural pair sends both tones through its common route. Zero offset is permitted. A nonzero offset that disappears during binary64 addition cannot compile. Channel routing does not establish acoustic delivery to separate ears.
 
-`ears` is `left`, `right` or `both`. A binaural pair fixes the first carrier to the left ear and the second to the right. Its second frequency is `left_hz + offset_hz`; a monaural pair uses `first_hz + offset_hz` on the same route. Zero offset is permitted. A nonzero offset that collapses during floating-point addition cannot render.
+Human references retain the authored `id`; a pair's second lane is its second tone. No relationship is inferred between independent tone components.
 
-Raw tone/click components can have one `[sound.component.modulation]` table:
-
-| `kind` | Required fields |
+| Modulation `kind` | Required modulation fields |
 | --- | --- |
-| `am` | `rate_hz`, `depth` |
-| `gate` | `rate_hz`, `width_seconds` |
+| `none` | No other fields |
+| `sinusoidal` | `rate_hz`, `depth` |
+| `pulsed` | Nested `pulse` |
 
-Pairs have no modulation table or duplicate second-frequency field. Modulation applies only to its own component.
+A component has one shared nonnegative modulation gain, including both lanes of either pair kind. A pulse source with pulsed modulation contains two separate authored repetition processes. There is no persisted isochronic kind, modulation chain or general DSP graph.
+
+Every pulse table requires `rate_hz`, a nested `width` and a nested `shape`. Width is either `{ kind = "duration", seconds = VALUE }` or `{ kind = "duty_cycle", fraction = VALUE }`; exactly one requested quantity is stored. Shape is `{ kind = "rectangular" }` or `{ kind = "raised_cosine", rise_seconds = VALUE, fall_seconds = VALUE }`. All numeric fields must be finite. Finite acoustic errors remain editable and serializable, with intrinsic/rate-specific diagnostics.
 
 ### Dates, evidence and ancestry
 
@@ -70,36 +75,36 @@ Evidence requires `source`, `scope`, `population`, `condition_role`, `measures`,
 - Condition role: `test`, `comparison`, `mixed`, `unspecified`.
 - Measures: any list of `eeg`, `behavior`, `subjective`, `sleep`, `hearing`, `other`.
 
-An independent copy starts with a new UUID and unknown declared dates, and appends an ancestor descriptor. Its first User Library save stamps Created and Modified; importing a file preserves its declared dates. Reference-condition evidence becomes ancestor evidence. Sound-setting changes also demote applicable current evidence; title/notes changes alone do not. A reopened lineage record retains attribution rather than an ancestor waveform.
+An independent copy starts with a new UUID and unknown declared dates, and appends an ancestor descriptor. Its first User Library save stamps Created and Modified; importing a file preserves its declared dates. Reference-condition evidence becomes ancestor evidence. Sound or finite-timing changes also demote applicable current evidence; title/notes changes alone do not. A reopened lineage record retains attribution rather than an ancestor waveform.
 
 ### Validation at a sample rate
 
 Inspection/export accept integer sample rates from 1 through 768,000 Hz and default to 48,000 Hz. Playback uses the actual device rate.
 
 - Duration must resolve to 1 through 2^36 frames. Fade is nonnegative, resolves within that bound, and satisfies `2F < N`.
-- Carrier and modulation rates are positive and strictly below half the rate. Active AM on a tone also requires `frequency_hz + rate_hz` below that boundary.
+- Carrier and modulation rates are positive and strictly below half the rate. Active sinusoidal AM on every tonal lane, including pairs, also requires `frequency_hz + rate_hz` below that boundary.
 - Peak levels are at most 0 dBFS; AM depth is between 0 and 1.
-- Pulse width resolves to `1 ≤ W ≤ 2^36` frames and satisfies `(W + 1) × rate_hz ≤ sample_rate`, leaving a closed frame per period.
-- Each ear’s summed linear peak bounds are at most 1.
+- Pulse duty is strictly between zero and one. Pulse width resolves to `1 ≤ W ≤ 2^36` frames and satisfies `(W + 1) × rate_hz ≤ sample_rate`, leaving a closed frame per period.
+- Each digital channel’s summed linear peak bound is at most 1.
 
 Lengths resolve to nearest whole frames, with halves away from zero. A structurally valid finite document can fail these acoustic rules and remain savable for repair. [Waveform formulas](recipes.md#waveforms) define synthesis.
 
 ## Unsupported and unreadable recipes
 
-Only recipe schema 4 is accepted. Unsupported versions and malformed documents produce a diagnostic naming the file and the failed rule. The file remains unchanged. If it is inside `recipes/` or `trash/`, discovery is incomplete: healthy rows remain available and `list` exits **5**.
+Only recipe schema 5 is accepted. Every other version is rejected without conversion. Unsupported versions and malformed documents produce a diagnostic naming the file and the failed rule. The file remains unchanged. If it is inside `recipes/` or `trash/`, discovery is incomplete: healthy rows remain available and `list` exits **5**.
 
 Back up the affected file. Correct it against the [recipe reference](#recipe-schema), or move it outside the library. Check the corrected file with `auditorylab inspect --file PATH` before returning it, then run `library check` or Refresh. Changing a declared schema number does not establish that a document satisfies the format.
 
 ## Queries and classification
 
-Vocabulary values use snake_case in CLI options and JSON. CLI flag names use kebab-case. Structural methods may overlap; component headings choose Gate, then active AM, then Clicks or Steady tone. Explicit pairs use Binaural or Monaural.
+Vocabulary values use snake_case in CLI options and JSON. CLI flag names use kebab-case. Source and modulation processes are described independently. Composed headings retain both the source relationship and its modulation.
 
 <!-- query-options:begin -->
 | Option | Values |
 | --- | --- |
 | `--collection` | `all`, `builtin`, `user` |
 | `--band` | `delta`, `theta`, `alpha`, `beta`, `gamma` |
-| `--method` | `binaural`, `monaural`, `clicks`, `gate`, `am`, `steady_tone` |
+| `--method` | `binaural`, `monaural`, `pulse_train`, `pulsed`, `sinusoidal`, `steady_tone` |
 | `--rhythms` | `outside_bands`, `none`, `multiple`, `needs_review` |
 | `--population` | `human`, `mouse`, `other_animal`, `mixed`, `not_applicable`, `unspecified` |
 | `--role` | `test`, `comparison`, `mixed`, `unspecified` |
@@ -109,7 +114,7 @@ Vocabulary values use snake_case in CLI options and JSON. CLI flag names use keb
 | `--group-by` | `none`, `band`, `method`, `study`, `collection` |
 <!-- query-options:end -->
 
-Nominal classification reads authored settings without a sample rate. Its completeness is independent of rate-specific inspection validity. Plain tones remain independent steady tones; use explicit pairs for pair relationships. Generated descriptions use realized rates and transition roles.
+Nominal classification reads authored settings without a sample rate. Its completeness is independent of rate-specific inspection validity. Plain tones remain independent steady tones; use explicit pairs for pair relationships. Generated descriptions use realized rates and transition roles. Pair differences derive from integer phase-step differences before conversion to hertz, so rounded carrier displays cannot erase a small difference. Nominal analysis includes authored muted processes; generated analysis includes a component/role when any lane has nonzero routing gain, retaining all of that component’s lanes. Zero-depth AM is inactive. Structural rates are not EEG measurements or verified perceptions.
 
 Reference intervals are Delta `[0.1,4)`, Theta `[4,8)`, Alpha `[8,13]`, Beta `(13,30]`, Gamma `(30,80]` Hz. Other positive rhythmic rates lie outside these bands. See the [catalog convention](catalog.md#nominal-rhythm-references).
 
@@ -126,20 +131,20 @@ These are the vocabulary keys used by queries, portable choices and JSON values.
 | --- | --- |
 | `band` | `delta`, `theta`, `alpha`, `beta`, `gamma` |
 | `calendar_field` | `created`, `modified`, `added` |
-| `carrier_kind` | `tone`, `clicks` |
+| `carrier_kind` | `tone`, `pulse_train` |
+| `channel` | `left`, `right` |
+| `channel_routing` | `both`, `left`, `right` |
 | `completeness` | `complete`, `invalid` |
 | `condition_role` | `test`, `comparison`, `mixed`, `unspecified` |
 | `direction` | `asc`, `desc` |
-| `ear` | `left`, `right` |
-| `ears` | `both`, `left`, `right` |
 | `evidence_scope` | `reference_condition`, `ancestor` |
 | `group_by` | `none`, `band`, `method`, `study`, `collection` |
 | `measure` | `eeg`, `behavior`, `subjective`, `sleep`, `hearing`, `other` |
-| `method` | `binaural`, `monaural`, `clicks`, `gate`, `am`, `steady_tone` |
-| `modulation_kind` | `am`, `gate` |
+| `method` | `binaural`, `monaural`, `pulse_train`, `pulsed`, `sinusoidal`, `steady_tone` |
+| `modulation_kind` | `sinusoidal`, `pulsed` |
 | `operation` | `list`, `list_trash`, `describe`, `inspect`, `recipe`, `export`, `play`, `stop`, `library_path`, `library_init`, `library_add`, `library_update`, `library_rename`, `library_trash`, `library_restore`, `library_purge`, `library_check`, `library_refresh`, `library_read`, `new_sound`, `edit_copy`, `save`, `save_copy`, `open_recipe`, `export_recipe`, `stop_current_and_play_recipe`, `play_selected_sound`, `play_live`, `edit_saved_recipe`, `edit_external_file`, `close_open_file`, `show_saved`, `cancel_export`, `add_component`, `undo_remove`, `remove_component` |
 | `pair_kind` | `binaural`, `monaural` |
-| `parameter_id` | `tone_frequency`, `click_rate`, `click_width`, `peak_level`, `am_rate`, `am_depth`, `gate_rate`, `gate_width`, `pair_first_frequency`, `pair_offset`, `pair_first_level`, `pair_second_level`, `duration`, `fade` |
+| `parameter_id` | `tone_frequency`, `source_pulse_rate`, `source_pulse_duration`, `peak_level`, `modulation_rate`, `modulation_depth`, `modulation_pulse_rate`, `modulation_pulse_duration`, `pair_first_frequency`, `pair_offset`, `pair_first_level`, `pair_second_level`, `source_duty`, `source_rise`, `source_fall`, `modulation_duty`, `modulation_rise`, `modulation_fall`, `duration`, `fade` |
 | `population` | `human`, `mouse`, `other_animal`, `mixed`, `not_applicable`, `unspecified` |
 | `rhythm_state` | `outside_bands`, `none`, `multiple`, `needs_review` |
 | `scope` | `all`, `builtin`, `user`, `open_files`, `trash` |
@@ -163,7 +168,7 @@ Every envelope contains `output_schema_version`, `operation`, `complete`, `conve
 | Mutation | Confirmed `status`, `selector`, `version_token`, affected entry and diagnostics. |
 | Failure | Outcome `status` and operation diagnostics. |
 
-The [diagnostic contract](#diagnostic-codes) applies to nominal diagnostics, rate-validation diagnostics, declared-history warnings and publication warnings. Inspection exposes expanded generator lanes under `voices`; authored components remain in recipe TOML.
+The [diagnostic contract](#diagnostic-codes) applies to nominal diagnostics, rate-validation diagnostics, declared-history warnings and publication warnings. Inspection exposes generator lanes under `voices`; authored components remain in recipe TOML. Pulse facts retain requested width mode/quantity and shape, resolved window/edge frames, and rate. Pair facts retain signed requested and resolved differences; unresolved pair checks have no resolved difference. Digital routes use `route`, and peak diagnostics name a `channel`.
 
 Entries identify key, collection, title, portable document identity, duration, dates, content token, directory-owned Trash state, nominal facts, evidence and validation. Unknown dates/values use null. Discovery validation is `not_checked`.
 
@@ -219,6 +224,8 @@ For example, an out-of-range rate reports `sample_rate.range` with `hz`, `min_hz
 | `edit.identities_exhausted` |
 | `edit.inapplicable` |
 | `edit.nothing_removed` |
+| `edit.pulse_conversion` |
+| `edit.pulse_window` |
 | `edit.stale_document` |
 | `edit.stale_row` |
 | `edit.unknown_component` |
@@ -343,20 +350,20 @@ For example, an out-of-range rate reports `sample_rate.range` with `hz`, `min_hz
 | `storage.saved_durability` |
 | `storage.trash_link` |
 | `storage.unavailable_history_clock` |
-| `structure.component_budget` |
 | `structure.identity` |
 | `structure.voice_budget` |
 | `value.depth` |
+| `value.duty` |
 | `value.peak` |
 | `value.positive` |
 | `vocabulary.band` |
 | `vocabulary.calendar_field` |
 | `vocabulary.carrier_kind` |
+| `vocabulary.channel` |
+| `vocabulary.channel_routing` |
 | `vocabulary.completeness` |
 | `vocabulary.condition_role` |
 | `vocabulary.direction` |
-| `vocabulary.ear` |
-| `vocabulary.ears` |
 | `vocabulary.evidence_scope` |
 | `vocabulary.group_by` |
 | `vocabulary.measure` |
@@ -374,7 +381,7 @@ For example, an out-of-range rate reports `sample_rate.range` with `hz`, `min_hz
 | `voice.depth` |
 | `voice.frequency` |
 | `voice.peak_dbfs` |
-| `voice.pulse_width` |
+| `voice.pulse` |
 | `voice.sideband` |
 | `wav.cancelled` |
 | `wav.io` |

@@ -1,4 +1,4 @@
-schema_version = 4
+schema_version = 5
 
 [document]
 id = "25182ec8-0ee3-44b8-a938-0bf989bba0fe"
@@ -6,21 +6,31 @@ id = "25182ec8-0ee3-44b8-a938-0bf989bba0fe"
 [description]
 title = "8 Hz train of 1 ms 10 kHz tones"
 
-[sound]
+[timing]
 duration_seconds = 3600.0
 fade_seconds = 0.1
 
 [[sound.component]]
-kind = "tone"
 id = 1
-ears = "both"
+
+[sound.component.source]
+kind = "tone"
+route = "both"
 frequency_hz = 10000.0
 peak_dbfs = -20.0
 
 [sound.component.modulation]
-kind = "gate"
+kind = "pulsed"
+
+[sound.component.modulation.pulse]
 rate_hz = 8.0
-width_seconds = 0.001
+
+[sound.component.modulation.pulse.width]
+kind = "duration"
+seconds = 0.001
+
+[sound.component.modulation.pulse.shape]
+kind = "rectangular"
 
 [[source]]
 key = "martorell-2019"

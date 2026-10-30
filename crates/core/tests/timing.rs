@@ -1,7 +1,7 @@
 //! Timing-model oracles use integer rationals, never the projection's pulse helper.
 use auditorylab_core::{
-    Component, ComponentForm, ComponentId, Ears, Modulation, SampleRate, Sound, SoundError, Target,
-    live::Engine, timing::ModelKind,
+    ChannelRouting, Component, ComponentForm, ComponentId, Modulation, SampleRate, SoundError,
+    Target, live::Engine, timing::ModelKind,
 };
 
 #[expect(
@@ -12,7 +12,7 @@ fn id(n: u32) -> ComponentId {
     ComponentId::new(n).unwrap()
 }
 fn target(rate: SampleRate, voices: &[(ComponentId, ComponentForm)]) -> Result<Target, SoundError> {
-    Sound::new(
+    auditorylab_core::test_support::FiniteFixture::new(
         finite(1.0),
         finite(0.0),
         voices
@@ -27,11 +27,18 @@ fn target(rate: SampleRate, voices: &[(ComponentId, ComponentForm)]) -> Result<T
     .target(rate)
 }
 fn clicks(hz: f64, width: f64) -> ComponentForm {
-    ComponentForm::Clicks {
-        rate_hz: finite(hz),
-        width_seconds: finite(width),
-        ears: Ears::Both,
-        peak_dbfs: finite(-30.0),
+    ComponentForm {
+        source: auditorylab_core::SoundSource::PulseTrain {
+            route: ChannelRouting::Both,
+            peak_dbfs: finite(-30.0),
+            pulse: auditorylab_core::PulseSpec {
+                rate_hz: finite(hz),
+                width: auditorylab_core::PulseWidth::Duration {
+                    seconds: finite(width),
+                },
+                shape: auditorylab_core::PulseShape::Rectangular {},
+            },
+        },
         modulation: None,
     }
 }
@@ -49,7 +56,7 @@ fn every_column_contains_all_rational_pulses_including_single_frame_impulses() {
             let target = target(rate, &[(id(7), clicks(hz, width))]).unwrap();
             let model = target.timing_model(257);
             let lane = &model.lanes[0];
-            assert_eq!(lane.kind, ModelKind::Clicks);
+            assert_eq!(lane.kind, ModelKind::PulseTrain);
             assert_eq!(lane.id, id(7).into());
             let w = if width == 0.001 {
                 if fs == 44100 {
@@ -83,25 +90,32 @@ fn gate_projection_matches_signal_and_dense_extrema_defeat_point_sampling() {
     let rate = SampleRate::new(48000).unwrap();
     let component = {
         let base = clicks(40.0, 0.001);
-        ComponentForm::Tone {
-            frequency_hz: finite(1000.0),
-            ears: base.route().unwrap(),
-            peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
-            modulation: Some(Modulation::Gate {
-                rate_hz: finite(40.0),
-                width_seconds: finite(1.0 / 48000.0),
+        ComponentForm {
+            source: auditorylab_core::SoundSource::Tone {
+                frequency_hz: finite(1000.0),
+                route: base.route().unwrap(),
+                peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
+            },
+            modulation: Some(Modulation::Pulsed {
+                pulse: auditorylab_core::PulseSpec {
+                    rate_hz: finite(40.0),
+                    width: auditorylab_core::PulseWidth::Duration {
+                        seconds: finite(1.0 / 48000.0),
+                    },
+                    shape: auditorylab_core::PulseShape::Rectangular {},
+                },
             }),
         }
     };
     let model = target(rate, &[(id(1), component)]).unwrap().timing_model(1);
-    assert_eq!(model.lanes[0].kind, ModelKind::Gate);
+    assert_eq!(model.lanes[0].kind, ModelKind::Pulsed);
     assert_eq!(model.lanes[0].columns[0].max, 1.0);
     assert_eq!(model.lanes[0].columns[0].min, 0.0);
     // Negative control: the single point at a selected point just after the midpoint misses every
     // one-frame pulse.
     let point = model.frames / 2 + 1;
     assert_ne!(point % 1200, 0);
-    let signal = auditorylab_core::Sound::new(
+    let signal = auditorylab_core::test_support::FiniteFixture::new(
         finite(0.25),
         finite(0.0),
         (vec![component])
@@ -149,7 +163,7 @@ fn bounded_spans_multiple_processes_and_observation_independence() {
     assert_eq!(compiled.timing_model(256).frames, 24000);
     let component_form = {
         let mut form = clicks(40.0, 0.001);
-        form.set_modulation(Some(Modulation::Am {
+        form.set_modulation(Some(Modulation::Sinusoidal {
             rate_hz: finite(39.0625),
             depth: finite(1.0),
         }));
@@ -191,11 +205,13 @@ fn am_bounds_contain_independent_sine_samples_and_depth_zero_is_steady() {
             let rate = SampleRate::new(fs).unwrap();
             let c = {
                 let base = clicks(40.0, 0.001);
-                ComponentForm::Tone {
-                    frequency_hz: finite(1000.0),
-                    ears: base.route().unwrap(),
-                    peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
-                    modulation: Some(Modulation::Am {
+                ComponentForm {
+                    source: auditorylab_core::SoundSource::Tone {
+                        frequency_hz: finite(1000.0),
+                        route: base.route().unwrap(),
+                        peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
+                    },
+                    modulation: Some(Modulation::Sinusoidal {
                         rate_hz: finite(39.0625),
                         depth: finite(depth),
                     }),
@@ -226,7 +242,7 @@ fn maximum_rate_projection_has_fixed_storage_and_measured_cost() {
     let rate = SampleRate::new(768_000).unwrap();
     let c = {
         let mut form = clicks(383_999.0, 1.0 / 768_000.0);
-        form.set_modulation(Some(Modulation::Am {
+        form.set_modulation(Some(Modulation::Sinusoidal {
             rate_hz: finite(383_999.0),
             depth: finite(1.0),
         }));
@@ -253,19 +269,26 @@ fn span_uses_active_modulation_and_flags_only_incomplete_cycles() {
     let rate = SampleRate::new(48000).unwrap();
     let tone = {
         let base = clicks(40.0, 0.001);
-        ComponentForm::Tone {
-            frequency_hz: finite(1000.0),
-            ears: base.route().unwrap(),
-            peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
+        ComponentForm {
+            source: auditorylab_core::SoundSource::Tone {
+                frequency_hz: finite(1000.0),
+                route: base.route().unwrap(),
+                peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
+            },
             modulation: base.modulation(),
         }
     };
     for modulation in [
-        Modulation::Gate {
-            rate_hz: finite(2.0),
-            width_seconds: finite(0.001),
+        Modulation::Pulsed {
+            pulse: auditorylab_core::PulseSpec {
+                rate_hz: finite(2.0),
+                width: auditorylab_core::PulseWidth::Duration {
+                    seconds: finite(0.001),
+                },
+                shape: auditorylab_core::PulseShape::Rectangular {},
+            },
         },
-        Modulation::Am {
+        Modulation::Sinusoidal {
             rate_hz: finite(2.0),
             depth: finite(0.5),
         },
@@ -289,13 +312,13 @@ fn span_uses_active_modulation_and_flags_only_incomplete_cycles() {
             .timing_model(17);
         assert_eq!(model.insufficient_cycle, incomplete, "{hz}");
         assert_eq!(model.lanes.len(), 1);
-        assert_eq!(model.lanes[0].kind, ModelKind::Clicks);
+        assert_eq!(model.lanes[0].kind, ModelKind::PulseTrain);
     }
     let model = target(
         rate,
         &[(id(1), {
             let mut form = tone;
-            form.set_modulation(Some(Modulation::Am {
+            form.set_modulation(Some(Modulation::Sinusoidal {
                 rate_hz: finite(0.1),
                 depth: finite(0.0),
             }));
@@ -318,7 +341,7 @@ fn envelope_bounds_match_endpoints_and_quarter_cycle_extrema() {
     for depth in [0.5, 1.0] {
         let component = {
             let mut form = clicks(40.0, 0.001);
-            form.set_modulation(Some(Modulation::Am {
+            form.set_modulation(Some(Modulation::Sinusoidal {
                 rate_hz: finite(8.0),
                 depth: finite(depth),
             }));

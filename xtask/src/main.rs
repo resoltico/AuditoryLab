@@ -370,7 +370,8 @@ fn smoke(cli: &Path, scratch: &Path) -> Result<()> {
             .stderr(Stdio::piped())
             .spawn()?;
         child.stdin.take().ok_or("stdin missing")?.write_all(
-            b"schema_version=4\n[sound]\nduration_seconds=0.000125\nfade_seconds=0\n\
+            b"schema_version=5\n[timing]\nduration_seconds=0.000125\n\
+                fade_seconds=0\n[sound]\ncomponent=[]\n\
                 [document]\nid='00000000-0000-4000-8000-000000000001'\n",
         )?;
         let output = child.wait_with_output()?;

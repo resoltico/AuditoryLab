@@ -6,24 +6,24 @@ pub(crate) fn paths(bins: &[[Extent; 2]], limit: f64) -> [String; 2] {
     let count = f64::from(u32::try_from(bins.len()).unwrap_or(512).max(1));
     for (i, bin) in bins.iter().enumerate() {
         let x = f64::from(u32::try_from(i).unwrap_or(0)) * 1024.0 / count;
-        for ear in 0..2 {
+        for channel in 0..2 {
             // Remove only interior points on an exactly horizontal span.
             // Every range, slope change and endpoint remains in the path.
-            let extent = bin[ear];
+            let extent = bin[channel];
             if i > 0
                 && i + 1 < bins.len()
                 && extent.min == extent.max
-                && bins[i - 1][ear].min == extent.min
-                && bins[i + 1][ear].max == extent.max
+                && bins[i - 1][channel].min == extent.min
+                && bins[i + 1][channel].max == extent.max
             {
                 continue;
             }
             let _ = write!(
-                paths[ear],
+                paths[channel],
                 "{}{x:.3},{:.3} L{x:.3},{:.3} ",
                 if i == 0 { "M" } else { "L" },
-                (1.0 - (bin[ear].max / limit).clamp(-1.0, 1.0)) * 50.0,
-                (1.0 - (bin[ear].min / limit).clamp(-1.0, 1.0)) * 50.0
+                (1.0 - (bin[channel].max / limit).clamp(-1.0, 1.0)) * 50.0,
+                (1.0 - (bin[channel].min / limit).clamp(-1.0, 1.0)) * 50.0
             );
         }
     }
@@ -104,13 +104,13 @@ mod tests {
             }; 2]
         });
         let p = paths(&bins, 1.0);
-        for ear in p {
-            assert!(ear.contains("L146.286,50.000"));
-            assert!(ear.contains("L292.571,25.000"));
-            assert!(!ear.contains("438.857"));
-            assert!(ear.contains("L585.143,25.000"));
-            assert!(ear.contains("L731.429,50.000"));
-            assert!(ear.contains("L877.714,50.000"));
+        for channel in p {
+            assert!(channel.contains("L146.286,50.000"));
+            assert!(channel.contains("L292.571,25.000"));
+            assert!(!channel.contains("438.857"));
+            assert!(channel.contains("L585.143,25.000"));
+            assert!(channel.contains("L731.429,50.000"));
+            assert!(channel.contains("L877.714,50.000"));
         }
     }
 }

@@ -38,11 +38,17 @@ Library actions retain an app-issued handle for the rendered listing and capture
 
 ## Build and edit a sound
 
-**New sound** opens an empty, silent Workbench. **Add component…** offers tones, clicks and explicit pairs. Each raw component uses one voice; a pair uses two. [Fields and limits](formats.md#recipe-schema) define the budgets.
+**New sound** opens an empty, silent Workbench. **Add component…** offers tones, pulse trains, both explicit pair kinds and pulsed tones. Tone/pulse sources cost one generator lane; pairs cost two within one 16-lane budget. [Fields and limits](formats.md#recipe-schema) define the budgets.
+
+**Pulsed tone (isochronic)** adds a single tone with shared pulsed modulation. The [recipe guide](recipes.md#sinusoidal-and-pulsed-modulation) explains its waveform and defaults. Pulse trains and pulsed pairs have distinct names.
 
 Component names use their authored IDs; removing/restoring rows keeps those references stable. A pair's secondary lane is labeled as its second tone.
 
-Enter frequency/rate, width, level and modulation values. The UI uses Hz, milliseconds, dBFS and percent. Carrier, modulation, ears and Remove are in each component’s disclosure. **Undo remove** restores the latest removed component and its staged text when capacity permits.
+Enter frequency/rate, width, level and modulation values. The UI uses Hz, milliseconds, dBFS and percent. Source, shared modulation, digital channel routing and Remove are in each component’s options. Pulse options and their calculated envelope stay open together; other components use disclosures. **Undo remove** restores the latest removed component and its staged text when capacity permits.
+
+Pulse sources and pulsed modulation show separate width-intent and shape choices beside their calculated envelope. Duration fields use milliseconds; duty uses percent with a distinct semantic field. Raised-cosine controls expose rise/fall times. Width conversion applies the related pending rate/window values together and preserves other staged input; an invalid conversion changes nothing. Rectangular-to-shaped initialization uses 10% of the requested window per edge, without resizing it to satisfy a sample rate. Requested and resolved facts disclose rounding.
+
+Pair modulation is shared across both lanes. Digital left/right/both routing cannot verify delivery to separate ears. Creation and interpretation changes never turn Play on automatically.
 
 Typing stages text. Enter, leaving a field or a commit action applies the complete finite candidate. Unparseable or nonfinite values preserve staged text for correction. Escape restores the committed value. Notes support multiple lines; Return inserts a line break. Sliders use comfortable ranges and gesture rounding; numeric fields accept values outside those spans without clamping. Display-unit conversion uses binary64 and can round or overflow for extreme finite model values. An unedited field callback preserves the exact committed bits; explicitly edited text is parsed in the displayed unit.
 
@@ -64,13 +70,13 @@ New/copy/close/Quit protect unsaved content through Save/Discard/Cancel. Repeate
 
 ## View timing and output
 
-**Waveform pattern** shows the pattern calculated for the selected recipe, committed draft or playing revision; it is not recorded output. It names its source, rate and revision. **Show monitor** opens the Output monitor; **Preview waveform** shows a labeled seekable preview while idle.
+**Waveform pattern** shows normalized pulse/envelope timing calculated for the selected recipe, committed draft or playing revision; it is not recorded output. It names its source, rate and revision. **Show monitor** opens the Output monitor; **Preview waveform** shows a labeled seekable preview while idle.
 
 The monitor displays generated stereo samples before device conversion, with peak/RMS values and coverage status. Choose a 2/10/40/100 ms window. **Fit signal** changes the common stereo axis, while **Fixed ±1** uses digital full scale. Neither changes samples or levels.
 
 **Hold display** retains samples, source, rate, frame span, scale and meters together across navigation and sessions. **Return to live** selects current coverage. Monitor gaps, stale coverage and backend underruns remain distinct. Details opens selectable quantities; **Refresh diagnostics snapshot** updates them explicitly.
 
-Worker completion, export progress and native preference changes arrive as events. The desktop redraw timer runs while audio is bound or the monitor is visible; an idle closed monitor needs no workspace polling.
+Worker completion, export progress and native preference changes arrive as events. The desktop redraw timer runs while audio is bound or the monitor is visible; an idle closed monitor needs no periodic workspace polling. Commands refresh their calculated source models before projection, independently of that redraw timer.
 
 The drawer can be resized by pointer, keyboard or accessibility slider actions. When it cannot fit, a focused monitor window provides scrollable content. Closing that window returns focus to its opener. Reduce Motion defaults to a held display; Hold/Return to live overrides it, and **Follow system motion** restores the native preference.
 
@@ -82,4 +88,4 @@ Linux downloads require glibc 2.35 or later, ALSA, X11 or Wayland, fonts, fontco
 
 Windows requires Windows 10 on x86_64 or Windows 11 on ARM64 and an OpenGL 2.0 or newer driver. x86_64 requires SSE3, CMPXCHG16B and LAHF/SAHF. Fatal graphics/application failures use a native dialog.
 
-The Edit menu applies Undo, Cut, Copy, Paste and Select All to the focused text field; keyboard shortcuts work in fields directly. **Help › Auditory Lab desktop guide** opens this guide as it was for the running build. About is in the macOS application menu or the Windows/Linux Help menu. It shows product identity and links to source and licenses. Packaged dependency notices stay with the download and inside the macOS app. [Packaging](releasing.md) defines the complete delivered contents.
+The Edit menu applies Undo, Cut, Copy, Paste and Select All to the focused text field; keyboard shortcuts work in fields directly. **Help › Auditory Lab desktop guide** opens the guide for the build’s source revision, or its version tag when no revision is embedded. About is in the macOS application menu or the Windows/Linux Help menu. It shows product identity and links to source and licenses. Packaged dependency notices stay with the download and inside the macOS app. [Packaging](releasing.md) defines the complete delivered contents.

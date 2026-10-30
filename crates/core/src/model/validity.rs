@@ -9,6 +9,8 @@ pub enum ValueRule {
     Peak,
     /// Modulation depth lies in the closed interval zero through one.
     Depth,
+    /// Pulse duty lies strictly between zero and one.
+    Duty,
 }
 /// One typed intrinsic quantity failure.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -31,6 +33,7 @@ pub(crate) fn check_value(parameter: ParameterId, value: f64) -> Result<(), Valu
         ValueRule::Positive => !positive(value),
         ValueRule::Peak => !value.is_finite() || value > 0.0,
         ValueRule::Depth => !(0.0..=1.0).contains(&value),
+        ValueRule::Duty => !crate::PulseWidth::valid_fraction(value),
     };
     if invalid {
         Err(ValueIssue {
@@ -66,6 +69,7 @@ crate::diagnostic_codes! {
                 rule: ValueRule::Depth,
                 ..
             } => "value.depth",
+            Self { rule: ValueRule::Duty, .. } => "value.duty",
         }
         delegates {}
         params(this) {
@@ -85,7 +89,7 @@ mod tests {
         for (parameter, value, code) in [
             (ParameterId::ToneFrequency, 0.0, "value.positive"),
             (ParameterId::PeakLevel, 1.0, "value.peak"),
-            (ParameterId::AmDepth, 1.25, "value.depth"),
+            (ParameterId::ModulationDepth, 1.25, "value.depth"),
         ] {
             let failure = check_value(parameter, value).unwrap_err();
             assert_eq!(crate::Code::code(&failure), code);

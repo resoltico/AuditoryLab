@@ -29,27 +29,33 @@ fn normalized_text_terms_are_anded_and_numeric_terms_are_not_substrings() {
         .recipe()
         .unwrap()
         .into_builder();
-    recipe.content.sound = auditorylab_app::core::Sound::new(
-        finite(60.0),
-        finite(0.1),
-        (vec![auditorylab_app::core::ComponentForm::Tone {
-            frequency_hz: finite(200.0),
-            ears: auditorylab_app::core::Ears::Both,
-            peak_dbfs: finite(-30.0),
-            modulation: Some(auditorylab_app::core::Modulation::Am {
-                rate_hz: finite(20.0),
-                depth: finite(1.0),
-            }),
-        }])
-        .into_iter()
-        .enumerate()
-        .map(|(index, voice)| auditorylab_core::Component {
-            id: auditorylab_core::ComponentId::numbered(index).unwrap(),
-            form: voice,
-        })
-        .collect(),
-    )
-    .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
+    recipe.content.sound = {
+        let fixture = auditorylab_app::core::test_support::FiniteFixture::new(
+            finite(60.0),
+            finite(0.1),
+            (vec![auditorylab_app::core::ComponentForm {
+                source: auditorylab_app::core::SoundSource::Tone {
+                    frequency_hz: finite(200.0),
+                    route: auditorylab_app::core::ChannelRouting::Both,
+                    peak_dbfs: finite(-30.0),
+                },
+                modulation: Some(auditorylab_app::core::Modulation::Sinusoidal {
+                    rate_hz: finite(20.0),
+                    depth: finite(1.0),
+                }),
+            }])
+            .into_iter()
+            .enumerate()
+            .map(|(index, voice)| auditorylab_core::Component {
+                id: auditorylab_core::ComponentId::numbered(index).unwrap(),
+                form: voice,
+            })
+            .collect(),
+        )
+        .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
+        recipe.content.timing = fixture.timing;
+        fixture.sound
+    };
     recipe.content.description = Some(auditorylab_app::core::provenance::Description {
         title: "Rīga reference 2015".into(),
         notes: Some("two words".into()),
@@ -89,7 +95,7 @@ fn normalized_text_terms_are_anded_and_numeric_terms_are_not_substrings() {
 #[test]
 fn search_excludes_generated_labels_and_unknown_date_captions() {
     use auditorylab_app::core::{
-        Component, ComponentForm, ComponentId, Ears, provenance::Description,
+        ChannelRouting, Component, ComponentForm, ComponentId, provenance::Description,
     };
     let mut recipe = auditorylab_app::document::editing::Draft::new()
         .unwrap()
@@ -102,20 +108,26 @@ fn search_excludes_generated_labels_and_unknown_date_captions() {
         title: "Reference".into(),
         notes: None,
     });
-    recipe.content.sound = auditorylab_core::Sound::new(
-        recipe.content.sound.duration_seconds(),
-        recipe.content.sound.fade_seconds(),
-        vec![Component {
-            id: ComponentId::new(1).unwrap(),
-            form: ComponentForm::Tone {
-                frequency_hz: finite(200.0),
-                ears: Ears::Both,
-                peak_dbfs: finite(-30.0),
-                modulation: None,
-            },
-        }],
-    )
-    .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
+    recipe.content.sound = {
+        let fixture = auditorylab_app::core::test_support::FiniteFixture::new(
+            recipe.content.timing.duration_seconds,
+            recipe.content.timing.fade_seconds,
+            vec![Component {
+                id: ComponentId::new(1).unwrap(),
+                form: ComponentForm {
+                    source: auditorylab_app::core::SoundSource::Tone {
+                        frequency_hz: finite(200.0),
+                        route: ChannelRouting::Both,
+                        peak_dbfs: finite(-30.0),
+                    },
+                    modulation: None,
+                },
+            }],
+        )
+        .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
+        recipe.content.timing = fixture.timing;
+        fixture.sound
+    };
     let snapshot = RecipeSnapshot::new(Origin::Stream("fixture".into()), recipe.build().unwrap());
     // These captions are deliberately present in display output, not authored facts.
     assert!(auditorylab_presentation::snapshot_description(&(snapshot)).contains("Document:"));
@@ -139,13 +151,13 @@ const fn finite(value: f64) -> auditorylab_core::Finite {
 }
 
 #[test]
-fn schema_two_group_labels_preserve_human_captions_and_machine_identity() {
+fn schema_three_group_labels_preserve_human_captions_and_machine_identity() {
     use auditorylab_app::discovery::collection::{Collection, GroupLabel, ResultGroup};
     use auditorylab_app::discovery::query::RhythmState;
     use auditorylab_core::rhythm::{Band, Method};
     for (label, expected) in [
         (GroupLabel::Band(Band::Gamma), "Gamma"),
-        (GroupLabel::Method(Method::Am), "AM"),
+        (GroupLabel::Method(Method::Sinusoidal), "Sinusoidal AM"),
         (GroupLabel::State(RhythmState::None), "No rhythmic rate"),
         (GroupLabel::NoMethod, "No declared method"),
         (GroupLabel::Study("10.1234/study".into()), "10.1234/study"),

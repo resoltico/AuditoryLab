@@ -1,156 +1,5 @@
-// Copyright 2026 Ervins Strauhmanis
-// SPDX-License-Identifier: MPL-2.0
-
-use crate::synthesis::{self, Carrier as Generator, GeneratorVoice, Modulator, Pulse};
-use crate::{Modulation, ParameterId, SampleRate, VoiceId, conversion};
-
-/// One carrier routed to one or both ears.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct Voice {
-    /// Ear routing.
-    pub(crate) ears: Ears,
-    /// Peak amplitude in dBFS.
-    pub(crate) peak_dbfs: f64,
-    /// Periodic sound source.
-    pub(crate) carrier: Carrier,
-    /// Optional amplitude modulation.
-    pub(crate) modulation: Option<Modulation>,
-}
-/// A periodic sound source.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Carrier {
-    /// A sine wave.
-    Tone {
-        /// Frequency in hertz.
-        frequency_hz: f64,
-    },
-    /// Unipolar rectangular pulses.
-    Clicks {
-        /// Pulses per second.
-        rate_hz: f64,
-        /// Pulse length in seconds.
-        width_seconds: f64,
-    },
-}
-/// Which ears hear a component.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Ears {
-    /// The left ear only.
-    Left,
-    /// The right ear only.
-    Right,
-    /// The identical signal in both ears.
-    Both,
-}
-
-/// One ear.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Ear {
-    /// The left ear: the first channel of each frame.
-    Left,
-    /// The right ear: the second channel of each frame.
-    Right,
-}
-
-impl Ears {
-    const fn hears(self, ear: Ear) -> bool {
-        matches!(
-            (self, ear),
-            (Self::Both, _) | (Self::Left, Ear::Left) | (Self::Right, Ear::Right)
-        )
-    }
-}
-
-impl Voice {
-    /// Check every value at `rate` and build the generator.
-    pub(crate) fn voice(&self, rate: SampleRate) -> Result<GeneratorVoice, VoiceError> {
-        let peak_dbfs = self.peak_dbfs;
-        if crate::validity::check_value(ParameterId::PeakLevel, peak_dbfs).is_err() {
-            return Err(VoiceError::PeakDbfs { peak_dbfs });
-        }
-        let carrier = match self.carrier {
-            Carrier::Tone { frequency_hz, .. } => Generator::Tone {
-                step: frequency_step(ParameterId::ToneFrequency, frequency_hz, rate)?,
-            },
-            Carrier::Clicks {
-                rate_hz,
-                width_seconds,
-            } => Generator::Pulse(pulse_train(
-                (ParameterId::ClickRate, ParameterId::ClickWidth),
-                rate_hz,
-                width_seconds,
-                rate,
-            )?),
-        };
-        let modulation = match self.modulation {
-            None => None,
-            Some(Modulation::Am { rate_hz, depth }) => {
-                let (rate_hz, depth) = (rate_hz.get(), depth.get());
-                let step = frequency_step(ParameterId::AmRate, rate_hz, rate)?;
-                if crate::validity::check_value(ParameterId::AmDepth, depth).is_err() {
-                    return Err(VoiceError::Depth { depth });
-                }
-                if let Carrier::Tone { frequency_hz } = self.carrier
-                    && depth > 0.0
-                    && frequency_hz + rate_hz >= rate.nyquist_hz()
-                {
-                    return Err(VoiceError::Sideband {
-                        frequency_hz,
-                        rate_hz,
-                        sample_rate_hz: rate.hz(),
-                    });
-                }
-                Some(Modulator::Am { step, depth })
-            }
-            Some(Modulation::Gate {
-                rate_hz,
-                width_seconds,
-            }) => Some(Modulator::Gate(pulse_train(
-                (ParameterId::GateRate, ParameterId::GateWidth),
-                rate_hz.get(),
-                width_seconds.get(),
-                rate,
-            )?)),
-        };
-        let ears = self.ears;
-        Ok(GeneratorVoice {
-            left: ears.hears(Ear::Left),
-            right: ears.hears(Ear::Right),
-            amplitude: conversion::amplitude(peak_dbfs),
-            carrier,
-            modulation,
-        })
-    }
-}
-
-fn frequency_step(parameter: ParameterId, hz: f64, rate: SampleRate) -> Result<u64, VoiceError> {
-    crate::validity::check_value(parameter, hz)
-        .ok()
-        .and_then(|()| synthesis::step(hz, rate.hz()))
-        .ok_or(VoiceError::Frequency {
-            parameter,
-            hz,
-            sample_rate_hz: rate.hz(),
-        })
-}
-fn pulse_train(
-    (rate_parameter, width_parameter): (ParameterId, ParameterId),
-    rate_hz: f64,
-    width_seconds: f64,
-    rate: SampleRate,
-) -> Result<Pulse, VoiceError> {
-    frequency_step(rate_parameter, rate_hz, rate)?;
-    crate::validity::check_value(width_parameter, width_seconds)
-        .ok()
-        .and_then(|()| synthesis::pulse(width_seconds, rate_hz, rate.hz()))
-        .ok_or(VoiceError::PulseWidth {
-            parameter: width_parameter,
-            width_seconds,
-            rate_hz,
-            sample_rate_hz: rate.hz(),
-        })
-}
-
+//! Typed acoustic compilation failures and their semantic field attribution.
+use crate::{Channel, ParameterId, VoiceId};
 /// Why a sound cannot be rendered at a sample rate.
 #[derive(Debug, Clone, PartialEq)]
 pub enum SoundError {
@@ -199,10 +48,10 @@ pub enum SoundError {
         /// What is wrong with it.
         error: VoiceError,
     },
-    /// An ear's voices add up to a peak above full scale.
+    /// An channel's voices add up to a peak above full scale.
     Peak {
-        /// The ear.
-        ear: Ear,
+        /// The channel.
+        channel: Channel,
         /// The sum of the peak amplitudes reaching it.
         amplitude: f64,
     },
@@ -214,6 +63,14 @@ impl SoundError {
     #[must_use]
     pub const fn parameters(&self) -> &'static [ParameterId] {
         match self {
+            Self::PairCarrier {
+                error: VoiceError::Sideband { .. },
+                ..
+            } => &[
+                ParameterId::PairFirstFrequency,
+                ParameterId::PairOffset,
+                ParameterId::ModulationRate,
+            ],
             Self::PairCarrier { .. } | Self::Pair(_) => {
                 &[ParameterId::PairFirstFrequency, ParameterId::PairOffset]
             }
@@ -230,6 +87,19 @@ impl SoundError {
 /// Why a generator lane cannot be rendered at a sample rate.
 #[derive(Debug, Clone, PartialEq)]
 pub enum VoiceError {
+    /// Pulse intent or edges cannot be realized at the selected rate.
+    Pulse {
+        /// Whether this is the shared modulation rather than the source.
+        modulation: bool,
+        /// Requested width intent retained for semantic attribution.
+        width: crate::PulseWidth,
+        /// Requested repetition rate, in hertz.
+        rate_hz: f64,
+        /// Rate at which resolution failed.
+        sample_rate_hz: u32,
+        /// Precise pulse resolution failure.
+        error: crate::PulseError,
+    },
     /// A frequency is not finite and positive below half the sample rate.
     Frequency {
         /// The quantity holding it.
@@ -244,17 +114,6 @@ pub enum VoiceError {
         /// The tone frequency in hertz.
         frequency_hz: f64,
         /// The modulation frequency in hertz.
-        rate_hz: f64,
-        /// The sample rate in frames per second.
-        sample_rate_hz: u32,
-    },
-    /// A pulse width lies outside the signal frame limit or leaves no closed frame.
-    PulseWidth {
-        /// The width quantity holding it.
-        parameter: ParameterId,
-        /// The rejected width in seconds.
-        width_seconds: f64,
-        /// Pulses per second.
         rate_hz: f64,
         /// The sample rate in frames per second.
         sample_rate_hz: u32,
@@ -277,19 +136,61 @@ impl VoiceError {
     #[must_use]
     pub const fn parameters(&self) -> &'static [ParameterId] {
         match self {
+            Self::Pulse {
+                modulation,
+                width,
+                error,
+                ..
+            } => match (*modulation, *width, error) {
+                (true, _, crate::PulseError::Rate) => &[ParameterId::ModulationPulseRate],
+                (false, _, crate::PulseError::Rate) => &[ParameterId::SourcePulseRate],
+                (true, crate::PulseWidth::Duration { .. }, crate::PulseError::Edges) => &[
+                    ParameterId::ModulationPulseDuration,
+                    ParameterId::ModulationRise,
+                    ParameterId::ModulationFall,
+                ],
+                (false, crate::PulseWidth::Duration { .. }, crate::PulseError::Edges) => &[
+                    ParameterId::SourcePulseDuration,
+                    ParameterId::SourceRise,
+                    ParameterId::SourceFall,
+                ],
+                (true, crate::PulseWidth::DutyCycle { .. }, crate::PulseError::Edges) => &[
+                    ParameterId::ModulationPulseRate,
+                    ParameterId::ModulationDuty,
+                    ParameterId::ModulationRise,
+                    ParameterId::ModulationFall,
+                ],
+                (false, crate::PulseWidth::DutyCycle { .. }, crate::PulseError::Edges) => &[
+                    ParameterId::SourcePulseRate,
+                    ParameterId::SourceDuty,
+                    ParameterId::SourceRise,
+                    ParameterId::SourceFall,
+                ],
+                (true, crate::PulseWidth::Duration { .. }, _) => &[
+                    ParameterId::ModulationPulseRate,
+                    ParameterId::ModulationPulseDuration,
+                ],
+                (false, crate::PulseWidth::Duration { .. }, _) => &[
+                    ParameterId::SourcePulseRate,
+                    ParameterId::SourcePulseDuration,
+                ],
+                (true, crate::PulseWidth::DutyCycle { .. }, _) => &[
+                    ParameterId::ModulationPulseRate,
+                    ParameterId::ModulationDuty,
+                ],
+                (false, crate::PulseWidth::DutyCycle { .. }, _) => {
+                    &[ParameterId::SourcePulseRate, ParameterId::SourceDuty]
+                }
+            },
             Self::Frequency { parameter, .. } => match parameter {
-                ParameterId::ClickRate => &[ParameterId::ClickRate],
-                ParameterId::AmRate => &[ParameterId::AmRate],
-                ParameterId::GateRate => &[ParameterId::GateRate],
+                ParameterId::SourcePulseRate => &[ParameterId::SourcePulseRate],
+                ParameterId::ModulationRate => &[ParameterId::ModulationRate],
+                ParameterId::ModulationPulseRate => &[ParameterId::ModulationPulseRate],
                 _ => &[ParameterId::ToneFrequency],
             },
-            Self::Sideband { .. } => &[ParameterId::ToneFrequency, ParameterId::AmRate],
-            Self::PulseWidth { parameter, .. } => match parameter {
-                ParameterId::GateWidth => &[ParameterId::GateRate, ParameterId::GateWidth],
-                _ => &[ParameterId::ClickRate, ParameterId::ClickWidth],
-            },
+            Self::Sideband { .. } => &[ParameterId::ToneFrequency, ParameterId::ModulationRate],
             Self::PeakDbfs { .. } => &[ParameterId::PeakLevel],
-            Self::Depth { .. } => &[ParameterId::AmDepth],
+            Self::Depth { .. } => &[ParameterId::ModulationDepth],
         }
     }
 }
@@ -316,17 +217,6 @@ impl core::error::Error for SoundError {
 }
 
 impl core::error::Error for VoiceError {}
-
-crate::vocabulary::vocabulary! { Ears,"ears" {
-    Both => ("both","Both ears","both ears"),
-    Left => ("left","Left ear","left ear"),
-    Right => ("right","Right ear","right ear"),
-}}
-
-crate::vocabulary::vocabulary! { Ear,"ear" {
-    Left => (crate::Ears::Left.key(),crate::Ears::Left.label(),crate::Ears::Left.phrase()),
-    Right => (crate::Ears::Right.key(),crate::Ears::Right.label(),crate::Ears::Right.phrase()),
-}}
 
 crate::diagnostic_codes! {
     pub(crate) const CODES;
@@ -367,9 +257,9 @@ crate::diagnostic_codes! {
                         e_hz"=>*sample_rate_hz,
                     }
                 }
-                Self::Peak { ear, amplitude } => {
+                Self::Peak { channel, amplitude } => {
                     crate::diagnostic_params! {
-                        "ear"=>ear.key(),
+                        "channel"=>channel.key(),
                         "amplitude"=>*amplitude,
                     }
                 }
@@ -394,15 +284,31 @@ crate::diagnostic_codes! {
     }
     VoiceError {
         codes {
+            Self::Pulse { .. } => "voice.pulse",
             Self::Frequency { .. } => "voice.frequency",
             Self::Sideband { .. } => "voice.sideband",
-            Self::PulseWidth { .. } => "voice.pulse_width",
             Self::PeakDbfs { .. } => "voice.peak_dbfs",
             Self::Depth { .. } => "voice.depth",
         }
         delegates {}
         params(this) {
             match this {
+                Self::Pulse {
+                    modulation, width, rate_hz, sample_rate_hz, error
+                } => crate::diagnostic_params! {
+                    "modulation"=>*modulation,
+                    "rate_hz"=>*rate_hz,
+                    "sample_rate_hz"=>*sample_rate_hz,
+                    "reason"=>error.key(),
+                    "width_mode"=>match width {
+                        crate::PulseWidth::Duration {..}=>"duration",
+                        crate::PulseWidth::DutyCycle {..}=>"duty_cycle",
+                    },
+                    "requested_width"=>match width {
+                        crate::PulseWidth::Duration {seconds}=>seconds.get(),
+                        crate::PulseWidth::DutyCycle {fraction}=>fraction.get(),
+                    }
+                },
                 Self::Frequency {
                     parameter,
                     hz,
@@ -427,26 +333,9 @@ crate::diagnostic_codes! {
                         e_hz"=>*sample_rate_hz,
                     }
                 }
-                Self::PulseWidth {
-                    parameter,
-                    width_seconds,
-                    rate_hz,
-                    sample_rate_hz,
-                } => {
-                    crate::diagnostic_params! {
-                        "parameter"=>parameter.key(),
-                        "width_seconds"=>*width_seconds,
-                        "rate_hz"=>*rate_hz,
-                        "sample_rat\
-                        e_hz"=>*sample_rate_hz,
-                    }
-                }
                 Self::PeakDbfs { peak_dbfs } => crate::diagnostic_params! {"peak_dbfs"=>*peak_dbfs},
                 Self::Depth { depth } => crate::diagnostic_params! {"depth"=>*depth},
             }
         }
     }
 }
-
-#[cfg(test)]
-mod tests;

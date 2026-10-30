@@ -7,7 +7,7 @@
 #![cfg(test)]
 
 use auditorylab_core::test_support as common;
-use auditorylab_core::{ComponentForm, Ears, Modulation, SampleRate};
+use auditorylab_core::{ChannelRouting, ComponentForm, Modulation, SampleRate};
 
 /// FNV-1a over the little-endian bytes of every sample.
 fn digest(frames: &[[f64; 2]]) -> u64 {
@@ -25,8 +25,6 @@ fn digest(frames: &[[f64; 2]]) -> u64 {
 /// Two faded seconds at 48,000 Hz, rendered in buffers of uneven length.
 fn rendered(components: &[ComponentForm]) -> Vec<[f64; 2]> {
     let session = common::recipe(2.0, 0.1, components)
-        .sound()
-        .clone()
         .signal(SampleRate::new(48_000).unwrap())
         .unwrap();
     let mut frames = vec![[0.0; 2]; 96_000];
@@ -42,20 +40,24 @@ fn rendered(components: &[ComponentForm]) -> Vec<[f64; 2]> {
     frames
 }
 
-const CASES: [(&str, &[ComponentForm]); 5] = [
+const CASES: [(&str, &[ComponentForm]); 9] = [
     (
-        "separate-ear tones",
+        "independent channel tones",
         &[
-            ComponentForm::Tone {
-                frequency_hz: finite(250.0),
-                ears: Ears::Left,
-                peak_dbfs: finite(-20.0),
+            ComponentForm {
+                source: auditorylab_core::SoundSource::Tone {
+                    frequency_hz: finite(250.0),
+                    route: ChannelRouting::Left,
+                    peak_dbfs: finite(-20.0),
+                },
                 modulation: None,
             },
-            ComponentForm::Tone {
-                frequency_hz: finite(256.0),
-                ears: Ears::Right,
-                peak_dbfs: finite(-20.0),
+            ComponentForm {
+                source: auditorylab_core::SoundSource::Tone {
+                    frequency_hz: finite(256.0),
+                    route: ChannelRouting::Right,
+                    peak_dbfs: finite(-20.0),
+                },
                 modulation: None,
             },
         ],
@@ -63,27 +65,33 @@ const CASES: [(&str, &[ComponentForm]); 5] = [
     (
         "summed tones",
         &[
-            ComponentForm::Tone {
-                frequency_hz: finite(396.5),
-                ears: Ears::Both,
-                peak_dbfs: finite(-23.0103),
+            ComponentForm {
+                source: auditorylab_core::SoundSource::Tone {
+                    frequency_hz: finite(396.5),
+                    route: ChannelRouting::Both,
+                    peak_dbfs: finite(-23.0103),
+                },
                 modulation: None,
             },
-            ComponentForm::Tone {
-                frequency_hz: finite(403.5),
-                ears: Ears::Both,
-                peak_dbfs: finite(-23.0103),
+            ComponentForm {
+                source: auditorylab_core::SoundSource::Tone {
+                    frequency_hz: finite(403.5),
+                    route: ChannelRouting::Both,
+                    peak_dbfs: finite(-23.0103),
+                },
                 modulation: None,
             },
         ],
     ),
     (
         "modulated tone",
-        &[ComponentForm::Tone {
-            frequency_hz: finite(1000.0),
-            ears: Ears::Left,
-            peak_dbfs: finite(-20.0),
-            modulation: Some(Modulation::Am {
+        &[ComponentForm {
+            source: auditorylab_core::SoundSource::Tone {
+                frequency_hz: finite(1000.0),
+                route: ChannelRouting::Left,
+                peak_dbfs: finite(-20.0),
+            },
+            modulation: Some(Modulation::Sinusoidal {
                 rate_hz: finite(39.0625),
                 depth: finite(1.0),
             }),
@@ -91,24 +99,122 @@ const CASES: [(&str, &[ComponentForm]); 5] = [
     ),
     (
         "gated tone",
-        &[ComponentForm::Tone {
-            frequency_hz: finite(5000.0),
-            ears: Ears::Both,
-            peak_dbfs: finite(-20.0),
-            modulation: Some(Modulation::Gate {
-                rate_hz: finite(40.0),
-                width_seconds: finite(0.001),
+        &[ComponentForm {
+            source: auditorylab_core::SoundSource::Tone {
+                frequency_hz: finite(5000.0),
+                route: ChannelRouting::Both,
+                peak_dbfs: finite(-20.0),
+            },
+            modulation: Some(Modulation::Pulsed {
+                pulse: auditorylab_core::PulseSpec {
+                    rate_hz: finite(40.0),
+                    width: auditorylab_core::PulseWidth::Duration {
+                        seconds: finite(0.001),
+                    },
+                    shape: auditorylab_core::PulseShape::Rectangular {},
+                },
             }),
         }],
     ),
     (
-        "clicks",
-        &[ComponentForm::Clicks {
-            rate_hz: finite(40.0),
-            width_seconds: finite(0.001),
-            ears: Ears::Both,
-            peak_dbfs: finite(-20.0),
+        "rectangular pulse train",
+        &[ComponentForm {
+            source: auditorylab_core::SoundSource::PulseTrain {
+                route: ChannelRouting::Both,
+                peak_dbfs: finite(-20.0),
+                pulse: auditorylab_core::PulseSpec {
+                    rate_hz: finite(40.0),
+                    width: auditorylab_core::PulseWidth::Duration {
+                        seconds: finite(0.001),
+                    },
+                    shape: auditorylab_core::PulseShape::Rectangular {},
+                },
+            },
             modulation: None,
+        }],
+    ),
+    (
+        "shaped pulsed tone",
+        &[ComponentForm {
+            source: auditorylab_core::SoundSource::Tone {
+                frequency_hz: finite(440.0),
+                route: ChannelRouting::Both,
+                peak_dbfs: finite(-30.0),
+            },
+            modulation: Some(Modulation::Pulsed {
+                pulse: auditorylab_core::PulseSpec {
+                    rate_hz: finite(10.0),
+                    width: auditorylab_core::PulseWidth::DutyCycle {
+                        fraction: finite(0.5),
+                    },
+                    shape: auditorylab_core::PulseShape::RaisedCosine {
+                        rise_seconds: finite(0.002),
+                        fall_seconds: finite(0.002),
+                    },
+                },
+            }),
+        }],
+    ),
+    (
+        "shared monaural pulse",
+        &[ComponentForm {
+            source: auditorylab_core::SoundSource::MonauralPair {
+                first_hz: finite(400.0),
+                offset_hz: finite(6.0),
+                first_peak_dbfs: finite(-30.0),
+                second_peak_dbfs: finite(-36.0),
+                route: ChannelRouting::Both,
+            },
+            modulation: Some(Modulation::Pulsed {
+                pulse: auditorylab_core::PulseSpec {
+                    rate_hz: finite(10.0),
+                    width: auditorylab_core::PulseWidth::Duration {
+                        seconds: finite(0.05),
+                    },
+                    shape: auditorylab_core::PulseShape::RaisedCosine {
+                        rise_seconds: finite(0.002),
+                        fall_seconds: finite(0.001),
+                    },
+                },
+            }),
+        }],
+    ),
+    (
+        "shaped pulse source AM",
+        &[ComponentForm {
+            source: auditorylab_core::SoundSource::PulseTrain {
+                route: ChannelRouting::Both,
+                peak_dbfs: finite(-30.0),
+                pulse: auditorylab_core::PulseSpec {
+                    rate_hz: finite(40.0),
+                    width: auditorylab_core::PulseWidth::DutyCycle {
+                        fraction: finite(0.2),
+                    },
+                    shape: auditorylab_core::PulseShape::RaisedCosine {
+                        rise_seconds: finite(0.001),
+                        fall_seconds: finite(0.002),
+                    },
+                },
+            },
+            modulation: Some(Modulation::Sinusoidal {
+                rate_hz: finite(8.0),
+                depth: finite(0.75),
+            }),
+        }],
+    ),
+    (
+        "shared binaural AM",
+        &[ComponentForm {
+            source: auditorylab_core::SoundSource::BinauralPair {
+                first_hz: finite(250.0),
+                offset_hz: finite(-10.0),
+                first_peak_dbfs: finite(-20.0),
+                second_peak_dbfs: finite(-20.0),
+            },
+            modulation: Some(Modulation::Sinusoidal {
+                rate_hz: finite(8.0),
+                depth: finite(0.5),
+            }),
         }],
     ),
 ];
@@ -122,12 +228,18 @@ fn every_kind_of_component_renders_the_same_bits_on_every_platform() {
     assert_eq!(digests, PINNED);
 }
 
-const PINNED: [&str; 5] = [
-    "separate-ear tones 0x923b526697b0dfc0",
+// Levels/routes sum before shared modulation. The changed AM association and new
+// shaped/pair cases are checked by independent order/Fourier controls in component_oracles.
+const PINNED: [&str; 9] = [
+    "independent channel tones 0x923b526697b0dfc0",
     "summed tones 0x125945695a8a70c5",
-    "modulated tone 0x7163997cb756ff9c",
+    "modulated tone 0x12ebfc668ba52241",
     "gated tone 0x524d4e9fc6e3c2e5",
-    "clicks 0xff6d3c57217ac3dd",
+    "rectangular pulse train 0xff6d3c57217ac3dd",
+    "shaped pulsed tone 0xe27fcfda09f00f41",
+    "shared monaural pulse 0x7a7aab618ab71de9",
+    "shaped pulse source AM 0x0acf59bf8dc626d1",
+    "shared binaural AM 0x64ace313ab7b800b",
 ];
 
 #[test]

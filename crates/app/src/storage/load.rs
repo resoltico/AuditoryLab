@@ -213,7 +213,7 @@ mod error_tests {
         let sound = SoundError::Voice {
             id: crate::core::ComponentId::new(7).unwrap().into(),
             error: VoiceError::Frequency {
-                parameter: ParameterId::GateRate,
+                parameter: ParameterId::ModulationPulseRate,
                 hz: 24_000.0,
                 sample_rate_hz: 48_000,
             },

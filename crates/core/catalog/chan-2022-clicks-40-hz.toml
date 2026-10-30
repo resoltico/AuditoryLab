@@ -1,7 +1,7 @@
 # Copyright 2026 Ervins Strauhmanis
 # SPDX-License-Identifier: MPL-2.0
 # Source parameters and adaptations: see docs/catalog.md.
-schema_version = 4
+schema_version = 5
 
 [document]
 id = "956a024d-1c41-45a9-8369-6b94d4065f0a"
@@ -9,17 +9,28 @@ id = "956a024d-1c41-45a9-8369-6b94d4065f0a"
 [description]
 title = "40 Hz clicks"
 
-[sound]
+[timing]
 duration_seconds = 180.0
 fade_seconds = 0.1
 
 [[sound.component]]
 id = 1
-ears = "both"
-kind = "clicks"
-rate_hz = 40.0
-width_seconds = 0.001
+
+[sound.component.source]
+route = "both"
+kind = "pulse_train"
 peak_dbfs = -20.0
+[sound.component.source.pulse]
+rate_hz = 40.0
+[sound.component.source.pulse.width]
+kind = "duration"
+seconds = 0.001
+[sound.component.source.pulse.shape]
+kind = "rectangular"
+
+
+[sound.component.modulation]
+kind = "none"
 
 [[source]]
 key = "chan-2022"

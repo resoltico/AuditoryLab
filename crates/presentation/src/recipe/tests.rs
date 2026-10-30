@@ -115,7 +115,7 @@ fn authored_descriptions_are_used_by_snapshot_details_and_invalid_reports() {
     use auditorylab_core::ComponentId;
     use auditorylab_core::DocumentIdentity;
     use auditorylab_core::SampleRate;
-    use auditorylab_core::Sound;
+
     for (form, expected) in authored_description_cases() {
         let c = Component {
             id: ComponentId::new(7).unwrap(),
@@ -127,8 +127,16 @@ fn authored_descriptions_are_used_by_snapshot_details_and_invalid_reports() {
             created_at: None,
             modified_at: None,
         });
-        candidate.content.sound = Sound::new(finite(2.0), finite(0.1), vec![c])
+        candidate.content.sound = {
+            let fixture = auditorylab_app::core::test_support::FiniteFixture::new(
+                finite(2.0),
+                finite(0.1),
+                vec![c],
+            )
             .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
+            candidate.content.timing = fixture.timing;
+            fixture.sound
+        };
         let recipe = candidate.build().unwrap();
         let snapshot = RecipeSnapshot::new(Origin::Stream("test".into()), recipe);
         assert!(crate::snapshot_details_at(&(snapshot), SampleRate::DEFAULT).contains(expected));
@@ -188,12 +196,18 @@ const fn finite(value: f64) -> auditorylab_core::Finite {
     }
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "Literal oracle specifies all seven authored source/modulation descriptions"
+)]
 fn authored_description_cases() -> [(ComponentForm, &'static str); 7] {
-    use auditorylab_core::{Ears, Pair};
-    let plain = ComponentForm::Tone {
-        frequency_hz: finite(437.0),
-        ears: Ears::Left,
-        peak_dbfs: finite(-24.0),
+    use auditorylab_core::{ChannelRouting, Pair};
+    let plain = ComponentForm {
+        source: auditorylab_app::core::SoundSource::Tone {
+            frequency_hz: finite(437.0),
+            route: ChannelRouting::Left,
+            peak_dbfs: finite(-24.0),
+        },
         modulation: None,
     };
     let pair = Pair {
@@ -203,49 +217,66 @@ fn authored_description_cases() -> [(ComponentForm, &'static str); 7] {
         second_peak_dbfs: finite(-30.0),
     };
     [
-        (plain, "tone 437 Hz, peak -24 dBFS, left ear"),
+        (plain, "tone 437 Hz, peak -24 dBFS, left channel"),
         (
             {
                 let mut form = plain;
-                form.set_modulation(Some(Modulation::Am {
+                form.set_modulation(Some(Modulation::Sinusoidal {
                     rate_hz: finite(7.0),
                     depth: finite(0.5),
                 }));
                 form
             },
-            "tone 437 Hz, peak -24 dBFS, left ear, AM 7 Hz, depth 0.5",
+            "tone 437 Hz, peak -24 dBFS, left channel, sinusoidal AM 7 Hz, depth 50%",
         ),
         (
             {
                 let mut form = plain;
-                form.set_modulation(Some(Modulation::Gate {
-                    rate_hz: finite(7.0),
-                    width_seconds: finite(0.01),
+                form.set_modulation(Some(Modulation::Pulsed {
+                    pulse: auditorylab_app::core::PulseSpec {
+                        rate_hz: finite(7.0),
+                        width: auditorylab_app::core::PulseWidth::Duration {
+                            seconds: finite(0.01),
+                        },
+                        shape: auditorylab_app::core::PulseShape::Rectangular {},
+                    },
                 }));
                 form
             },
-            "tone 437 Hz, peak -24 dBFS, left ear, gate 7 Hz, 0.01 s open",
+            "tone 437 Hz, peak -24 dBFS, left channel, shared pulsed modulation 7 pulses/s · \
+                requested 10 ms fixed window · rectangular",
         ),
         (
             {
                 let base = plain;
-                ComponentForm::Clicks {
-                    rate_hz: finite(7.0),
-                    width_seconds: finite(0.01),
-                    ears: base.route().unwrap(),
-                    peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
+                ComponentForm {
+                    source: auditorylab_app::core::SoundSource::PulseTrain {
+                        route: base.route().unwrap(),
+                        peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
+                        pulse: auditorylab_app::core::PulseSpec {
+                            rate_hz: finite(7.0),
+                            width: auditorylab_app::core::PulseWidth::Duration {
+                                seconds: finite(0.01),
+                            },
+                            shape: auditorylab_app::core::PulseShape::Rectangular {},
+                        },
+                    },
                     modulation: base.modulation(),
                 }
             },
-            "clicks 7 Hz, 0.01 s wide, peak -24 dBFS, left ear",
+            "pulse train 7 pulses/s · requested 10 ms fixed window · rectangular, peak -24 dBFS, \
+                left channel",
         ),
         (
             {
-                ComponentForm::BinauralPair {
-                    left_hz: pair.first_hz,
-                    offset_hz: pair.offset_hz,
-                    left_peak_dbfs: pair.first_peak_dbfs,
-                    right_peak_dbfs: pair.second_peak_dbfs,
+                ComponentForm {
+                    source: auditorylab_app::core::SoundSource::BinauralPair {
+                        first_hz: pair.first_hz,
+                        offset_hz: pair.offset_hz,
+                        first_peak_dbfs: pair.first_peak_dbfs,
+                        second_peak_dbfs: pair.second_peak_dbfs,
+                    },
+                    modulation: None,
                 }
             },
             "binaural pair, first 200 Hz, beat offset -6 Hz, second 194 Hz, peaks -20 / -30 dBFS",
@@ -256,12 +287,15 @@ fn authored_description_cases() -> [(ComponentForm, &'static str); 7] {
                     offset_hz: finite(6.0),
                     ..pair
                 };
-                ComponentForm::MonauralPair {
-                    ears: Ears::Right,
-                    first_hz: pair.first_hz,
-                    offset_hz: pair.offset_hz,
-                    first_peak_dbfs: pair.first_peak_dbfs,
-                    second_peak_dbfs: pair.second_peak_dbfs,
+                ComponentForm {
+                    source: auditorylab_app::core::SoundSource::MonauralPair {
+                        route: ChannelRouting::Right,
+                        first_hz: pair.first_hz,
+                        offset_hz: pair.offset_hz,
+                        first_peak_dbfs: pair.first_peak_dbfs,
+                        second_peak_dbfs: pair.second_peak_dbfs,
+                    },
+                    modulation: None,
                 }
             },
             "monaural pair, first 200 Hz, beat offset 6 Hz, second 206 Hz, peaks -20 / -30 dBFS",
@@ -269,14 +303,16 @@ fn authored_description_cases() -> [(ComponentForm, &'static str); 7] {
         (
             {
                 let base = plain;
-                ComponentForm::Tone {
-                    frequency_hz: finite(-437.0),
-                    ears: base.route().unwrap(),
-                    peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
+                ComponentForm {
+                    source: auditorylab_app::core::SoundSource::Tone {
+                        frequency_hz: finite(-437.0),
+                        route: base.route().unwrap(),
+                        peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
+                    },
                     modulation: base.modulation(),
                 }
             },
-            "tone -437 Hz, peak -24 dBFS, left ear",
+            "tone -437 Hz, peak -24 dBFS, left channel",
         ),
     ]
 }

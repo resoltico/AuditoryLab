@@ -1,6 +1,6 @@
 //! Shared query counterexamples using actual authored classification and typed evidence.
 use auditorylab_app::core::{
-    Component, ComponentForm, ComponentId, DocumentIdentity, Ears, Recipe, Sound, Timestamp,
+    ChannelRouting, Component, ComponentForm, ComponentId, DocumentIdentity, Recipe, Timestamp,
     rhythm::{Band, Method},
 };
 use auditorylab_app::discovery::query::{Direction, GroupBy, Scope, SortBy};
@@ -24,8 +24,13 @@ fn entry(id: u32, title: &str, nodes: Vec<Component>, modified: Option<&str>) ->
         title: title.into(),
         notes: None,
     });
-    recipe.content.sound = Sound::new(finite(60.0), finite(0.1), nodes)
-        .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
+    recipe.content.sound = {
+        let fixture =
+            auditorylab_core::test_support::FiniteFixture::new(finite(60.0), finite(0.1), nodes)
+                .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
+        recipe.content.timing = fixture.timing;
+        fixture.sound
+    };
     let key = LibraryKey::User(recipe.document.id);
     let snapshot = RecipeSnapshot::new(Origin::Stream("fixture".into()), recipe.build().unwrap());
     EntrySummary::from_snapshot(key, &snapshot, None)
@@ -37,11 +42,14 @@ fn entry(id: u32, title: &str, nodes: Vec<Component>, modified: Option<&str>) ->
 fn pair(offset_hz: f64) -> Component {
     Component {
         id: ComponentId::new(7).unwrap(),
-        form: ComponentForm::BinauralPair {
-            left_hz: finite(200.0),
-            offset_hz: finite(offset_hz),
-            left_peak_dbfs: finite(-30.0),
-            right_peak_dbfs: finite(-30.0),
+        form: ComponentForm {
+            source: auditorylab_core::SoundSource::BinauralPair {
+                first_hz: finite(200.0),
+                offset_hz: finite(offset_hz),
+                first_peak_dbfs: finite(-30.0),
+                second_peak_dbfs: finite(-30.0),
+            },
+            modulation: None,
         },
     }
 }
@@ -52,11 +60,13 @@ fn pair(offset_hz: f64) -> Component {
 fn am(rate_hz: f64) -> Component {
     Component {
         id: ComponentId::new(90).unwrap(),
-        form: ComponentForm::Tone {
-            frequency_hz: finite(1000.0),
-            ears: Ears::Both,
-            peak_dbfs: finite(-30.0),
-            modulation: Some(auditorylab_app::core::Modulation::Am {
+        form: ComponentForm {
+            source: auditorylab_core::SoundSource::Tone {
+                frequency_hz: finite(1000.0),
+                route: ChannelRouting::Both,
+                peak_dbfs: finite(-30.0),
+            },
+            modulation: Some(auditorylab_app::core::Modulation::Sinusoidal {
                 rate_hz: finite(rate_hz),
                 depth: finite(1.0),
             }),
@@ -72,7 +82,7 @@ fn correlated_rate_sort_and_groups_use_unique_actual_authored_keys() {
     q.rhythm.bands = vec![Band::Gamma];
     q.rhythm.methods = vec![Method::Binaural];
     assert_eq!(q.execute(&input).unwrap().unique_count(), 0);
-    q.rhythm.methods = vec![Method::Am];
+    q.rhythm.methods = vec![Method::Sinusoidal];
     q.group_by = GroupBy::Band;
     let result = q.execute(&input).unwrap();
     assert_eq!(result.unique_count(), 2);
@@ -289,4 +299,95 @@ const fn finite(value: f64) -> auditorylab_core::Finite {
         Some(value) => value,
         None => panic!("nonfinite fixture value"),
     }
+}
+
+#[test]
+fn search_indexes_actual_pulse_intent_and_modulation_on_pairs() {
+    use auditorylab_core::{Modulation, PulseShape, PulseSpec, PulseWidth};
+    let mut shaped = pair(6.0);
+    shaped.form.modulation = Some(Modulation::Pulsed {
+        pulse: PulseSpec {
+            rate_hz: finite(10.0),
+            width: PulseWidth::DutyCycle {
+                fraction: finite(0.5),
+            },
+            shape: PulseShape::RaisedCosine {
+                rise_seconds: finite(0.002),
+                fall_seconds: finite(0.003),
+            },
+        },
+    });
+    let mut rectangular = shaped;
+    let Some(Modulation::Pulsed { pulse }) = &mut rectangular.form.modulation else {
+        panic!("specified pulse fixture");
+    };
+    pulse.shape = PulseShape::Rectangular {};
+    pulse.width = PulseWidth::Duration {
+        seconds: finite(0.05),
+    };
+    let input = [
+        entry(1, "A", vec![shaped], None),
+        entry(2, "B", vec![rectangular], None),
+    ];
+    for (search, titles) in [
+        ("pulsed modulation", vec!["A", "B"]),
+        ("raised cosine duty", vec!["A"]),
+        ("rectangular duration", vec!["B"]),
+        ("rectangular duty", vec![]),
+        ("sinusoidal", vec![]),
+    ] {
+        let result = CatalogQuery {
+            search: search.into(),
+            ..Default::default()
+        }
+        .execute(&input)
+        .unwrap();
+        assert_eq!(
+            result
+                .entries
+                .iter()
+                .map(|e| e.title.as_str())
+                .collect::<Vec<_>>(),
+            titles,
+            "{search}"
+        );
+    }
+}
+
+#[test]
+fn isochronic_search_names_only_a_tone_under_pulsed_gain() {
+    use auditorylab_core::{Modulation, SoundSource};
+    let modulation = Some(Modulation::Pulsed {
+        pulse: auditorylab_core::test_support::rectangular_pulse(10.0, 0.05),
+    });
+    let mut tone = am(8.0);
+    tone.form.modulation = modulation;
+    let mut train = tone;
+    train.form.source = SoundSource::PulseTrain {
+        pulse: auditorylab_core::test_support::rectangular_pulse(40.0, 0.001),
+        route: ChannelRouting::Both,
+        peak_dbfs: finite(-30.0),
+    };
+    let mut coupled = pair(6.0);
+    coupled.form.modulation = modulation;
+    let input = [
+        entry(1, "A", vec![tone], None),
+        entry(2, "B", vec![train], None),
+        entry(3, "C", vec![coupled], None),
+        entry(4, "D", vec![am(10.0)], None),
+    ];
+    let result = CatalogQuery {
+        search: "isochronic 10".into(),
+        ..Default::default()
+    }
+    .execute(&input)
+    .unwrap();
+    assert_eq!(
+        result
+            .entries
+            .iter()
+            .map(|e| e.title.as_str())
+            .collect::<Vec<_>>(),
+        ["A"]
+    );
 }

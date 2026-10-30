@@ -122,7 +122,7 @@ impl Display for SoundText<'_> {
             SoundError::Voice { id, error } => {
                 write!(f, "{}: {}", voice_reference(*id), VoiceText(error))
             }
-            SoundError::Peak { ear, amplitude } => {
+            SoundError::Peak { channel, amplitude } => {
                 let db = 20.0 * amplitude.log10();
                 let rounded = format!("{db:.2}");
                 let level = if db > 0.0 && rounded == "0.00" {
@@ -134,7 +134,7 @@ impl Display for SoundText<'_> {
                     f,
                     "the components for the {} add up to a peak of {level} dBFS, above \
                         full scale; lower their peak levels",
-                    ear.phrase()
+                    channel.phrase()
                 )
             }
         }
@@ -144,6 +144,18 @@ impl Display for SoundText<'_> {
 impl Display for VoiceText<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self.0 {
+            VoiceError::Pulse {
+                error,
+                rate_hz,
+                sample_rate_hz,
+                ..
+            } => write!(
+                f,
+                "Pulse at {} Hz: {error}; at {sample_rate_hz} Hz the window must fit 1 to {} \
+                    frames",
+                Number(*rate_hz),
+                Signal::MAX_FRAMES
+            ),
             VoiceError::Frequency {
                 parameter,
                 hz,
@@ -163,21 +175,8 @@ impl Display for VoiceText<'_> {
                 f,
                 "{} plus {} must stay below {} Hz, half the {sample_rate_hz} Hz sample rate",
                 Quantity(ParameterId::ToneFrequency, *frequency_hz),
-                Quantity(ParameterId::AmRate, *rate_hz),
+                Quantity(ParameterId::ModulationRate, *rate_hz),
                 f64::from(*sample_rate_hz) / 2.0
-            ),
-            VoiceError::PulseWidth {
-                parameter,
-                width_seconds,
-                rate_hz,
-                sample_rate_hz,
-            } => write!(
-                f,
-                "{} must give 1 to {} frames at {sample_rate_hz} Hz and leave at least \
-                    one closed frame in each 1/{} s period",
-                Quantity(*parameter, *width_seconds),
-                Signal::MAX_FRAMES,
-                Number(*rate_hz)
             ),
             VoiceError::PeakDbfs { peak_dbfs } => write!(
                 f,
@@ -187,7 +186,7 @@ impl Display for VoiceText<'_> {
             VoiceError::Depth { depth } => write!(
                 f,
                 "{} must be from 0% to 100%",
-                Quantity(ParameterId::AmDepth, *depth)
+                Quantity(ParameterId::ModulationDepth, *depth)
             ),
         }
     }
@@ -215,15 +214,22 @@ mod tests {
     use super::*;
     #[test]
     fn excessive_width_names_the_signal_frame_limit() {
-        let component = auditorylab_core::ComponentForm::Clicks {
-            rate_hz: finite(1e-12),
-            width_seconds: finite(68_719_476_737.0 / 48_000.0),
-            ears: auditorylab_core::Ears::Both,
-            peak_dbfs: finite(-30.0),
+        let component = auditorylab_core::ComponentForm {
+            source: auditorylab_core::SoundSource::PulseTrain {
+                route: auditorylab_core::ChannelRouting::Both,
+                peak_dbfs: finite(-30.0),
+                pulse: auditorylab_app::core::PulseSpec {
+                    rate_hz: finite(1e-12),
+                    width: auditorylab_app::core::PulseWidth::Duration {
+                        seconds: finite(68_719_476_737.0 / 48_000.0),
+                    },
+                    shape: auditorylab_app::core::PulseShape::Rectangular {},
+                },
+            },
             modulation: None,
         };
         let message = sound_error(
-            &auditorylab_core::Sound::new(
+            &auditorylab_app::core::test_support::FiniteFixture::new(
                 finite(1.0),
                 finite(0.0),
                 vec![auditorylab_core::Component {

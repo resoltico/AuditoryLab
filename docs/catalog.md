@@ -30,4 +30,4 @@ Band and method filters are correlated within one descriptor. A method cannot bo
 
 ## Sampled pulse widths
 
-Clicks and rectangular-gate recipes realize each stated width as exactly `round(width_seconds × sample_rate)` frames. Their onsets are the first frames at or after the period onsets. The catalog’s 1 ms pulses therefore have a constant frame width at each rendering rate.
+Catalog pulse sources and pulsed modulation retain explicit rectangular shape and duration width intent in schema 5. They realize each stated width as exactly `round(width_seconds × sample_rate)` frames. Their onsets are the first frames at or after the period onsets. The catalog’s 1 ms pulses therefore have a constant frame width at each rendering rate.

@@ -152,14 +152,16 @@ mod quantization {
     }
     #[test]
     fn actual_encoded_peaks_can_round_above_the_binary64_generation_bound() {
-        use auditorylab_core::{ComponentForm, Ears, Sound};
-        let session = Sound::new(
+        use auditorylab_core::{ChannelRouting, ComponentForm};
+        let session = auditorylab_core::test_support::FiniteFixture::new(
             finite(4.0 / 8_000.0),
             finite(0.0),
-            (vec![ComponentForm::Tone {
-                frequency_hz: finite(2_000.0),
-                ears: Ears::Left,
-                peak_dbfs: finite(-20.0),
+            (vec![ComponentForm {
+                source: auditorylab_core::SoundSource::Tone {
+                    frequency_hz: finite(2_000.0),
+                    route: ChannelRouting::Left,
+                    peak_dbfs: finite(-20.0),
+                },
                 modulation: None,
             }])
             .into_iter()
@@ -189,13 +191,15 @@ mod quantization {
         for frame in bytes[58..].as_chunks::<8>().0 {
             assert_eq!(&frame[4..], &[0; 4]);
         }
-        let session = Sound::new(
+        let session = auditorylab_core::test_support::FiniteFixture::new(
             finite(4.0 / 8_000.0),
             finite(0.0),
-            (vec![ComponentForm::Tone {
-                frequency_hz: finite(2_000.0),
-                ears: Ears::Both,
-                peak_dbfs: finite(-1_000.0),
+            (vec![ComponentForm {
+                source: auditorylab_core::SoundSource::Tone {
+                    frequency_hz: finite(2_000.0),
+                    route: ChannelRouting::Both,
+                    peak_dbfs: finite(-1_000.0),
+                },
                 modulation: None,
             }])
             .into_iter()

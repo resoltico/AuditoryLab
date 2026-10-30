@@ -30,10 +30,12 @@ pub(crate) fn step(hz: f64, fs: u32) -> Option<u64> {
     let fs = u128::from(fs);
     let quotient = if shift >= 0 {
         (u128::from(mantissa) << shift).div_ceil(fs)
-    } else if -shift < 100 {
-        u128::from(mantissa).div_ceil(fs << -shift)
     } else {
-        1
+        // The mantissa has at most 53 bits. A denominator shifted by 64 or
+        // more always gives ceil(mantissa/denominator)=1; capping the shift
+        // also keeps the denominator within u128 for every supported rate.
+        let right_shift = shift.unsigned_abs().min(64);
+        u128::from(mantissa).div_ceil(fs << right_shift)
     };
     u64::try_from(quotient).ok()
 }
@@ -81,6 +83,8 @@ pub(crate) struct Pulse {
     shift: u32,
     fs: u32,
     frames: u64,
+    rise_frames: u64,
+    fall_frames: u64,
 }
 impl Pulse {
     pub(crate) const fn frames(self) -> u64 {
@@ -105,6 +109,35 @@ impl Pulse {
     }
     /// Extrema over every discrete frame of [start,end), without enumerating pulses.
     pub(crate) fn extent(self, start: u64, end: u64) -> crate::Extent {
+        if self.rise_frames != 0 {
+            let first = self.sample(start);
+            let last = self.sample(end - 1);
+            let initial_period = self.periods(start);
+            let final_period = self.periods(end - 1);
+            let a = self.local(start);
+            let b = self.local(end - 1);
+            let plateau_end = self.frames - 1 - self.fall_frames;
+            let max = if initial_period == final_period {
+                if a <= plateau_end && b >= self.rise_frames {
+                    1.0
+                } else {
+                    first.max(last)
+                }
+            } else if final_period - initial_period > 1 || a <= plateau_end || b >= self.rise_frames
+            {
+                1.0
+            } else {
+                first.max(last)
+            };
+            return crate::Extent {
+                min: if initial_period == final_period {
+                    first.min(last)
+                } else {
+                    0.0
+                },
+                max,
+            };
+        }
         let first = self.sample(start);
         let last = self.sample(end - 1);
         let crosses_onset = self.periods(end - 1) > self.periods(start);
@@ -121,86 +154,187 @@ impl Pulse {
             },
         }
     }
+    fn local(self, n: u64) -> u64 {
+        let k = self.periods(n);
+        let onset = if k == 0 {
+            0
+        } else {
+            let numerator = (u128::from(k) * u128::from(self.fs)) << self.shift;
+            u64::try_from(numerator.div_ceil(u128::from(self.mantissa)))
+                .unwrap_or_else(|_| unreachable!("onset precedes the bounded frame"))
+        };
+        n - onset
+    }
     #[inline]
     pub(crate) fn sample(self, n: u64) -> f64 {
-        // A pulse starts at ceil(k*fs/rate). For n ≥ W it is open exactly
-        // when that onset lies after n-W: K(n) > K(n-W), K(t)=floor(t*rate/fs).
-        // For integer a >= b and d > 0, floor(a/d) > floor(b/d)
-        // exactly when floor(a/d)*d > b. Only one quotient is needed.
-        // Its product is at most rate_product(n), so it cannot overflow.
-        if n < self.frames
-            || self.periods(n) * u64::from(self.fs) > self.rate_product(n - self.frames)
-        {
-            1.0
-        } else {
-            0.0
+        let open = n < self.frames
+            || self.periods(n) * u64::from(self.fs) > self.rate_product(n - self.frames);
+        if !open {
+            return 0.0;
         }
+        if self.rise_frames == 0 {
+            return 1.0;
+        }
+        let local = self.local(n);
+        let remaining = self.frames - 1 - local;
+        let edge = if local < self.rise_frames {
+            Some((local, self.rise_frames))
+        } else if remaining < self.fall_frames {
+            Some((remaining, self.fall_frames))
+        } else {
+            None
+        };
+        edge.map_or(1.0, |(index, length)| {
+            (1.0 - libm::cos(
+                core::f64::consts::PI * crate::conversion::frames_to_f64(index)
+                    / crate::conversion::frames_to_f64(length),
+            )) / 2.0
+        })
     }
 }
-/// Resolve pulse width and the exact closed-frame rule for a validated rate.
-/// A width beyond [`Signal::MAX_FRAMES`](crate::Signal::MAX_FRAMES) frames
-/// would leave every realizable signal inside its first pulse, so it is rejected.
+#[cfg(test)]
+fn pulse(seconds: f64, rate_hz: f64, fs: u32) -> Option<Pulse> {
+    pulse_spec(
+        crate::PulseSpec {
+            rate_hz: crate::Finite::new(rate_hz)?,
+            width: crate::PulseWidth::Duration {
+                seconds: crate::Finite::new(seconds)?,
+            },
+            shape: crate::PulseShape::Rectangular {},
+        },
+        fs,
+    )
+    .ok()
+}
+/// Compile width intent and edges without reconstructing the requested quantity.
 #[expect(
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
-    reason = "Width is checked whole and in 1..=2^36; admitted sub-Nyquist rate has \
-        a negative decomposition exponent"
+    reason = "Resolved whole frame values are checked against the 2^36 horizon before conversion"
 )]
-pub(crate) fn pulse(width_seconds: f64, rate_hz: f64, fs: u32) -> Option<Pulse> {
-    let frames = libm::round(width_seconds * f64::from(fs));
-    if !(frames >= 1.0 && frames <= crate::conversion::frames_to_f64(crate::Signal::MAX_FRAMES)) {
-        return None;
+pub(crate) fn pulse_spec(spec: crate::PulseSpec, fs: u32) -> Result<Pulse, crate::PulseError> {
+    use crate::{PulseError, PulseShape, PulseWidth};
+    let hz = spec.rate_hz.get();
+    if step(hz, fs).is_none() {
+        return Err(PulseError::Rate);
     }
-    let frames = frames as u64;
-    if !times_at_most(rate_hz, frames + 1, fs) {
-        return None;
+    let raw = match spec.width {
+        PulseWidth::Duration { seconds } => {
+            if seconds.get() <= 0.0 {
+                return Err(PulseError::Width);
+            }
+            seconds.get() * f64::from(fs)
+        }
+        PulseWidth::DutyCycle { fraction } => {
+            let fraction = fraction.get();
+            if !PulseWidth::valid_fraction(fraction) {
+                return Err(PulseError::Duty);
+            }
+            (fraction * f64::from(fs)) / hz
+        }
+    };
+    let rounded = libm::round(raw);
+    let limit = crate::conversion::frames_to_f64(crate::Signal::MAX_FRAMES);
+    if !(rounded >= 1.0 && rounded <= limit) {
+        return Err(PulseError::Width);
     }
-    let (mantissa, exponent) = parts(rate_hz);
-    Some(Pulse {
+    let frames = rounded as u64;
+    if !times_at_most(hz, frames + 1, fs) {
+        return Err(PulseError::ClosedFrame);
+    }
+    let (rise_frames, fall_frames) = match spec.shape {
+        PulseShape::Rectangular {} => (0, 0),
+        PulseShape::RaisedCosine {
+            rise_seconds,
+            fall_seconds,
+        } => {
+            let rise = libm::round(rise_seconds.get() * f64::from(fs));
+            let fall = libm::round(fall_seconds.get() * f64::from(fs));
+            // A rounded edge of at least one frame implies a positive request.
+            if !(rise >= 1.0 && fall >= 1.0 && rise <= limit && fall <= limit) {
+                return Err(PulseError::Edges);
+            }
+            let (rise, fall) = (rise as u64, fall as u64);
+            if rise + fall > frames - 1 {
+                return Err(PulseError::Edges);
+            }
+            (rise, fall)
+        }
+    };
+    let (mantissa, exponent) = parts(hz);
+    let shift = u32::try_from(-exponent)
+        .unwrap_or_else(|_| unreachable!("sub-Nyquist frequencies have negative binary exponent"));
+    Ok(Pulse {
         mantissa,
-        shift: (-exponent) as u32,
+        shift,
         fs,
         frames,
+        rise_frames,
+        fall_frames,
     })
+}
+impl Pulse {
+    pub(crate) const fn edges(self) -> [u64; 2] {
+        [self.rise_frames, self.fall_frames]
+    }
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Carrier {
     Tone { step: u64 },
     Pulse(Pulse),
 }
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) enum Modulator {
-    Am { step: u64, depth: f64 },
-    Gate(Pulse),
+impl Carrier {
+    pub(crate) fn sample(self, n: u64) -> f64 {
+        match self {
+            Self::Tone { step } => sine(n.wrapping_mul(step)),
+            Self::Pulse(pulse) => pulse.sample(n),
+        }
+    }
+}
+/// Source lanes sum first, then the one shared gain scales the stereo component.
+#[inline]
+pub(crate) fn component_frame(
+    samples: [f64; 2],
+    gains: [[f64; 2]; 2],
+    modulation: f64,
+) -> [f64; 2] {
+    let mut out = [0.0; 2];
+    for (sample, gains) in samples.into_iter().zip(gains) {
+        for (out, gain) in out.iter_mut().zip(gains) {
+            if gain != 0.0 {
+                *out += sample * gain;
+            }
+        }
+    }
+    out.map(|value| value * modulation)
+}
+#[inline]
+pub(crate) fn modulation_gain(modulation: Option<Modulator>, n: u64) -> f64 {
+    match modulation {
+        None => 1.0,
+        Some(Modulator::Sinusoidal { step, depth }) => am_gain(n.wrapping_mul(step), depth),
+        Some(Modulator::Pulsed(pulse)) => pulse.sample(n),
+    }
 }
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct GeneratorVoice {
+pub(crate) enum Modulator {
+    Sinusoidal { step: u64, depth: f64 },
+    Pulsed(Pulse),
+}
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct GeneratorLane {
     pub(crate) left: bool,
     pub(crate) right: bool,
     pub(crate) amplitude: f64,
     pub(crate) carrier: Carrier,
-    pub(crate) modulation: Option<Modulator>,
 }
-impl GeneratorVoice {
+impl GeneratorLane {
     /// The linear routing gains at full envelope, left and right.
     pub(crate) const fn gains(&self) -> [f64; 2] {
         [
             if self.left { self.amplitude } else { 0.0 },
             if self.right { self.amplitude } else { 0.0 },
         ]
-    }
-    #[inline]
-    pub(crate) fn sample(&self, n: u64) -> f64 {
-        let carrier = match self.carrier {
-            Carrier::Tone { step } => sine(n.wrapping_mul(step)),
-            Carrier::Pulse(pulse) => pulse.sample(n),
-        };
-        let gain = match self.modulation {
-            None => 1.0,
-            Some(Modulator::Am { step, depth }) => am_gain(n.wrapping_mul(step), depth),
-            Some(Modulator::Gate(pulse)) => pulse.sample(n),
-        };
-        self.amplitude * (carrier * gain)
     }
 }
 #[cfg(test)]
@@ -406,30 +540,24 @@ mod pulses {
     #[test]
     fn exact_gates_keep_the_tones_bits_and_have_half_open_edges() {
         let pulse = pulse(3.0 / 8000.0, 1000.0, 8000).unwrap();
-        let plain = GeneratorVoice {
-            left: true,
-            right: true,
-            amplitude: 1.0,
-            carrier: Carrier::Tone {
-                step: step(500.0, 8000).unwrap(),
-            },
-            modulation: None,
-        };
-        let gated = GeneratorVoice {
-            modulation: Some(Modulator::Gate(pulse)),
-            ..plain
-        };
-        let clicks = GeneratorVoice {
-            carrier: Carrier::Pulse(pulse),
-            ..plain
+        let tone = Carrier::Tone {
+            step: step(500.0, 8000).unwrap(),
         };
         for n in (0..64).chain((1_u64 << 36) - 64..1 << 36) {
             let open = n % 8 < 3;
-            assert_eq!(clicks.sample(n), if open { 1.0 } else { 0.0 });
+            assert_eq!(pulse.sample(n), if open { 1.0 } else { 0.0 });
             if open {
-                assert_eq!(gated.sample(n).to_bits(), plain.sample(n).to_bits());
+                assert_eq!(
+                    component_frame([tone.sample(n), 0.0], [[1.0; 2], [0.0; 2]], pulse.sample(n))
+                        [0]
+                    .to_bits(),
+                    tone.sample(n).to_bits()
+                );
             } else {
-                assert_eq!(gated.sample(n), 0.0);
+                assert_eq!(
+                    component_frame([tone.sample(n), 0.0], [[1.0; 2], [0.0; 2]], pulse.sample(n)),
+                    [0.0; 2]
+                );
             }
         }
     }

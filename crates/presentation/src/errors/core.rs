@@ -98,10 +98,6 @@ pub fn contract_error(error: &ContractError) -> String {
 pub fn structure_error(error: &StructureError) -> String {
     match error {
         StructureError::Identity { id } => format!("two authored components share identity {id}"),
-        StructureError::ComponentBudget { count } => format!(
-            "{count} authored components exceed the limit of {}",
-            Sound::MAX_COMPONENTS
-        ),
         StructureError::VoiceBudget { count } => format!(
             "{count} expanded voices exceed the limit of {}",
             Sound::MAX_VOICES
@@ -146,7 +142,7 @@ mod tests {
             recipe_error(&RecipeError::Utf16),
             "recipe is UTF-16 text; save it as UTF-8"
         );
-        let format = Recipe::parse("schema_version=4\nfrequency_hz='bad'").unwrap_err();
+        let format = Recipe::parse("schema_version=5\nfrequency_hz='bad'").unwrap_err();
         let text = recipe_error(&format);
         assert!(
             text.starts_with("recipe does not match the format: "),
@@ -155,7 +151,7 @@ mod tests {
         assert!(text.contains("frequency_hz"), "{text}");
         assert!(format.source().is_some());
         assert!(RecipeError::TooLarge.source().is_none());
-        for found in [0, 1, 2, 3, 999, u32::MAX] {
+        for found in [0, 1, 2, 3, 4, 999, u32::MAX] {
             let error =
                 Recipe::parse(&format!("schema_version={found}\nunknown=true")).unwrap_err();
             assert!(
@@ -163,7 +159,7 @@ mod tests {
             );
             assert_eq!(
                 recipe_error(&error),
-                format!("recipe has schema_version {found}; this build reads 4")
+                format!("recipe has schema_version {found}; this build reads 5")
             );
         }
     }

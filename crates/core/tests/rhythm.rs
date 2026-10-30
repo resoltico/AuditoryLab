@@ -1,10 +1,12 @@
 //! Independent nominal boundary and structural counterexamples. No signal rendering.
-use auditorylab_core::{ComponentForm, Ears, Modulation, Sound, rhythm::*};
-fn tone(hz: f64, ears: Ears) -> ComponentForm {
-    ComponentForm::Tone {
-        frequency_hz: finite(hz),
-        ears,
-        peak_dbfs: finite(-20.0),
+use auditorylab_core::{ChannelRouting, ComponentForm, Modulation, rhythm::*};
+fn tone(hz: f64, route: ChannelRouting) -> ComponentForm {
+    ComponentForm {
+        source: auditorylab_core::SoundSource::Tone {
+            frequency_hz: finite(hz),
+            route,
+            peak_dbfs: finite(-20.0),
+        },
         modulation: None,
     }
 }
@@ -12,8 +14,8 @@ fn tone(hz: f64, ears: Ears) -> ComponentForm {
     clippy::unwrap_used,
     reason = "Fixture identities must fit the finite test component list"
 )]
-fn sound(components: Vec<ComponentForm>) -> Sound {
-    Sound::new(
+fn sound(components: Vec<ComponentForm>) -> auditorylab_core::FiniteFixture {
+    auditorylab_core::test_support::FiniteFixture::new(
         finite(60.0),
         finite(0.1),
         components
@@ -49,12 +51,12 @@ fn exact_boundaries_and_adjacent_binary64_values_follow_the_disclosed_policy() {
 #[test]
 fn carrier_is_not_a_band_and_nominal_am_survives_target_invalidity() {
     for hz in [10.0, 40.0, 240.0] {
-        let a = nominal(&sound(vec![tone(hz, Ears::Both)]));
+        let a = nominal(&sound(vec![tone(hz, ChannelRouting::Both)]));
         assert!(a.no_rhythm());
         assert_eq!(a.bands, [] as [auditorylab_core::rhythm::Band; 0]);
     }
-    let mut c = tone(1_000.0, Ears::Both);
-    c.set_modulation(Some(Modulation::Am {
+    let mut c = tone(1_000.0, ChannelRouting::Both);
+    c.set_modulation(Some(Modulation::Sinusoidal {
         rate_hz: finite(40.0),
         depth: finite(1.0),
     }));
@@ -65,12 +67,12 @@ fn carrier_is_not_a_band_and_nominal_am_survives_target_invalidity() {
         finite(100_000.0),
     );
     assert_eq!(nominal(&sound(vec![c])), a);
-    c.set_modulation(Some(Modulation::Am {
+    c.set_modulation(Some(Modulation::Sinusoidal {
         rate_hz: finite(40.0),
         depth: finite(0.0),
     }));
     assert!(nominal(&sound(vec![c])).no_rhythm());
-    c.set_modulation(Some(Modulation::Am {
+    c.set_modulation(Some(Modulation::Sinusoidal {
         rate_hz: finite(40.0),
         depth: finite(f64::from_bits(1)),
     }));
@@ -81,12 +83,19 @@ fn carrier_is_not_a_band_and_nominal_am_survives_target_invalidity() {
 #[test]
 fn independent_processes_deduplicate_bands_but_never_rates() {
     let click = |hz| {
-        let base = tone(240.0, Ears::Both);
-        ComponentForm::Clicks {
-            rate_hz: hz,
-            width_seconds: finite(0.001),
-            ears: base.route().unwrap(),
-            peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
+        let base = tone(240.0, ChannelRouting::Both);
+        ComponentForm {
+            source: auditorylab_core::SoundSource::PulseTrain {
+                route: base.route().unwrap(),
+                peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
+                pulse: auditorylab_core::PulseSpec {
+                    rate_hz: hz,
+                    width: auditorylab_core::PulseWidth::Duration {
+                        seconds: finite(0.001),
+                    },
+                    shape: auditorylab_core::PulseShape::Rectangular {},
+                },
+            },
             modulation: base.modulation(),
         }
     };
@@ -116,12 +125,18 @@ fn independent_processes_deduplicate_bands_but_never_rates() {
 #[test]
 fn plain_tones_never_infer_a_pair_or_a_rhythmic_band() {
     for voices in [
-        vec![tone(200.0, Ears::Left), tone(206.0, Ears::Right)],
-        vec![tone(200.0, Ears::Both), tone(206.0, Ears::Both)],
         vec![
-            tone(200.0, Ears::Left),
-            tone(206.0, Ears::Right),
-            tone(300.0, Ears::Both),
+            tone(200.0, ChannelRouting::Left),
+            tone(206.0, ChannelRouting::Right),
+        ],
+        vec![
+            tone(200.0, ChannelRouting::Both),
+            tone(206.0, ChannelRouting::Both),
+        ],
+        vec![
+            tone(200.0, ChannelRouting::Left),
+            tone(206.0, ChannelRouting::Right),
+            tone(300.0, ChannelRouting::Both),
         ],
     ] {
         let analysis = nominal(&sound(voices));
@@ -148,18 +163,18 @@ fn correlated_facets_cannot_borrow_rates_from_another_process() {
             Descriptor {
                 owner: auditorylab_core::ComponentId::new(2).unwrap().into(),
                 role: auditorylab_core::SlotRole::Continuing,
-                method: Method::Am,
+                method: Method::Sinusoidal,
                 hz: 40.0,
                 band: Some(Band::Gamma),
             },
         ],
-        methods: vec![Method::Binaural, Method::Am],
+        methods: vec![Method::Binaural, Method::Sinusoidal],
         bands: vec![Band::Theta, Band::Gamma],
         completeness: Completeness::Complete,
         diagnostics: vec![],
     };
     assert!(!a.matches(&[Band::Gamma], &[Method::Binaural]));
-    assert!(a.matches(&[Band::Gamma], &[Method::Am]));
+    assert!(a.matches(&[Band::Gamma], &[Method::Sinusoidal]));
     assert!(!a.matches(&[Band::Gamma], &[Method::SteadyTone]));
     assert!(a.matches(&[Band::Theta, Band::Gamma], &[Method::Binaural]));
     assert_eq!(a.matching_rate(&[Band::Gamma], &[]), Some(40.0));
@@ -170,18 +185,21 @@ fn actual_authored_pair_mixtures_keep_nominal_intent_and_correlated_facets() {
     use auditorylab_core::{Component, ComponentForm, ComponentId};
     let pair = |id, offset_hz| Component {
         id: ComponentId::new(id).unwrap(),
-        form: ComponentForm::BinauralPair {
-            left_hz: finite(200.0),
-            offset_hz,
-            left_peak_dbfs: finite(-30.0),
-            right_peak_dbfs: finite(-30.0),
+        form: ComponentForm {
+            source: auditorylab_core::SoundSource::BinauralPair {
+                first_hz: finite(200.0),
+                offset_hz,
+                first_peak_dbfs: finite(-30.0),
+                second_peak_dbfs: finite(-30.0),
+            },
+            modulation: None,
         },
     };
     let am = Component {
         id: ComponentId::new(90).unwrap(),
         form: {
-            let mut form = tone(1000.0, Ears::Both);
-            form.set_modulation(Some(Modulation::Am {
+            let mut form = tone(1000.0, ChannelRouting::Both);
+            form.set_modulation(Some(Modulation::Sinusoidal {
                 rate_hz: finite(40.0),
                 depth: finite(1.0),
             }));
@@ -196,7 +214,7 @@ fn actual_authored_pair_mixtures_keep_nominal_intent_and_correlated_facets() {
         [7, 90]
     );
     assert!(!a.matches(&[Band::Gamma], &[Method::Binaural]));
-    assert!(a.matches(&[Band::Gamma], &[Method::Am]));
+    assert!(a.matches(&[Band::Gamma], &[Method::Sinusoidal]));
     assert_eq!(
         nominal(&authored(&[pair(1, finite(2.0)), pair(2, finite(3.0))])).bands,
         [Band::Delta]
@@ -217,11 +235,11 @@ fn actual_authored_pair_mixtures_keep_nominal_intent_and_correlated_facets() {
     raw.extend([
         Component {
             id: ComponentId::new(5).unwrap(),
-            form: tone(200.0, Ears::Left),
+            form: tone(200.0, ChannelRouting::Left),
         },
         Component {
             id: ComponentId::new(6).unwrap(),
-            form: tone(206.0, Ears::Right),
+            form: tone(206.0, ChannelRouting::Right),
         },
     ]);
     let a = nominal(&authored(&raw));
@@ -236,14 +254,14 @@ fn actual_authored_pair_mixtures_keep_nominal_intent_and_correlated_facets() {
 #[test]
 fn catalog_bands_and_methods_match_independently_listed_expectations() {
     use Band::{Alpha, Beta, Delta, Gamma, Theta};
-    use Method::{Am, Binaural, Clicks, Gate, Monaural, SteadyTone};
+    use Method::{Binaural, Monaural, PulseTrain, Pulsed, Sinusoidal, SteadyTone};
     use auditorylab_core::{Recipe, SampleRate, catalog};
     let expected = [
         ("beauchene-2016-binaural-5-hz", Binaural, Some(Theta)),
         ("beauchene-2016-binaural-10-hz", Binaural, Some(Alpha)),
         ("beauchene-2016-binaural-15-hz", Binaural, Some(Beta)),
         ("beauchene-2016-pure-tone-240-hz", SteadyTone, None),
-        ("chan-2022-clicks-40-hz", Clicks, Some(Gamma)),
+        ("chan-2022-clicks-40-hz", PulseTrain, Some(Gamma)),
         ("ioannou-2015-binaural-2-hz", Binaural, Some(Delta)),
         ("ioannou-2015-binaural-6-hz", Binaural, Some(Theta)),
         ("ioannou-2015-binaural-10-hz", Binaural, Some(Alpha)),
@@ -251,17 +269,17 @@ fn catalog_bands_and_methods_match_independently_listed_expectations() {
         ("ioannou-2015-binaural-40-hz", Binaural, Some(Gamma)),
         ("ioannou-2015-pure-tone-200-hz", SteadyTone, None),
         ("jirakittayakorn-2017-binaural-6-hz", Binaural, Some(Theta)),
-        ("lahijanian-2024-tone-pips-40-hz", Gate, Some(Gamma)),
-        ("martorell-2019-tone-pips-8-hz", Gate, Some(Alpha)),
-        ("martorell-2019-tone-pips-40-hz", Gate, Some(Gamma)),
-        ("martorell-2019-tone-pips-80-hz", Gate, Some(Gamma)),
+        ("lahijanian-2024-tone-pips-40-hz", Pulsed, Some(Gamma)),
+        ("martorell-2019-tone-pips-8-hz", Pulsed, Some(Alpha)),
+        ("martorell-2019-tone-pips-40-hz", Pulsed, Some(Gamma)),
+        ("martorell-2019-tone-pips-80-hz", Pulsed, Some(Gamma)),
         ("orozco-perez-2020-binaural-7-hz", Binaural, Some(Theta)),
         ("orozco-perez-2020-binaural-40-hz", Binaural, Some(Gamma)),
         ("orozco-perez-2020-monaural-7-hz", Monaural, Some(Theta)),
         ("orozco-perez-2020-monaural-40-hz", Monaural, Some(Gamma)),
-        ("van-eeckhoutte-2018-am-500-hz", Am, Some(Gamma)),
-        ("van-eeckhoutte-2018-am-1000-hz", Am, Some(Gamma)),
-        ("van-eeckhoutte-2018-am-2000-hz", Am, Some(Gamma)),
+        ("van-eeckhoutte-2018-am-500-hz", Sinusoidal, Some(Gamma)),
+        ("van-eeckhoutte-2018-am-1000-hz", Sinusoidal, Some(Gamma)),
+        ("van-eeckhoutte-2018-am-2000-hz", Sinusoidal, Some(Gamma)),
     ];
     assert_eq!(catalog::ENTRIES.len(), expected.len());
     for (id, method, band) in expected {
@@ -294,9 +312,13 @@ const fn finite(value: f64) -> auditorylab_core::Finite {
     }
 }
 
-fn authored(components: &[auditorylab_core::Component]) -> Sound {
-    Sound::new(finite(60.0), finite(0.1), components.to_vec())
-        .unwrap_or_else(|error| panic!("invalid authored fixture: {error}"))
+fn authored(components: &[auditorylab_core::Component]) -> auditorylab_core::FiniteFixture {
+    auditorylab_core::test_support::FiniteFixture::new(
+        finite(60.0),
+        finite(0.1),
+        components.to_vec(),
+    )
+    .unwrap_or_else(|error| panic!("invalid authored fixture: {error}"))
 }
 
 #[test]
@@ -315,16 +337,23 @@ fn disclosed_intervals_and_display_labels_are_exact() {
 
 #[test]
 fn rhythm_predicates_distinguish_empty_single_multiple_and_outside_rates() {
-    let clicks = |hz| ComponentForm::Clicks {
-        rate_hz: finite(hz),
-        width_seconds: finite(0.001),
-        peak_dbfs: finite(-30.0),
-        ears: Ears::Both,
+    let clicks = |hz| ComponentForm {
+        source: auditorylab_core::SoundSource::PulseTrain {
+            peak_dbfs: finite(-30.0),
+            route: ChannelRouting::Both,
+            pulse: auditorylab_core::PulseSpec {
+                rate_hz: finite(hz),
+                width: auditorylab_core::PulseWidth::Duration {
+                    seconds: finite(0.001),
+                },
+                shape: auditorylab_core::PulseShape::Rectangular {},
+            },
+        },
         modulation: None,
     };
     for (forms, multiple, outside) in [
         (vec![], false, false),
-        (vec![tone(200.0, Ears::Both)], false, false),
+        (vec![tone(200.0, ChannelRouting::Both)], false, false),
         (vec![clicks(40.0)], false, false),
         (vec![clicks(90.0)], false, true),
         (vec![clicks(40.0), clicks(40.0)], true, false),
@@ -343,31 +372,40 @@ fn rhythm_predicates_distinguish_empty_single_multiple_and_outside_rates() {
 #[test]
 fn realized_interaural_rates_require_exactly_one_explicit_binaural_pair() {
     use auditorylab_core::SampleRate;
-    let pair = ComponentForm::BinauralPair {
-        left_hz: finite(200.0),
-        offset_hz: finite(-6.0),
-        left_peak_dbfs: finite(-30.0),
-        right_peak_dbfs: finite(-30.0),
+    let pair = ComponentForm {
+        source: auditorylab_core::SoundSource::BinauralPair {
+            first_hz: finite(200.0),
+            offset_hz: finite(-6.0),
+            first_peak_dbfs: finite(-30.0),
+            second_peak_dbfs: finite(-30.0),
+        },
+        modulation: None,
     };
-    let mono = ComponentForm::MonauralPair {
-        ears: Ears::Both,
-        first_hz: finite(200.0),
-        offset_hz: finite(-6.0),
-        first_peak_dbfs: finite(-30.0),
-        second_peak_dbfs: finite(-30.0),
+    let mono = ComponentForm {
+        source: auditorylab_core::SoundSource::MonauralPair {
+            route: ChannelRouting::Both,
+            first_hz: finite(200.0),
+            offset_hz: finite(-6.0),
+            first_peak_dbfs: finite(-30.0),
+            second_peak_dbfs: finite(-30.0),
+        },
+        modulation: None,
     };
     for (forms, expected) in [
         (vec![pair], Some((200.0, 194.0))),
         (vec![mono], None),
         (vec![], None),
-        (vec![tone(200.0, Ears::Left)], None),
+        (vec![tone(200.0, ChannelRouting::Left)], None),
         (
-            vec![tone(200.0, Ears::Left), tone(194.0, Ears::Right)],
+            vec![
+                tone(200.0, ChannelRouting::Left),
+                tone(194.0, ChannelRouting::Right),
+            ],
             None,
         ),
-        (vec![pair, tone(400.0, Ears::Both)], None),
+        (vec![pair, tone(400.0, ChannelRouting::Both)], None),
     ] {
         let target = sound(forms).target(SampleRate::DEFAULT).unwrap();
-        assert_eq!(realized(&target).interaural(), expected);
+        assert_eq!(realized(&target).binaural_carriers(), expected);
     }
 }

@@ -443,8 +443,8 @@ impl std::fmt::Display for Human<'_, auditorylab_app::services::playback::Device
             auditorylab_app::services::playback::DeviceError::TooFewChannels { channels } => {
                 write!(
                     f,
-                    "the default output device has {channels} channel{}; stimuli need two, \
-                        one for each ear",
+                    "the default output device has {channels} channel{}; stereo output needs two \
+                        digital channels",
                     if *channels == 1 { "" } else { "s" }
                 )
             }

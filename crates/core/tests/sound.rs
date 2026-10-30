@@ -1,6 +1,6 @@
 //! Checked authored identity/capacity boundaries and atomic edits.
 use auditorylab_core::{
-    Component, ComponentForm, ComponentId, Ears, Finite, Sound, StructureError,
+    ChannelRouting, Component, ComponentForm, ComponentId, Finite, StructureError,
 };
 const fn number(value: f64) -> Finite {
     match Finite::new(value) {
@@ -14,10 +14,12 @@ fn id(value: u32) -> ComponentId {
 fn tone(value: u32) -> Component {
     Component {
         id: id(value),
-        form: ComponentForm::Tone {
-            ears: Ears::Both,
-            frequency_hz: number(200.0),
-            peak_dbfs: number(-30.0),
+        form: ComponentForm {
+            source: auditorylab_core::SoundSource::Tone {
+                route: ChannelRouting::Both,
+                frequency_hz: number(200.0),
+                peak_dbfs: number(-30.0),
+            },
             modulation: None,
         },
     }
@@ -25,32 +27,52 @@ fn tone(value: u32) -> Component {
 fn pair(value: u32) -> Component {
     Component {
         id: id(value),
-        form: ComponentForm::BinauralPair {
-            left_hz: number(200.0),
-            offset_hz: number(6.0),
-            left_peak_dbfs: number(-30.0),
-            right_peak_dbfs: number(-30.0),
+        form: ComponentForm {
+            source: auditorylab_core::SoundSource::BinauralPair {
+                first_hz: number(200.0),
+                offset_hz: number(6.0),
+                first_peak_dbfs: number(-30.0),
+                second_peak_dbfs: number(-30.0),
+            },
+            modulation: None,
         },
     }
 }
 #[test]
 fn construction_rejects_duplicate_owners_and_both_independent_budgets() {
     assert_eq!(
-        Sound::new(number(1.0), Finite::ZERO, vec![tone(7), tone(7)]),
+        auditorylab_core::test_support::FiniteFixture::new(
+            number(1.0),
+            Finite::ZERO,
+            vec![tone(7), tone(7)]
+        ),
         Err(StructureError::Identity { id: id(7) })
     );
     assert_eq!(
-        Sound::new(number(1.0), Finite::ZERO, (1..=17).map(tone).collect()),
-        Err(StructureError::ComponentBudget { count: 17 })
+        auditorylab_core::test_support::FiniteFixture::new(
+            number(1.0),
+            Finite::ZERO,
+            (1..=17).map(tone).collect()
+        ),
+        Err(StructureError::VoiceBudget { count: 17 })
     );
     assert_eq!(
-        Sound::new(number(1.0), Finite::ZERO, (1..=9).map(pair).collect()),
+        auditorylab_core::test_support::FiniteFixture::new(
+            number(1.0),
+            Finite::ZERO,
+            (1..=9).map(pair).collect()
+        ),
         Err(StructureError::VoiceBudget { count: 18 })
     );
 }
 #[test]
 fn refused_push_insert_and_replacement_leave_the_entire_sound_unchanged() {
-    let mut sound = Sound::new(number(1.0), Finite::ZERO, vec![tone(7)]).unwrap();
+    let mut sound = auditorylab_core::test_support::FiniteFixture::new(
+        number(1.0),
+        Finite::ZERO,
+        vec![tone(7)],
+    )
+    .unwrap();
     let before = sound.clone();
     assert_eq!(
         sound.push(tone(7)),
@@ -62,7 +84,12 @@ fn refused_push_insert_and_replacement_leave_the_entire_sound_unchanged() {
         Err(StructureError::Identity { id: id(7) })
     );
     assert_eq!(sound, before);
-    let mut sound = Sound::new(number(1.0), Finite::ZERO, (1..=16).map(tone).collect()).unwrap();
+    let mut sound = auditorylab_core::test_support::FiniteFixture::new(
+        number(1.0),
+        Finite::ZERO,
+        (1..=16).map(tone).collect(),
+    )
+    .unwrap();
     let before = sound.clone();
     assert_eq!(
         sound.replace(id(7), pair(7).form),
@@ -71,7 +98,7 @@ fn refused_push_insert_and_replacement_leave_the_entire_sound_unchanged() {
     assert_eq!(sound, before);
     assert_eq!(
         sound.push(tone(17)),
-        Err(StructureError::ComponentBudget { count: 17 })
+        Err(StructureError::VoiceBudget { count: 17 })
     );
     assert_eq!(sound, before);
     assert_eq!(sound.replace(id(99), pair(99).form), Ok(false));
@@ -79,7 +106,12 @@ fn refused_push_insert_and_replacement_leave_the_entire_sound_unchanged() {
 }
 #[test]
 fn edits_keep_owner_identity_order_and_signed_zero_content() {
-    let mut sound = Sound::new(number(1.0), Finite::ZERO, vec![tone(7), tone(9)]).unwrap();
+    let mut sound = auditorylab_core::test_support::FiniteFixture::new(
+        number(1.0),
+        Finite::ZERO,
+        vec![tone(7), tone(9)],
+    )
+    .unwrap();
     let removed = sound.remove(id(7)).unwrap();
     assert_eq!(removed, (0, tone(7)));
     assert_eq!(sound.components(), &[tone(9)]);
@@ -106,7 +138,7 @@ fn addition_preflight_checks_each_budget_without_changing_the_sound() {
         (
             (1..=16).map(tone).collect(),
             tone(17).form,
-            Err(StructureError::ComponentBudget { count: 17 }),
+            Err(StructureError::VoiceBudget { count: 17 }),
         ),
         (
             (1..=8).map(pair).collect(),
@@ -121,7 +153,12 @@ fn addition_preflight_checks_each_budget_without_changing_the_sound() {
         ((1..=15).map(tone).collect(), tone(16).form, Ok(())),
         ((1..=7).map(pair).collect(), pair(8).form, Ok(())),
     ] {
-        let sound = Sound::new(number(1.0), Finite::ZERO, components).unwrap();
+        let sound = auditorylab_core::test_support::FiniteFixture::new(
+            number(1.0),
+            Finite::ZERO,
+            components,
+        )
+        .unwrap();
         let before = sound.clone();
         assert_eq!(sound.check_addition(form), expected);
         assert_eq!(sound, before);

@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+- Recipe schema 5 replaces schema 4. Recreate old recipes with `new KIND` or updated built-ins; unsupported files remain intact and reported.
+- Update method filters to `pulse_train`, `pulsed` and `sinusoidal`; JSON schema 3/classifier 3 reports source and shared modulation independently.
+- Create tone, pulse-train, pair or pulsed-tone (isochronic) templates in Desktop Add component or `auditorylab new KIND`; `--output` never overwrites.
+- Pairs support shared sinusoidal or shaped pulsed modulation, with atomic component transitions within one 16-generator-lane budget.
+- Pulse widths retain duration or duty intent; raised-cosine edges and calculated previews show requested and sample-quantized timing.
+- AM and mixtures containing pairs can have different sample bits under component sum-then-modulate order; see [waveforms](docs/recipes.md#waveforms).
+- Finite duration/overall fades govern Library playback and export independently of live audition and its 30 ms transitions.
+- Routing names digital channels; intended separate-ear delivery is not verified. Small pair differences survive rounded carrier displays.
+- Workbench patterns refresh after edits with the monitor closed; pulse sections stay open with accurate accessible headings.
 - `describe` states each research fact once (studied for, summary, measured, study, adaptation, citation, link); `inspect` text shows technical facts only.
 - `list` rows and desktop Library rows show what each sound's study was about; built-in CLI rows show dates only while sorting by a date.
 - CLI help describes every command and option in plain language; `export --output` and other options gained help.
@@ -10,8 +19,7 @@
 - Desktop wording is plainer: **Waveform pattern**, **Active filters…**, **Not playing**, **Applied rhythm**, **Peak level**, named band definitions and silent-draft hints.
 - Desktop save confirmations name the saved sound; Filters label study role and rhythm analysis plainly and show the timezone once.
 - The desktop has an Edit menu for text fields and **Help › Auditory Lab desktop guide**; macOS no longer lists Quit twice.
-- Labels read **New sound**, **Open recipe…** and **Beat offset** (formerly signed offset); recipe keys are unchanged.
-
+- Labels read **New sound**, **Open recipe…** and **Beat offset** (formerly signed offset).
 - Sort the library by sound duration: `--sort duration` in the CLI and Duration in the desktop Sort menu; shortest first by default.
 
 ## [0.8.0] - 2026-10-29

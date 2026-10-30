@@ -4,7 +4,7 @@
 use super::*;
 use crate::audio::session::live::LiveGenerator;
 use crate::audio::session::source::FiniteSource;
-use auditorylab_core::{ComponentForm, ComponentId, Ears, SampleRate, Signal, Sound, Target};
+use auditorylab_core::{ChannelRouting, ComponentForm, ComponentId, SampleRate, Signal, Target};
 use proptest::{prelude::*, test_runner::TestRunner};
 use {crate::audio::session::Outcome, crate::audio::session::SessionState};
 
@@ -13,13 +13,15 @@ fn rate(hz: u32) -> SampleRate {
 }
 
 fn signal(frames: u64, hz: u32) -> Signal {
-    Sound::new(
+    auditorylab_core::test_support::FiniteFixture::new(
         finite(f64::from(u32::try_from(frames).unwrap()) / f64::from(hz)),
         finite(0.0),
-        (vec![ComponentForm::Tone {
-            frequency_hz: finite(100.0),
-            ears: Ears::Both,
-            peak_dbfs: finite(-20.0),
+        (vec![ComponentForm {
+            source: auditorylab_core::SoundSource::Tone {
+                frequency_hz: finite(100.0),
+                route: ChannelRouting::Both,
+                peak_dbfs: finite(-20.0),
+            },
             modulation: None,
         }])
         .into_iter()
@@ -465,15 +467,17 @@ fn live_callback() -> (Transport, crate::audio::session::live::Mailbox) {
 #[test]
 fn mailbox_is_polled_once_per_buffer_and_updates_wait_for_the_next_buffer() {
     let (mut c, mailbox) = live_callback();
-    let target = Sound::new(
+    let target = auditorylab_core::test_support::FiniteFixture::new(
         finite(1.0),
         finite(0.0),
         vec![crate::core::Component {
             id: ComponentId::new(1).unwrap(),
-            form: ComponentForm::Tone {
-                frequency_hz: finite(440.0),
-                ears: Ears::Both,
-                peak_dbfs: finite(-30.0),
+            form: ComponentForm {
+                source: auditorylab_core::SoundSource::Tone {
+                    frequency_hz: finite(440.0),
+                    route: ChannelRouting::Both,
+                    peak_dbfs: finite(-30.0),
+                },
                 modulation: None,
             },
         }],
@@ -541,21 +545,30 @@ fn live_callbacks_do_not_allocate_or_wait_for_a_busy_or_poisoned_mailbox() {
 }
 
 fn routed(frames: u32) -> Signal {
-    Sound::new(
+    auditorylab_core::test_support::FiniteFixture::new(
         finite(f64::from(frames) / 8_000.0),
         finite(0.0),
         (vec![
-            ComponentForm::Tone {
-                frequency_hz: finite(257.3),
-                ears: Ears::Left,
-                peak_dbfs: finite(-20.0),
+            ComponentForm {
+                source: auditorylab_core::SoundSource::Tone {
+                    frequency_hz: finite(257.3),
+                    route: ChannelRouting::Left,
+                    peak_dbfs: finite(-20.0),
+                },
                 modulation: None,
             },
-            ComponentForm::Clicks {
-                rate_hz: finite(37.0),
-                width_seconds: finite(0.001),
-                ears: Ears::Right,
-                peak_dbfs: finite(-14.0),
+            ComponentForm {
+                source: auditorylab_core::SoundSource::PulseTrain {
+                    route: ChannelRouting::Right,
+                    peak_dbfs: finite(-14.0),
+                    pulse: auditorylab_core::PulseSpec {
+                        rate_hz: finite(37.0),
+                        width: auditorylab_core::PulseWidth::Duration {
+                            seconds: finite(0.001),
+                        },
+                        shape: auditorylab_core::PulseShape::Rectangular {},
+                    },
+                },
                 modulation: None,
             },
         ])

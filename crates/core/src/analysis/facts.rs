@@ -1,5 +1,7 @@
 //! Typed requested and realized generator quantities.
-use crate::{Carrier, ComponentId, Ears, Modulation, SampleRate, Sound, Voice, VoiceId};
+use crate::{
+    Carrier, ChannelRouting, ComponentId, Modulation, SampleRate, Sound, SourceLane, VoiceId,
+};
 use serde::Serialize;
 /// Requested rate and the rate represented by the renderer's phase increment.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
@@ -22,6 +24,21 @@ impl PhaseRate {
         }
     }
 }
+/// Signed pair rate derived before rounding either carrier to a displayed frequency.
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "The exact integer phase-step difference is converted once for reported hertz; small \
+        differences retain their full precision"
+)]
+pub(crate) fn pair_rate(first: u64, second: u64, rate: SampleRate) -> f64 {
+    let magnitude =
+        first.abs_diff(second) as f64 * f64::from(rate.hz()) / 18_446_744_073_709_551_616.0;
+    if second < first {
+        -magnitude
+    } else {
+        magnitude
+    }
+}
 /// A pulse train's requested and realized quantities. Repetition uses
 /// rational onset scheduling, not a rounded period, so the requested rate is
 /// also the generated long-run rate.
@@ -29,14 +46,24 @@ impl PhaseRate {
 pub struct PulseFacts {
     /// Configured rational repetition rate, in Hz.
     pub rate_hz: f64,
-    /// Requested pulse length in seconds, as entered.
+    /// Requested window in seconds; derived from fraction/rate in duty mode.
     pub requested_width_seconds: f64,
-    /// Generated pulse length: the requested length rounded to whole frames.
+    /// Generated window length, including shaped zero endpoints.
     pub width_frames: u64,
     /// The rate the width was resolved at.
     pub sample_rate: SampleRate,
+    /// Authored width intent, retaining its authoritative requested quantity.
+    pub width: crate::PulseWidth,
+    /// Requested edge shape and durations.
+    pub shape: crate::PulseShape,
+    /// Resolved rise and fall lengths, in frames.
+    pub edge_frames: [u64; 2],
 }
 impl PulseFacts {
+    /// Duty derived from window frames and the nominal period, not every integer onset interval.
+    pub fn nominal_duty(&self) -> f64 {
+        self.realized_width_seconds() * self.rate_hz
+    }
     /// Generated pulse length in seconds, derived from the frame count.
     #[must_use]
     pub fn realized_width_seconds(&self) -> f64 {
@@ -50,21 +77,21 @@ pub enum CarrierFacts {
     /// Sine carrier.
     Tone(PhaseRate),
     /// A rectangular pulse train.
-    Clicks(PulseFacts),
+    PulseTrain(PulseFacts),
 }
 /// A voice's envelope quantities.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ModulationFacts {
     /// Sine amplitude modulation; depth zero is inactive.
-    Am {
+    Sinusoidal {
         /// Requested and realized modulation rate.
         rate: PhaseRate,
         /// Modulation depth in 0..1.
         depth: f64,
     },
     /// Periodic rectangular gating.
-    Gate(PulseFacts),
+    Pulsed(PulseFacts),
 }
 /// Authored pair intent retained with its generated lanes, never reconstructed
 /// by subtracting generated frequencies. Actual lane rates remain in `CarrierFacts`.
@@ -72,7 +99,7 @@ pub enum ModulationFacts {
 pub struct PairFacts {
     /// Authored primary owner shared by both lanes.
     pub owner: ComponentId,
-    /// Separate-ear or same-route construction.
+    /// Intended separate-ear or same-route construction.
     pub kind: crate::PairKind,
     /// Requested first/left carrier.
     pub first_hz: f64,
@@ -80,14 +107,17 @@ pub struct PairFacts {
     pub offset_hz: f64,
     /// Computed requested second/right carrier.
     pub second_hz: f64,
+    /// Signed difference of compiled/current phase increments; unavailable for an incomplete pair
+    /// check.
+    pub realized_offset_hz: Option<f64>,
 }
 /// Validated voice facts at a specific rendering rate.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct VoiceFacts {
     /// Authored pair intent, absent for unpaired raw primitives.
     pub pair: Option<PairFacts>,
-    /// Declared ear route.
-    pub ears: Ears,
+    /// Declared digital channel route.
+    pub route: ChannelRouting,
     /// Declared voice peak bound in dBFS.
     pub peak_dbfs: f64,
     /// Carrier quantities.
@@ -96,55 +126,56 @@ pub struct VoiceFacts {
     pub modulation: Option<ModulationFacts>,
 }
 impl VoiceFacts {
-    pub(crate) fn from_voice(
-        c: &Voice,
-        v: &crate::synthesis::GeneratorVoice,
+    pub(crate) fn from_lane(
+        c: &SourceLane,
+        v: &crate::synthesis::GeneratorLane,
+        requested: Option<Modulation>,
+        compiled: Option<crate::synthesis::Modulator>,
         rate: SampleRate,
     ) -> Self {
-        let pulse = |rate_hz, width_seconds, frames| PulseFacts {
-            rate_hz,
-            requested_width_seconds: width_seconds,
-            width_frames: frames,
-            sample_rate: rate,
-        };
         let carrier = match (c.carrier, v.carrier) {
             (Carrier::Tone { frequency_hz }, crate::synthesis::Carrier::Tone { step }) => {
                 CarrierFacts::Tone(PhaseRate::from_step(frequency_hz, step, rate))
             }
-            (
-                Carrier::Clicks {
-                    rate_hz,
-                    width_seconds,
-                },
-                crate::synthesis::Carrier::Pulse(p),
-            ) => CarrierFacts::Clicks(pulse(rate_hz, width_seconds, p.frames())),
+            (Carrier::PulseTrain { pulse: requested }, crate::synthesis::Carrier::Pulse(p)) => {
+                CarrierFacts::PulseTrain(PulseFacts {
+                    rate_hz: requested.rate_hz.get(),
+                    requested_width_seconds: requested.requested_seconds(),
+                    width_frames: p.frames(),
+                    sample_rate: rate,
+                    width: requested.width,
+                    shape: requested.shape,
+                    edge_frames: p.edges(),
+                })
+            }
             _ => unreachable!("validated carrier matches component"),
         };
-        let modulation = match (c.modulation, v.modulation) {
+        let modulation = match (requested, compiled) {
             (
-                Some(Modulation::Am { rate_hz, depth }),
-                Some(crate::synthesis::Modulator::Am { step, .. }),
-            ) => Some(ModulationFacts::Am {
+                Some(Modulation::Sinusoidal { rate_hz, depth }),
+                Some(crate::synthesis::Modulator::Sinusoidal { step, .. }),
+            ) => Some(ModulationFacts::Sinusoidal {
                 rate: PhaseRate::from_step(rate_hz.get(), step, rate),
                 depth: depth.get(),
             }),
             (
-                Some(Modulation::Gate {
-                    rate_hz,
-                    width_seconds,
-                }),
-                Some(crate::synthesis::Modulator::Gate(p)),
-            ) => Some(ModulationFacts::Gate(pulse(
-                rate_hz.get(),
-                width_seconds.get(),
-                p.frames(),
-            ))),
+                Some(Modulation::Pulsed { pulse: requested }),
+                Some(crate::synthesis::Modulator::Pulsed(p)),
+            ) => Some(ModulationFacts::Pulsed(PulseFacts {
+                rate_hz: requested.rate_hz.get(),
+                requested_width_seconds: requested.requested_seconds(),
+                width_frames: p.frames(),
+                sample_rate: rate,
+                width: requested.width,
+                shape: requested.shape,
+                edge_frames: p.edges(),
+            })),
             (None, None) => None,
             _ => unreachable!("validated modulation matches component"),
         };
         Self {
             pair: None,
-            ears: c.ears,
+            route: c.route,
             peak_dbfs: c.peak_dbfs,
             carrier,
             modulation,

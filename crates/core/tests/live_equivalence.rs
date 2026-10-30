@@ -1,6 +1,7 @@
 //! Steady live output and seekable finite output share the exact sample contract.
 use auditorylab_core::{
-    Component, ComponentForm, ComponentId, Ears, Recipe, SampleRate, Sound, catalog, live::Engine,
+    ChannelRouting, Component, ComponentForm, ComponentId, Recipe, SampleRate, catalog,
+    live::Engine,
 };
 
 #[test]
@@ -13,7 +14,7 @@ fn every_builtin_matches_bit_for_bit_after_both_startup_envelopes() {
         let rate = SampleRate::new(hz).unwrap();
         for entry in catalog::ENTRIES {
             let recipe = Recipe::parse(&entry.text()).unwrap();
-            let signal = recipe.sound().signal(rate).unwrap();
+            let signal = recipe.signal(rate).unwrap();
             let mut engine = Engine::new(rate);
             assert!(engine.set(&recipe.sound().target(rate).unwrap()));
             let start = signal.fade_frames().max(engine.ramp_frames()) + 1;
@@ -37,15 +38,17 @@ fn every_builtin_matches_bit_for_bit_after_both_startup_envelopes() {
 fn a_different_carrier_is_detected_by_the_same_bit_comparison() {
     let rate = SampleRate::DEFAULT;
     let sound = |frequency_hz| {
-        Sound::new(
+        auditorylab_core::test_support::FiniteFixture::new(
             finite(1.0),
             finite(0.0),
             vec![Component {
                 id: ComponentId::new(1).unwrap(),
-                form: ComponentForm::Tone {
-                    frequency_hz,
-                    ears: Ears::Both,
-                    peak_dbfs: finite(-20.0),
+                form: ComponentForm {
+                    source: auditorylab_core::SoundSource::Tone {
+                        frequency_hz,
+                        route: ChannelRouting::Both,
+                        peak_dbfs: finite(-20.0),
+                    },
                     modulation: None,
                 },
             }],

@@ -5,7 +5,7 @@ use super::*;
 use crate::audio::session::live::LiveGenerator;
 use crate::audio::session::source::{FiniteSource, Source};
 use crate::audio::session::transport::{BufferTime, Transport};
-use crate::core::{ComponentForm, Ears, Sound};
+use crate::core::{ChannelRouting, ComponentForm};
 use crate::document::recipe::Origin;
 use {crate::audio::session::Outcome, crate::audio::session::SampleFormat};
 fn descriptor(hz: u32) -> SessionDescriptor {
@@ -32,7 +32,7 @@ fn numbered(rate: SampleRate, components: &[ComponentForm]) -> Target {
             form: *c,
         })
         .collect();
-    Sound::new(finite(1.0), finite(0.0), components)
+    auditorylab_core::test_support::FiniteFixture::new(finite(1.0), finite(0.0), components)
         .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
         .target(rate)
         .unwrap()
@@ -41,13 +41,15 @@ fn finite_source(signal: crate::core::Signal) -> Source {
     Source::Finite(FiniteSource::new(Arc::new(signal)))
 }
 fn signal(hz: u32) -> crate::core::Signal {
-    Sound::new(
+    auditorylab_core::test_support::FiniteFixture::new(
         finite(1.0),
         finite(0.0),
-        (vec![ComponentForm::Tone {
-            frequency_hz: finite(100.0),
-            ears: Ears::Left,
-            peak_dbfs: finite(-20.0),
+        (vec![ComponentForm {
+            source: auditorylab_core::SoundSource::Tone {
+                frequency_hz: finite(100.0),
+                route: ChannelRouting::Left,
+                peak_dbfs: finite(-20.0),
+            },
             modulation: None,
         }])
         .into_iter()
@@ -275,10 +277,12 @@ fn digital_meters_and_extrema_use_the_entire_window() {
 fn actual_live_crossfades_and_stop_match_with_or_without_monitoring() {
     let rate = SampleRate::DEFAULT;
     let tones: Vec<ComponentForm> = (0..16)
-        .map(|n| ComponentForm::Tone {
-            frequency_hz: finite(200.0 + f64::from(n) * 20.0),
-            ears: Ears::Both,
-            peak_dbfs: finite(-30.0),
+        .map(|n| ComponentForm {
+            source: auditorylab_core::SoundSource::Tone {
+                frequency_hz: finite(200.0 + f64::from(n) * 20.0),
+                route: ChannelRouting::Both,
+                peak_dbfs: finite(-30.0),
+            },
             modulation: None,
         })
         .collect();
@@ -286,11 +290,18 @@ fn actual_live_crossfades_and_stop_match_with_or_without_monitoring() {
         .iter()
         .map(|c| {
             let base = *c;
-            ComponentForm::Clicks {
-                rate_hz: finite(40.0),
-                width_seconds: finite(0.001),
-                ears: base.route().unwrap(),
-                peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
+            ComponentForm {
+                source: auditorylab_core::SoundSource::PulseTrain {
+                    route: base.route().unwrap(),
+                    peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
+                    pulse: auditorylab_core::PulseSpec {
+                        rate_hz: finite(40.0),
+                        width: auditorylab_core::PulseWidth::Duration {
+                            seconds: finite(0.001),
+                        },
+                        shape: auditorylab_core::PulseShape::Rectangular {},
+                    },
+                },
                 modulation: base.modulation(),
             }
         })
@@ -428,6 +439,7 @@ fn unchanged_receipts_do_not_hide_stale_observations() {
         recording misleading regression measurements"
 )]
 fn callback_cost() {
+    use cpal::Sample;
     const WARMUP: u64 = 100;
     const MEASURED: usize = 3_000;
     assert!(
@@ -441,88 +453,86 @@ fn callback_cost() {
         std::env::consts::OS,
         std::env::consts::ARCH
     );
-    for hz in [48_000, 768_000] {
-        for frames in [64_usize, 256, 1024, 4096] {
-            for detail in [
-                None,
-                Some(MonitorDetail::Quantities),
-                Some(MonitorDetail::Waveform),
-            ] {
-                let rate = SampleRate::new(hz).unwrap();
-                let (tones, pulses) = callback_cost_targets(rate);
-                let shared = SessionState::new();
-                let generator = LiveGenerator::with_state(&(tones), Arc::clone(&shared));
-                let control = generator.control();
-                let mut desc = descriptor(hz);
-                desc.frames = None;
-                let monitor = detail.map(|d| {
-                    PlaybackMonitor::new(
-                        desc,
-                        d,
-                        Arc::clone(&shared),
-                        Some(Arc::clone(generator.mailbox())),
-                    )
-                });
-                let mut reader = monitor.as_ref().and_then(PlaybackMonitor::reader);
-                let mut callback =
-                    Transport::new(Source::Live(Box::new(generator)), 2, Arc::clone(&shared))
-                        .with_monitor(monitor);
-                let mut output = vec![0.0; frames * 2];
-                let mut timings = Vec::with_capacity(MEASURED);
-                let mut next_poll = 0;
-                for n in 0..WARMUP + u64::try_from(MEASURED).unwrap() {
-                    control
-                        .update(if n % 2 == 0 { &pulses } else { &tones })
-                        .unwrap();
-                    let start = Instant::now();
-                    callback.fill(
-                        &mut output,
-                        time(n * frames as u64 * 1_000_000_000 / u64::from(hz)),
-                        &|v| v,
-                    );
-                    let elapsed = start.elapsed().as_nanos();
-                    if n >= WARMUP {
-                        timings.push(elapsed);
-                    }
-                    if n * frames as u64 >= next_poll {
-                        if let Some(reader) = reader.as_mut() {
-                            reader.poll(100);
+    for pairs in [false, true] {
+        for hz in [48_000, 768_000] {
+            for frames in [64_usize, 256, 1024, 4096] {
+                for detail in [
+                    None,
+                    Some(MonitorDetail::Quantities),
+                    Some(MonitorDetail::Waveform),
+                ] {
+                    let rate = SampleRate::new(hz).unwrap();
+                    let (tones, pulses) = callback_cost_targets(rate, pairs);
+                    let shared = SessionState::new();
+                    let generator = LiveGenerator::with_state(&(tones), Arc::clone(&shared));
+                    let control = generator.control();
+                    let mut desc = descriptor(hz);
+                    desc.frames = None;
+                    let monitor = detail.map(|d| {
+                        PlaybackMonitor::new(
+                            desc,
+                            d,
+                            Arc::clone(&shared),
+                            Some(Arc::clone(generator.mailbox())),
+                        )
+                    });
+                    let mut reader = monitor.as_ref().and_then(PlaybackMonitor::reader);
+                    let mut callback =
+                        Transport::new(Source::Live(Box::new(generator)), 2, Arc::clone(&shared))
+                            .with_monitor(monitor);
+                    let mut output = vec![0.0_f32; frames * 2];
+                    let mut timings = Vec::with_capacity(MEASURED);
+                    let mut next_poll = 0;
+                    for n in 0..WARMUP + u64::try_from(MEASURED).unwrap() {
+                        control
+                            .update(if n % 2 == 0 { &pulses } else { &tones })
+                            .unwrap();
+                        let start = Instant::now();
+                        callback.fill(
+                            &mut output,
+                            time(n * frames as u64 * 1_000_000_000 / u64::from(hz)),
+                            &f32::from_sample,
+                        );
+                        let elapsed = start.elapsed().as_nanos();
+                        if n >= WARMUP {
+                            timings.push(elapsed);
                         }
-                        next_poll = n * frames as u64 + u64::from(hz) / 20;
+                        if n * frames as u64 >= next_poll {
+                            if let Some(reader) = reader.as_mut() {
+                                reader.poll(100);
+                            }
+                            next_poll = n * frames as u64 + u64::from(hz) / 20;
+                        }
                     }
-                }
-                assert_eq!(timings.len(), MEASURED);
-                timings.sort_unstable();
-                // Keep the even-sized median exact, including a half-nanosecond.
-                let median_twice = timings[(MEASURED - 1) / 2] + timings[MEASURED / 2];
-                let median = median_twice / 2;
-                let median_fraction = if median_twice.is_multiple_of(2) {
-                    ""
-                } else {
-                    ".5"
-                };
-                let p99 = timings[(MEASURED * 99).div_ceil(100) - 1];
-                let maximum = timings[MEASURED - 1];
-                let period_numerator = u128::from(frames as u64) * 1_000_000_000;
-                let period = period_numerator / u128::from(hz);
-                if median_twice * u128::from(hz) > period_numerator {
-                    failures.push(format!(
-                        "{hz} Hz / {frames} frames / {detail:?}: median \
+                    assert_eq!(timings.len(), MEASURED);
+                    let (median_twice, p99, maximum) = callback_percentiles(&mut timings);
+                    let median = median_twice / 2;
+                    let median_fraction = if median_twice.is_multiple_of(2) {
+                        ""
+                    } else {
+                        ".5"
+                    };
+                    let period_numerator = u128::from(frames as u64) * 1_000_000_000;
+                    let period = period_numerator / u128::from(hz);
+                    if median_twice * u128::from(hz) > period_numerator {
+                        failures.push(format!(
+                            "{hz} Hz / {frames} frames / {detail:?}: median \
                         {median}{median_fraction} ns exceeds 50% of the buffer period"
-                    ));
-                }
-                println!(
-                    "rate_hz={hz} frames={frames} monitor={detail:?} \
+                        ));
+                    }
+                    println!(
+                        "pairs={pairs} rate_hz={hz} frames={frames} monitor={detail:?} \
                         median_ns={median}{median_fraction} p99_ns={p99} max_ns={maximum} \
                         buffer_period_ns={period} gaps={} backend_underruns={}",
-                    reader.as_ref().map_or(0, |r| r.status().gaps),
-                    shared.underruns()
-                );
-                configurations += 1;
+                        reader.as_ref().map_or(0, |r| r.status().gaps),
+                        shared.underruns()
+                    );
+                    configurations += 1;
+                }
             }
         }
     }
-    assert_eq!(configurations, 24);
+    assert_eq!(configurations, 48);
     assert!(
         failures.is_empty(),
         "callback median cost gate failed:\n{}",
@@ -691,13 +701,15 @@ fn recurring_coverage_gaps_are_readable_without_masking_backend_warnings() {
 #[test]
 fn stationary_periodic_samples_have_advancing_real_publication_coverage() {
     for hz in [3750.0, 3751.0] {
-        let signal = Sound::new(
+        let signal = auditorylab_core::test_support::FiniteFixture::new(
             finite(1.0),
             finite(0.0),
-            (vec![ComponentForm::Tone {
-                frequency_hz: finite(hz),
-                ears: Ears::Both,
-                peak_dbfs: finite(-15.3),
+            (vec![ComponentForm {
+                source: auditorylab_core::SoundSource::Tone {
+                    frequency_hz: finite(hz),
+                    route: ChannelRouting::Both,
+                    peak_dbfs: finite(-15.3),
+                },
                 modulation: None,
             }])
             .into_iter()
@@ -763,106 +775,86 @@ fn stationary_periodic_samples_have_advancing_real_publication_coverage() {
 
 #[test]
 fn maximum_rate_waveform_callback_does_not_allocate_or_free_at_32_slots() {
+    use cpal::Sample;
     let rate = SampleRate::new(768_000).unwrap();
-    let voices: Vec<_> = (0..16)
-        .map(|n| ComponentForm::Tone {
-            frequency_hz: finite(200.0 + f64::from(n) * 20.0),
-            ears: Ears::Both,
-            peak_dbfs: finite(-30.0),
-            modulation: Some(crate::core::Modulation::Am {
-                rate_hz: finite(23.0 + f64::from(n) * 0.75),
-                depth: finite(1.0),
-            }),
-        })
-        .collect();
-    let tones = numbered(rate, &voices);
-    let clicks = numbered(
-        rate,
-        &voices
-            .iter()
-            .map(|voice| {
-                let base = *voice;
-                ComponentForm::Clicks {
-                    rate_hz: finite(40.0),
-                    width_seconds: finite(0.001),
-                    ears: base.route().unwrap(),
-                    peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
-                    modulation: base.modulation(),
-                }
-            })
-            .collect::<Vec<_>>(),
-    );
-    let state = SessionState::new();
-    let generator = LiveGenerator::with_state(&(tones), Arc::clone(&state));
-    let control = generator.control();
-    let mut desc = descriptor(rate.hz());
-    desc.frames = None;
-    let monitor = PlaybackMonitor::new(
-        desc,
-        MonitorDetail::Waveform,
-        state,
-        Some(Arc::clone(generator.mailbox())),
-    );
-    let mut reader = monitor.reader().unwrap();
-    let mut callback = Transport::new(Source::Live(Box::new(generator)), 2, monitor.session())
-        .with_monitor(Some(monitor));
-    let mut out = vec![0.0; 4096 * 2];
-    // Finish the initial 30 ms fade before replacing all carrier kinds.
-    for block in 0..6 {
-        callback.fill(
-            &mut out,
-            time(block * 4096 * 1_000_000_000 / 768_000),
-            &|v| v,
+    for pairs in [false, true] {
+        let (tones, clicks) = callback_cost_targets(rate, pairs);
+        let state = SessionState::new();
+        let generator = LiveGenerator::with_state(&(tones), Arc::clone(&state));
+        let control = generator.control();
+        let mut desc = descriptor(rate.hz());
+        desc.frames = None;
+        let monitor = PlaybackMonitor::new(
+            desc,
+            MonitorDetail::Waveform,
+            state,
+            Some(Arc::clone(generator.mailbox())),
         );
-        reader.poll(100);
-    }
-    control.update(&clicks).unwrap();
-    let measured = allocation_counter::measure(|| {
-        callback.fill(&mut out, time(6 * 4096 * 1_000_000_000 / 768_000), &|v| v);
-        reader.poll(100);
-    });
-    assert_eq!(measured.count_total, 0);
-    assert_eq!(
-        measured.count_current, 0,
-        "callback and preallocated reader must not free allocations"
-    );
-    assert_eq!(
-        reader
-            .status()
-            .observation
-            .unwrap()
-            .voices
-            .iter()
-            .flatten()
-            .count(),
-        32
-    );
-    assert!(reader.status().observation.unwrap().transitioning);
-    assert_eq!(reader.status().window_end, 7 * 4096);
-    assert!(reader.has_current_window());
-    assert!(
-        reader
-            .samples()
-            .iter()
-            .flatten()
-            .any(|sample| *sample != 0.0)
-    );
-    // Overflow is also allocation/free-free when the consumer stops draining.
-    let measured = allocation_counter::measure(|| {
-        for block in 7..30 {
+        let mut reader = monitor.reader().unwrap();
+        let mut callback = Transport::new(Source::Live(Box::new(generator)), 2, monitor.session())
+            .with_monitor(Some(monitor));
+        let mut out = vec![0.0_f32; 4096 * 2];
+        // Finish the initial 30 ms fade before replacing all carrier kinds.
+        for block in 0..6 {
             callback.fill(
                 &mut out,
                 time(block * 4096 * 1_000_000_000 / 768_000),
-                &|v| v,
+                &f32::from_sample,
             );
+            reader.poll(100);
         }
-    });
-    assert_eq!(measured.count_total, 0);
-    assert_eq!(measured.count_current, 0);
-    reader.poll(100);
-    assert!(reader.status().gaps > 0);
-    assert_eq!(reader.status().observation.unwrap().frame, 30 * 4096 - 1);
-    assert!(!reader.has_current_window());
+        control.update(&clicks).unwrap();
+        let measured = allocation_counter::measure(|| {
+            callback.fill(
+                &mut out,
+                time(6 * 4096 * 1_000_000_000 / 768_000),
+                &f32::from_sample,
+            );
+            reader.poll(100);
+        });
+        assert_eq!(measured.count_total, 0);
+        assert_eq!(
+            measured.count_current, 0,
+            "callback and preallocated reader must not free allocations"
+        );
+        assert_eq!(
+            reader
+                .status()
+                .observation
+                .unwrap()
+                .voices
+                .iter()
+                .flatten()
+                .count(),
+            32
+        );
+        assert!(reader.status().observation.unwrap().transitioning);
+        assert_eq!(reader.status().window_end, 7 * 4096);
+        assert!(reader.has_current_window());
+        assert!(
+            reader
+                .samples()
+                .iter()
+                .flatten()
+                .any(|sample| *sample != 0.0)
+        );
+        // Overflow is also allocation/free-free when the consumer stops draining.
+        let measured = allocation_counter::measure(|| {
+            for block in 7..30 {
+                callback.fill(
+                    &mut out,
+                    time(block * 4096 * 1_000_000_000 / 768_000),
+                    &f32::from_sample,
+                );
+            }
+        });
+        assert_eq!(measured.count_total, 0);
+        assert_eq!(measured.count_current, 0);
+        reader.poll(100);
+        assert!(reader.status().gaps > 0);
+        assert_eq!(reader.status().observation.unwrap().frame, 30 * 4096 - 1);
+        assert!(!reader.has_current_window());
+    }
 }
 
 #[test]
@@ -945,13 +937,73 @@ const fn finite(value: f64) -> auditorylab_core::Finite {
     }
 }
 
-fn callback_cost_targets(rate: SampleRate) -> (Target, Target) {
+fn callback_percentiles(timings: &mut [u128]) -> (u128, u128, u128) {
+    timings.sort_unstable();
+    let n = timings.len();
+    (
+        timings[(n - 1) / 2] + timings[n / 2],
+        timings[(n * 99).div_ceil(100) - 1],
+        timings[n - 1],
+    )
+}
+
+fn callback_cost_targets(rate: SampleRate, pairs: bool) -> (Target, Target) {
+    if pairs {
+        let components: Vec<_> = (0..8)
+            .map(|n| ComponentForm {
+                source: if n % 2 == 0 {
+                    auditorylab_core::SoundSource::BinauralPair {
+                        first_hz: finite(200.0 + f64::from(n) * 50.0),
+                        offset_hz: finite(6.0 + f64::from(n)),
+                        first_peak_dbfs: finite(-30.0),
+                        second_peak_dbfs: finite(-30.0),
+                    }
+                } else {
+                    auditorylab_core::SoundSource::MonauralPair {
+                        first_hz: finite(200.0 + f64::from(n) * 50.0),
+                        offset_hz: finite(6.0 + f64::from(n)),
+                        first_peak_dbfs: finite(-30.0),
+                        second_peak_dbfs: finite(-30.0),
+                        route: ChannelRouting::Both,
+                    }
+                },
+                modulation: Some(crate::core::Modulation::Sinusoidal {
+                    rate_hz: finite(23.0 + f64::from(n) * 0.75),
+                    depth: finite(1.0),
+                }),
+            })
+            .collect();
+        let first = numbered(rate, &components);
+        let next: Vec<_> = components
+            .into_iter()
+            .enumerate()
+            .map(|(n, mut form)| {
+                form.modulation = Some(crate::core::Modulation::Pulsed {
+                    pulse: crate::core::PulseSpec {
+                        rate_hz: finite(18.0 + f64::from(u32::try_from(n).unwrap())),
+                        width: crate::core::PulseWidth::DutyCycle {
+                            fraction: finite(0.5),
+                        },
+                        shape: crate::core::PulseShape::RaisedCosine {
+                            rise_seconds: finite(0.002),
+                            fall_seconds: finite(0.001),
+                        },
+                    },
+                });
+                form
+            })
+            .collect();
+        return (first, numbered(rate, &next));
+    }
+
     let components: Vec<ComponentForm> = (0..16)
-        .map(|n| ComponentForm::Tone {
-            frequency_hz: finite(200.0 + f64::from(n) * 20.0),
-            ears: Ears::Both,
-            peak_dbfs: finite(-30.0),
-            modulation: Some(crate::core::Modulation::Am {
+        .map(|n| ComponentForm {
+            source: auditorylab_core::SoundSource::Tone {
+                frequency_hz: finite(200.0 + f64::from(n) * 20.0),
+                route: ChannelRouting::Both,
+                peak_dbfs: finite(-30.0),
+            },
+            modulation: Some(crate::core::Modulation::Sinusoidal {
                 rate_hz: finite(23.0 + f64::from(n) * 0.75),
                 depth: finite(1.0),
             }),
@@ -965,11 +1017,21 @@ fn callback_cost_targets(rate: SampleRate) -> (Target, Target) {
             .enumerate()
             .map(|(n, c)| {
                 let base = *c;
-                ComponentForm::Clicks {
-                    rate_hz: finite(40.0 + f64::from(u32::try_from(n).unwrap())),
-                    width_seconds: finite(0.001),
-                    ears: base.route().unwrap(),
-                    peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
+                ComponentForm {
+                    source: auditorylab_core::SoundSource::PulseTrain {
+                        route: base.route().unwrap(),
+                        peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
+                        pulse: auditorylab_core::PulseSpec {
+                            rate_hz: finite(40.0 + f64::from(u32::try_from(n).unwrap())),
+                            width: auditorylab_core::PulseWidth::DutyCycle {
+                                fraction: finite(0.5),
+                            },
+                            shape: auditorylab_core::PulseShape::RaisedCosine {
+                                rise_seconds: finite(0.002),
+                                fall_seconds: finite(0.001),
+                            },
+                        },
+                    },
                     modulation: base.modulation(),
                 }
             })

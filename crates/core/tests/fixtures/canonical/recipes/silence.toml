@@ -1,4 +1,4 @@
-schema_version = 4
+schema_version = 5
 
 [document]
 id = "00000000-0000-4000-8000-000000000103"
@@ -7,6 +7,9 @@ id = "00000000-0000-4000-8000-000000000103"
 title = "Silent sound"
 notes = "Design fixture, not a clinical claim."
 
-[sound]
+[timing]
 duration_seconds = 60.0
 fade_seconds = 0.1
+
+[sound]
+component = []

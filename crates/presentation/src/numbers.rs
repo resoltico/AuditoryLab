@@ -91,7 +91,7 @@ pub(crate) fn file_size(bytes: u64) -> String {
         _ => format!("{:.2} GB", value / 1e9),
     }
 }
-/// Per-ear peak level, or "silent" when neither ear has any signal.
+/// Per-channel peak level, or "silent" when neither channel has any signal.
 pub(crate) fn peak_level(peaks: [f64; 2]) -> String {
     if peaks.iter().all(|peak| *peak == f64::NEG_INFINITY) {
         "Peak level: silent".into()

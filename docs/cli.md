@@ -2,6 +2,19 @@
 
 Run `auditorylab` for help, `auditorylab COMMAND --help` for command options, or `auditorylab -V` for the product version and optional full source revision.
 
+## Create a recipe
+
+`auditorylab new KIND` prints a complete editable recipe with a fresh UUID. Kinds are `tone`, `pulse-train`, `binaural-pair`, `monaural-pair` and `pulsed-tone`, shared with Desktop Add component. Generic templates contain no research or benefit claims.
+
+`pulsed-tone` creates a **Pulsed tone (isochronic)**. The [recipe guide](recipes.md#sinusoidal-and-pulsed-modulation) defines its source, shared modulation and defaults. Construction keys use kebab-case; the [format reference](formats.md#components) defines the TOML kinds.
+
+```text
+auditorylab new pulsed-tone --output pulse.toml
+auditorylab inspect --file pulse.toml --sample-rate 48000
+```
+
+Omit `--output` for TOML on stdout. An existing output file is never replaced. Customize the emitted TOML rather than passing field overrides. See [pulse intent and waveforms](recipes.md#waveforms).
+
 ## Choose an input
 
 `describe`, `inspect`, `play` and WAV `export` accept exactly one source:
@@ -44,7 +57,7 @@ auditorylab inspect --file pair.toml --sample-rate 48000
 auditorylab export --file pair.toml --output pair.wav --sample-rate 48000
 ```
 
-`describe` shows what a sound was studied for, its summary with limitations, what was measured, the study method, the adaptation, the citation and a link; records the sound inherits from an earlier recipe appear once under **Further evidence**. `inspect` opens no device. It reports the chosen rate, resolved frame count, per-ear peak levels and generator-voice facts. Components are named by their authored ID; a pair's secondary lane is its second tone. WAV export writes the exact rendition inspected at its chosen rate as stereo 32-bit float RIFF/RF64. The [recipe guide](recipes.md) explains rate-dependent validity and waveforms.
+`describe` shows what a sound was studied for, its summary with limitations, what was measured, the study method, the adaptation, the citation and a link; records the sound inherits from an earlier recipe appear once under **Further evidence**. `inspect` opens no device. It reports the chosen rate, resolved frame count, per-channel digital peak bounds and generator-voice facts. Components are named by their authored ID; a pair's secondary lane is its second tone. WAV export writes the exact rendition inspected at its chosen rate as stereo 32-bit float RIFF/RF64. The [recipe guide](recipes.md) explains rate-dependent validity and waveforms.
 
 `recipe SELECTOR` prints saved portable TOML; `--output PATH` writes it. Built-in output is standalone TOML assembled from embedded catalog conditions and study records; User output retains exact saved file bytes. Both preserve document identity and declared timestamps. CLI recipe and WAV exports never overwrite an existing destination; export checks the destination before announcing the file and its size. Exported files get the same permissions as other new files you create; library records stay readable only by you.
 

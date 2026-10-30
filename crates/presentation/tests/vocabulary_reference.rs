@@ -6,7 +6,7 @@ use auditorylab_app::vocabulary::{Operation, Status};
 use auditorylab_core::rhythm::{Band, Completeness, Method};
 use auditorylab_core::vocabulary::Vocabulary;
 use auditorylab_core::{
-    CarrierKind, Ear, Ears, ModulationKind, PairKind, ParameterId, SlotRole,
+    CarrierKind, Channel, ChannelRouting, ModulationKind, PairKind, ParameterId, SlotRole,
     provenance::ConditionRole, provenance::EvidenceScope, provenance::Measure,
     provenance::Population,
 };
@@ -95,8 +95,8 @@ fn vocabulary_and_query_tables_match_every_owned_key() {
         ModulationKind,
         PairKind,
         ParameterId,
-        Ears,
-        Ear,
+        ChannelRouting,
+        Channel,
         SlotRole,
         Operation,
         Status

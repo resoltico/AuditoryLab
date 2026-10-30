@@ -1,15 +1,16 @@
 //! Typed user input; handlers retain their owner-specific admission/status rules.
 use super::library::{LibraryJob, LibraryRequest};
 use super::{
-    Action, ActionView, Arc, AudioRequest, AudioStatus, Capabilities, CarrierKind, ChoiceOption,
-    ChoiceView, ControlChoices, ControlMenu, ControlValue, DocumentAction, DocumentId,
-    DocumentLocation, Draft, Ears, EditorSession, EditorState, EditorView, Effect, EntryHandle,
-    EntryMutation, Error, FacetCounts, FieldHandle, FileKind, FileNotice, FileStatus, FilterInput,
-    LibraryBinding, LibraryData, LibraryOutcome, LibraryStatus, LibraryView, ModulationKind,
-    MonitorView, MotionPreference, OutputState, OutputView, PathPurpose, PlaybackControl,
-    PlaybackPhase, PromptAnswer, PromptId, PromptState, QueryFacet, Recipe, RecipeSnapshot,
-    Refusal, RowKey, SampleRate, SaveFeedback, SelectionBinding, TaskId, TransportView, View,
-    Workspace, WorkspaceActions, audio, controls, editor, file, file_name, library,
+    Action, ActionView, Arc, AudioRequest, AudioStatus, Capabilities, CarrierKind, ChannelRouting,
+    ChoiceOption, ChoiceView, ControlChoices, ControlMenu, ControlValue, DocumentAction,
+    DocumentId, DocumentLocation, Draft, EditorSession, EditorState, EditorView, Effect,
+    EntryHandle, EntryMutation, Error, FacetCounts, FieldHandle, FileKind, FileNotice, FileStatus,
+    FilterInput, LibraryBinding, LibraryData, LibraryOutcome, LibraryStatus, LibraryView,
+    ModulationKind, MonitorView, MotionPreference, OutputState, OutputView, PathPurpose,
+    PlaybackControl, PlaybackPhase, PromptAnswer, PromptId, PromptState, QueryFacet, Recipe,
+    RecipeSnapshot, Refusal, RowKey, SampleRate, SaveFeedback, SelectionBinding, TaskId,
+    TransportView, View, Workspace, WorkspaceActions, audio, controls, editor, file, file_name,
+    library,
 };
 use crate::core::rhythm::{Band, Completeness, Method};
 use crate::core::{provenance::ConditionRole, provenance::Population};
@@ -65,9 +66,9 @@ pub enum EditorCommand {
         field: FieldHandle,
         position: f64,
     },
-    SetEars {
+    SetRouting {
         row: RowKey,
-        ears: Ears,
+        route: ChannelRouting,
     },
     SetCarrier {
         row: RowKey,
@@ -76,6 +77,20 @@ pub enum EditorCommand {
     SetModulation {
         row: RowKey,
         kind: Option<ModulationKind>,
+    },
+    AddConstruction {
+        row: RowKey,
+        kind: crate::document::construction::CreationKind,
+    },
+    SetPulseWidth {
+        row: RowKey,
+        modulation: bool,
+        duty: bool,
+    },
+    SetPulseShape {
+        row: RowKey,
+        modulation: bool,
+        shaped: bool,
     },
     AddComponent {
         row: RowKey,
@@ -677,6 +692,42 @@ impl Workspace {
         self.apply(Command::Library(LibraryCommand::SetQuery(Box::new(query))))
     }
 
+    fn pulse_control_menus(
+        &self,
+        row: RowKey,
+        pulse: crate::core::PulseSpec,
+        modulation: bool,
+    ) -> [ControlChoices; 2] {
+        let duty = matches!(pulse.width, crate::core::PulseWidth::DutyCycle { .. });
+        let shaped = matches!(pulse.shape, crate::core::PulseShape::RaisedCosine { .. });
+        [
+            self.control_menu(
+                if modulation {
+                    ControlMenu::ModulationWidth
+                } else {
+                    ControlMenu::SourceWidth
+                },
+                row,
+                [false, true]
+                    .map(|duty| (ControlValue::PulseWidth { modulation, duty }, ""))
+                    .to_vec(),
+                Some(ControlValue::PulseWidth { modulation, duty }),
+            ),
+            self.control_menu(
+                if modulation {
+                    ControlMenu::ModulationShape
+                } else {
+                    ControlMenu::SourceShape
+                },
+                row,
+                [false, true]
+                    .map(|shaped| (ControlValue::PulseShape { modulation, shaped }, ""))
+                    .to_vec(),
+                Some(ControlValue::PulseShape { modulation, shaped }),
+            ),
+        ]
+    }
+
     /// Every menu, including its current selection and typed command payloads.
     #[must_use]
     pub fn control_choices(&self) -> Vec<ControlChoices> {
@@ -690,13 +741,13 @@ impl Workspace {
                 .unwrap_or_else(|| unreachable!("component"));
             menus.push(
                 self.control_menu(
-                    ControlMenu::Ears,
+                    ControlMenu::ChannelRouting,
                     row,
-                    Ears::ALL
+                    ChannelRouting::ALL
                         .into_iter()
-                        .map(|v| (ControlValue::Ears(v), v.label()))
+                        .map(|v| (ControlValue::ChannelRouting(v), v.label()))
                         .collect(),
-                    component.form.route().map(ControlValue::Ears),
+                    component.form.route().map(ControlValue::ChannelRouting),
                 ),
             );
             menus.push(
@@ -729,24 +780,35 @@ impl Workspace {
                     Some(ControlValue::Modulation(component.form.modulation_kind())),
                 ),
             );
+            let source_pulse = match component.form.source {
+                crate::core::SoundSource::PulseTrain { pulse, .. } => Some(pulse),
+                _ => None,
+            };
+            let modulation_pulse = match component.form.modulation {
+                Some(crate::core::Modulation::Pulsed { pulse }) => Some(pulse),
+                _ => None,
+            };
+            for (modulation, pulse) in [(false, source_pulse), (true, modulation_pulse)] {
+                if let Some(pulse) = pulse {
+                    menus.extend(self.pulse_control_menus(row, pulse, modulation));
+                }
+            }
         }
-        menus.push(
+        menus.extend(self.document_control_menus(document));
+        menus
+    }
+
+    fn document_control_menus(&self, document: RowKey) -> [ControlChoices; 4] {
+        [
             self.control_menu(
                 ControlMenu::AddComponent,
                 document,
-                CarrierKind::ALL
+                crate::document::construction::CreationKind::ALL
                     .into_iter()
-                    .map(|v| (ControlValue::AddCarrier(v), ""))
-                    .chain(
-                        crate::core::PairKind::ALL
-                            .into_iter()
-                            .map(|v| (ControlValue::AddPair(v), "")),
-                    )
+                    .map(|kind| (ControlValue::Creation(kind), kind.term().label))
                     .collect(),
                 None,
             ),
-        );
-        menus.push(
             self.control_menu(
                 ControlMenu::MonitorSpan,
                 document,
@@ -756,8 +818,6 @@ impl Workspace {
                     .collect(),
                 Some(ControlValue::MonitorSpan(self.audio.output().span_ms())),
             ),
-        );
-        menus.push(
             self.control_menu(
                 ControlMenu::WaveformScale,
                 document,
@@ -767,8 +827,6 @@ impl Workspace {
                     .collect(),
                 Some(ControlValue::WaveformScale(self.audio.output().scale())),
             ),
-        );
-        menus.push(
             self.control_menu(
                 ControlMenu::ExportRate,
                 document,
@@ -778,8 +836,7 @@ impl Workspace {
                     .collect(),
                 Some(ControlValue::ExportRate(self.editor.export_rate())),
             ),
-        );
-        menus
+        ]
     }
 
     fn control_menu(
@@ -800,11 +857,12 @@ impl Workspace {
                         label,
                         selected: selected == Some(key),
                         enabled: match key {
-                            ControlValue::AddCarrier(kind) => {
-                                self.component_add_admission(row, kind).is_ok()
-                            }
-                            ControlValue::AddPair(kind) => {
-                                self.pair_add_admission(row, kind).is_ok()
+                            ControlValue::Creation(kind) => {
+                                self.editing_allowed().is_ok()
+                                    && self
+                                        .editor
+                                        .addition_admission(row, kind.component())
+                                        .is_ok()
                             }
                             ControlValue::MonitorSpan(_) | ControlValue::WaveformScale(_) => {
                                 !self.audio.output().held()
@@ -832,15 +890,30 @@ impl Workspace {
             return Err(Refusal::SelectionChanged);
         }
         let command = match value {
-            ControlValue::Ears(ears) => Command::Editor(EditorCommand::SetEars { row, ears }),
+            ControlValue::ChannelRouting(route) => {
+                Command::Editor(EditorCommand::SetRouting { row, route })
+            }
             ControlValue::Carrier(kind) => Command::Editor(EditorCommand::SetCarrier { row, kind }),
             ControlValue::Modulation(kind) => {
                 Command::Editor(EditorCommand::SetModulation { row, kind })
             }
-            ControlValue::AddCarrier(kind) => {
-                Command::Editor(EditorCommand::AddComponent { row, kind })
+            ControlValue::Creation(kind) => {
+                Command::Editor(EditorCommand::AddConstruction { row, kind })
             }
-            ControlValue::AddPair(kind) => Command::Editor(EditorCommand::AddPair { row, kind }),
+            ControlValue::PulseWidth { modulation, duty } => {
+                Command::Editor(EditorCommand::SetPulseWidth {
+                    row,
+                    modulation,
+                    duty,
+                })
+            }
+            ControlValue::PulseShape { modulation, shaped } => {
+                Command::Editor(EditorCommand::SetPulseShape {
+                    row,
+                    modulation,
+                    shaped,
+                })
+            }
             ControlValue::ExportRate(rate) => Command::Editor(EditorCommand::SetExportRate(rate)),
             ControlValue::MonitorSpan(span_ms) => Command::Output(OutputCommand::SetWaveform {
                 span_ms,
@@ -1828,6 +1901,10 @@ impl Workspace {
             | EditorCommand::CopySelected
             | EditorCommand::ShowBasedOnSource
             | EditorCommand::SetExportRate(_) => {}
+            EditorCommand::AddConstruction { row, kind } => {
+                self.editing_allowed()?;
+                self.editor.addition_admission(*row, kind.component())?;
+            }
             EditorCommand::AddComponent { row, kind } => {
                 self.component_add_admission(*row, *kind)?;
             }

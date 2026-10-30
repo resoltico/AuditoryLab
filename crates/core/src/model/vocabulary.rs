@@ -8,6 +8,16 @@ pub struct Term {
     /// Wording used within a sentence.
     pub phrase: &'static str,
 }
+/// One unmodulated sine-tone construction.
+pub const STEADY_TONE: Term = Term {
+    label: "Steady tone",
+    phrase: "steady tone",
+};
+/// A tone under one periodic pulse envelope; the synonym is human-facing only.
+pub const PULSED_TONE: Term = Term {
+    label: "Pulsed tone (isochronic)",
+    phrase: "pulsed tone (isochronic)",
+};
 /// Document title, including query/control labels for the same field.
 pub const TITLE: Term = Term {
     label: "Title",
@@ -107,8 +117,8 @@ impl crate::Code for VocabularyError {
 macro_rules! vocabularies {
     ($consumer:ident) => {
         $consumer! {
-            ears:crate::Ears,
-            ear:crate::Ear,
+            channel_routing:crate::ChannelRouting,
+            channel:crate::Channel,
             pair_kind:crate::PairKind,
             slot_role:crate::SlotRole,
             parameters:crate::ParameterId,
@@ -176,10 +186,10 @@ pub const STRUCTURAL_METHOD: Term = Term {
     phrase: "Structural method",
 };
 
-/// Heading for the Ears domain concept.
-pub const EARS: Term = Term {
-    label: "Ears",
-    phrase: "Ears",
+/// Heading for the `ChannelRouting` domain concept.
+pub const CHANNEL_ROUTING: Term = Term {
+    label: "Channel routing",
+    phrase: "ChannelRouting",
 };
 
 /// Heading for the Carrier domain concept.

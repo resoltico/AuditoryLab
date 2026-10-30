@@ -1,6 +1,6 @@
 # Auditory Lab
 
-Auditory Lab lets you inspect, edit, play and export steady tones, click trains, amplitude modulation, gates and explicit binaural or monaural pairs. Built-in recipes include citations, study populations, methods and the adaptations used to make the sound. The desktop Workbench and UTF-8 TOML files describe the same sounds.
+Auditory Lab lets you inspect, edit, play and export steady tones, pulse trains and explicit binaural or monaural pairs, with shared sinusoidal or pulsed modulation. Built-in recipes include citations, study populations, methods and the adaptations used to make the sound. The desktop Workbench and UTF-8 TOML files describe the same sounds.
 
 The `auditorylab` CLI and `auditorylab-gui` desktop share a persistent User Library. You can keep temporary Open files separate, save independent copies and recover User recipes from Trash.
 
@@ -28,7 +28,10 @@ These commands open no audio device. `describe` gives the sound and study contex
 
 ## Make a recipe and WAV
 
+Create a generic template or export a built-in recipe:
+
 ```text
+auditorylab new pulsed-tone --output pulse.toml
 auditorylab recipe builtin:ioannou-2015-binaural-10-hz --output my-pair.toml
 auditorylab inspect --file my-pair.toml --sample-rate 44100
 auditorylab export --file my-pair.toml --output my-pair.wav --sample-rate 48000

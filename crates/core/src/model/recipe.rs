@@ -12,7 +12,7 @@ use alloc::{
 use serde::{Deserialize, Serialize};
 
 /// One portable authored document, independent of local ownership and membership.
-/// Schema 4 uses a strict bounded document shape; finite acoustic errors remain
+/// Schema 5 uses a strict bounded document shape; finite acoustic errors remain
 /// editable and serializable.
 ///
 /// Recipe content is immutable outside core; edits must pass a checked builder.
@@ -31,6 +31,8 @@ pub struct Recipe {
 pub struct RecipeContent {
     /// Ordered authored sound.
     pub sound: Sound,
+    /// Finite playback and export timing, independent of live sound.
+    pub timing: crate::FiniteTiming,
     /// Current title and notes.
     pub description: Option<Description>,
     /// Bounded bibliography.
@@ -91,6 +93,7 @@ struct RecipeDocument {
     document: DocumentIdentity,
     #[serde(skip_serializing_if = "Option::is_none")]
     description: Option<Description>,
+    timing: crate::FiniteTiming,
     sound: DocumentSound,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     source: Vec<BibliographySource>,
@@ -102,9 +105,7 @@ struct RecipeDocument {
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct DocumentSound {
-    duration_seconds: Finite,
-    fade_seconds: Finite,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
     component: Vec<Component>,
 }
 impl Recipe {
@@ -133,6 +134,18 @@ impl Recipe {
         &self.content.sound
     }
 
+    /// Requested finite playback and export timing.
+    pub const fn timing(&self) -> crate::FiniteTiming {
+        self.content.timing
+    }
+    /// Compile sound and finite timing at one rate. Live targets need only sound.
+    pub fn signal(&self, rate: crate::SampleRate) -> Result<crate::Signal, crate::SoundError> {
+        self.content.timing.check(rate)?;
+        self.content
+            .timing
+            .signal(&self.content.sound.target(rate)?)
+    }
+
     /// The document's description.
     #[must_use]
     pub const fn description(&self) -> Option<&Description> {
@@ -158,7 +171,7 @@ impl Recipe {
     }
 
     /// Version of the portable UTF-8 TOML recipe format.
-    pub const SCHEMA_VERSION: u32 = 4;
+    pub const SCHEMA_VERSION: u32 = 5;
     /// Maximum portable UTF-8 bytes, including metadata.
     pub const MAX_BYTES: usize = 65_536;
     /// An empty authored document with the supplied provisional identity/history.
@@ -167,12 +180,13 @@ impl Recipe {
         Self {
             document,
             content: RecipeContent {
-                sound: Sound::new(
-                    Finite::new(60.0).unwrap_or_else(|| unreachable!("finite default duration")),
-                    Finite::new(0.1).unwrap_or_else(|| unreachable!("finite default fade")),
-                    Vec::new(),
-                )
-                .unwrap_or_else(|_| unreachable!("empty sound")),
+                sound: Sound::new(Vec::new()).unwrap_or_else(|_| unreachable!("empty sound")),
+                timing: crate::FiniteTiming {
+                    duration_seconds: Finite::new(60.0)
+                        .unwrap_or_else(|| unreachable!("finite default")),
+                    fade_seconds: Finite::new(0.1)
+                        .unwrap_or_else(|| unreachable!("finite default")),
+                },
                 description: None,
                 sources: Vec::new(),
                 evidence: Vec::new(),
@@ -216,12 +230,8 @@ impl Recipe {
         let mut value = Self {
             document: d.document,
             content: RecipeContent {
-                sound: Sound::new(
-                    d.sound.duration_seconds,
-                    d.sound.fade_seconds,
-                    d.sound.component,
-                )
-                .map_err(RecipeError::Structure)?,
+                sound: Sound::new(d.sound.component).map_err(RecipeError::Structure)?,
+                timing: d.timing,
                 description: d.description,
                 sources: d.source,
                 evidence: d.evidence,
@@ -272,9 +282,8 @@ impl Recipe {
             schema_version: Self::SCHEMA_VERSION,
             document: self.document.clone(),
             description: self.content.description.clone(),
+            timing: self.content.timing,
             sound: DocumentSound {
-                duration_seconds: self.content.sound.duration_seconds(),
-                fade_seconds: self.content.sound.fade_seconds(),
                 component: self.content.sound.components().to_vec(),
             },
             source: self.content.sources.clone(),

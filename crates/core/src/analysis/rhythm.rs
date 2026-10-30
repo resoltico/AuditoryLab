@@ -1,7 +1,7 @@
 //! Shared structural rhythm rules for authored content and realized generators.
 use crate::{
-    Carrier, CarrierFacts, Lane, Modulation, ModulationFacts, Observation, PairError, PairKind,
-    ParameterId, SlotRole, Target, VoiceId, VoiceObservation,
+    CarrierFacts, Lane, Modulation, ModulationFacts, Observation, PairError, PairKind, ParameterId,
+    SlotRole, Target, VoiceId, VoiceObservation,
     validity::{self, ValueIssue},
 };
 use alloc::vec::Vec;
@@ -12,7 +12,7 @@ pub const CONVENTION: &str = "ifcn-2017-corrected-2019";
 /// The disclosed band convention, named for people.
 pub const CONVENTION_LABEL: &str = "the IFCN 2017 band definitions (2019 correction)";
 /// Revision of the nominal interpretation rules.
-pub const CLASSIFIER_REVISION: u32 = 2;
+pub const CLASSIFIER_REVISION: u32 = 3;
 
 /// One reference interval, with intentionally nonuniform endpoint inclusion.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -75,31 +75,15 @@ pub enum Method {
     /// Same-route two-tone interference, including unequal levels.
     Monaural,
     /// Intrinsic rectangular click schedule.
-    Clicks,
+    PulseTrain,
     /// Periodic amplitude gating of a carrier.
-    Gate,
+    Pulsed,
     /// Positive-depth sinusoidal amplitude modulation.
-    Am,
+    Sinusoidal,
     /// Effectively unmodulated tone, with no rhythm inferred from its carrier.
     SteadyTone,
 }
 impl Method {
-    /// One heading for a form; rate facts may still contain several methods.
-    #[must_use]
-    pub fn primary_of(form: crate::ComponentForm) -> Self {
-        let unmodulated = match form {
-            crate::ComponentForm::BinauralPair { .. } => return Self::Binaural,
-            crate::ComponentForm::MonauralPair { .. } => return Self::Monaural,
-            crate::ComponentForm::Tone { .. } => Self::SteadyTone,
-            crate::ComponentForm::Clicks { .. } => Self::Clicks,
-        };
-        match form.modulation() {
-            Some(Modulation::Gate { .. }) => Self::Gate,
-            Some(Modulation::Am { depth, .. }) if depth.get() > 0.0 => Self::Am,
-            _ => unmodulated,
-        }
-    }
-
     pub(crate) const fn of_pair(kind: crate::PairKind) -> Self {
         match kind {
             crate::PairKind::Binaural => Self::Binaural,
@@ -204,18 +188,18 @@ impl Analysis {
 
 #[derive(Clone, Copy)]
 enum Periodic {
-    Am { rate_hz: f64, depth: f64 },
-    Gate { rate_hz: f64 },
+    Sinusoidal { rate_hz: f64, depth: f64 },
+    Pulsed { rate_hz: f64 },
 }
 impl From<Modulation> for Periodic {
     fn from(value: Modulation) -> Self {
         match value {
-            Modulation::Am { rate_hz, depth } => Self::Am {
+            Modulation::Sinusoidal { rate_hz, depth } => Self::Sinusoidal {
                 rate_hz: rate_hz.get(),
                 depth: depth.get(),
             },
-            Modulation::Gate { rate_hz, .. } => Self::Gate {
-                rate_hz: rate_hz.get(),
+            Modulation::Pulsed { pulse } => Self::Pulsed {
+                rate_hz: pulse.rate_hz.get(),
             },
         }
     }
@@ -224,7 +208,7 @@ impl From<Modulation> for Periodic {
 struct Input {
     owner: VoiceId,
     role: SlotRole,
-    carrier: Carrier,
+    source_rate: Option<f64>,
     modulation: Option<Periodic>,
     pair: Option<(PairKind, Option<f64>)>,
 }
@@ -245,23 +229,24 @@ fn describe(input: Input, rhythms: &mut Vec<Descriptor>, methods: &mut Vec<Metho
     };
     if let Some((kind, rate)) = input.pair {
         add(Method::of_pair(kind), rate);
-        return;
-    }
-    match input.carrier {
-        Carrier::Clicks { rate_hz, .. } => add(Method::Clicks, Some(rate_hz)),
-        Carrier::Tone { .. }
-            if matches!(
+    } else {
+        match input.source_rate {
+            Some(rate) => add(Method::PulseTrain, Some(rate)),
+            None if matches!(
                 input.modulation,
-                None | Some(Periodic::Am { depth: 0.0, .. })
+                None | Some(Periodic::Sinusoidal { depth: 0.0, .. })
             ) =>
-        {
-            add(Method::SteadyTone, None);
+            {
+                add(Method::SteadyTone, None);
+            }
+            None => {}
         }
-        Carrier::Tone { .. } => {}
     }
     match input.modulation {
-        Some(Periodic::Am { rate_hz, depth }) if depth > 0.0 => add(Method::Am, Some(rate_hz)),
-        Some(Periodic::Gate { rate_hz }) => add(Method::Gate, Some(rate_hz)),
+        Some(Periodic::Sinusoidal { rate_hz, depth }) if depth > 0.0 => {
+            add(Method::Sinusoidal, Some(rate_hz));
+        }
+        Some(Periodic::Pulsed { rate_hz }) => add(Method::Pulsed, Some(rate_hz)),
         _ => {}
     }
 }
@@ -282,55 +267,39 @@ pub fn nominal(sound: &crate::Sound) -> Analysis {
     };
     for component in components {
         let owner = component.id.into();
-        let (carrier, modulation, pair) = if let Some(voice) = component.form.primitive() {
-            result.diagnostics.extend(
-                component
-                    .form
-                    .intrinsic_issues()
-                    .map(|issue| Issue::Value { owner, issue }),
-            );
-            (voice.carrier, voice.modulation.map(Periodic::from), None)
-        } else {
-            let form = component.form;
-            let pair = form.pair().unwrap_or_else(|| unreachable!("pair form"));
-            let kind = form
-                .pair_kind()
-                .unwrap_or_else(|| unreachable!("pair form"));
-            for (parameter, value, lane) in [
-                (
-                    ParameterId::PairFirstLevel,
-                    pair.first_peak_dbfs.get(),
-                    Lane::Primary,
-                ),
-                (
-                    ParameterId::PairSecondLevel,
-                    pair.second_peak_dbfs.get(),
-                    Lane::Secondary,
-                ),
-            ] {
-                if let Err(issue) = validity::check_value(parameter, value) {
-                    result.diagnostics.push(Issue::Value {
-                        owner: component.id.with_lane(lane),
-                        issue,
-                    });
-                }
-            }
-            if let Err(error) = crate::authored::lower(component) {
+        result
+            .diagnostics
+            .extend(component.form.intrinsic_issues().map(|issue| Issue::Value {
+                owner: if issue.parameter == ParameterId::PairSecondLevel {
+                    component.id.with_lane(Lane::Secondary)
+                } else {
+                    owner
+                },
+                issue,
+            }));
+        let form = component.form;
+        let source_rate = match form.source {
+            crate::SoundSource::PulseTrain { pulse, .. } => Some(pulse.rate_hz.get()),
+            _ => None,
+        };
+        let pair = if let Some(pair) = form.pair() {
+            if let Err(error) = pair.carriers(component.id) {
                 result.diagnostics.push(Issue::Pair(error));
             }
-            (
-                Carrier::Tone {
-                    frequency_hz: pair.first_hz.get(),
-                },
-                None,
-                Some((kind, Some(pair.offset_hz.get().abs()))),
-            )
+            Some((
+                form.pair_kind()
+                    .unwrap_or_else(|| unreachable!("pair kind")),
+                Some(pair.offset_hz.get().abs()),
+            ))
+        } else {
+            None
         };
+        let modulation = form.modulation.map(Periodic::from);
         describe(
             Input {
                 owner,
                 role: SlotRole::Continuing,
-                carrier,
+                source_rate,
                 modulation,
                 pair,
             },
@@ -357,6 +326,8 @@ pub struct PairRates {
     pub first: f64,
     /// Second/right realized carrier rate.
     pub second: f64,
+    /// Absolute difference derived from the two integer phase increments.
+    pub difference_hz: f64,
     /// Generator transition role.
     pub role: SlotRole,
 }
@@ -381,7 +352,7 @@ impl Structure {
     }
     /// The realized rates of one explicit binaural pair with no extra voices.
     #[must_use]
-    pub fn interaural(&self) -> Option<(f64, f64)> {
+    pub fn binaural_carriers(&self) -> Option<(f64, f64)> {
         if self.voices.len() != 2 {
             return None;
         }
@@ -428,9 +399,15 @@ pub(crate) fn classify(
     voices: impl Iterator<Item = VoiceObservation>,
     changing: bool,
 ) -> Structure {
-    let voices: Vec<_> = voices
-        .filter(|v| v.gains.iter().any(|gain| *gain > 0.0))
+    let mut voices: Vec<_> = voices.collect();
+    let active: Vec<_> = voices
+        .iter()
+        .filter(|voice| voice.gains.iter().any(|gain| *gain > 0.0))
+        .map(|voice| (voice.id.component, voice.role))
         .collect();
+    // Structural processes belong to a component: a silent first lane must not
+    // erase the shared modulator or the relationship of its audible second lane.
+    voices.retain(|voice| active.contains(&(voice.id.component, voice.role)));
     let mut result = Structure {
         rhythms: Vec::new(),
         voices,
@@ -439,27 +416,27 @@ pub(crate) fn classify(
         methods: Vec::new(),
     };
     for value in &result.voices {
-        let carrier = match value.facts.carrier {
-            CarrierFacts::Tone(rate) => Carrier::Tone {
-                frequency_hz: rate.realized_hz,
-            },
-            CarrierFacts::Clicks(pulse) => Carrier::Clicks {
-                rate_hz: pulse.rate_hz,
-                width_seconds: pulse.realized_width_seconds(),
-            },
+        let source_rate = match value.facts.carrier {
+            CarrierFacts::PulseTrain(pulse) => Some(pulse.rate_hz),
+            CarrierFacts::Tone(_) => None,
         };
-        let modulation = value.facts.modulation.map(|modulation| match modulation {
-            ModulationFacts::Am { rate, depth } => Periodic::Am {
-                rate_hz: rate.realized_hz,
-                depth,
-            },
-            ModulationFacts::Gate(pulse) => Periodic::Gate {
-                rate_hz: pulse.rate_hz,
-            },
-        });
+        let modulation = value
+            .facts
+            .modulation
+            .filter(|_| value.id.lane == Lane::Primary)
+            .map(|modulation| match modulation {
+                ModulationFacts::Sinusoidal { rate, depth } => Periodic::Sinusoidal {
+                    rate_hz: rate.realized_hz,
+                    depth,
+                },
+                ModulationFacts::Pulsed(pulse) => Periodic::Pulsed {
+                    rate_hz: pulse.rate_hz,
+                },
+            });
         let pair = value.facts.pair.map(|pair| {
             let mut rate = None;
             if value.id.lane == Lane::Primary
+                && let Some(difference) = pair.realized_offset_hz
                 && let Some(other) = result.voices.iter().find(|other| {
                     other.id == value.id.with_lane(Lane::Secondary)
                         && other.role == value.role
@@ -468,12 +445,13 @@ pub(crate) fn classify(
                 && let (CarrierFacts::Tone(first), CarrierFacts::Tone(second)) =
                     (value.facts.carrier, other.facts.carrier)
             {
-                rate = Some((second.realized_hz - first.realized_hz).abs());
+                rate = Some(difference.abs());
                 result.pairs.push(PairRates {
                     kind: pair.kind,
                     first: first.realized_hz,
                     second: second.realized_hz,
                     role: value.role,
+                    difference_hz: difference.abs(),
                 });
             }
             (pair.kind, rate)
@@ -482,7 +460,7 @@ pub(crate) fn classify(
             Input {
                 owner: value.id,
                 role: value.role,
-                carrier,
+                source_rate,
                 modulation,
                 pair,
             },
@@ -505,10 +483,14 @@ crate::vocabulary::vocabulary! { Band,"band" {
 crate::vocabulary::vocabulary! { Method,"method" {
     Binaural => ("binaural","Binaural","binaural"),
     Monaural => ("monaural","Monaural","monaural"),
-    Clicks => ("clicks","Clicks","clicks"),
-    Gate => ("gate","Gate","gate"),
-    Am => ("am","AM","AM"),
-    SteadyTone => ("steady_tone","Steady tone","steady tone"),
+    PulseTrain => ("pulse_train",crate::CarrierKind::PulseTrain.label(),
+        crate::CarrierKind::PulseTrain.phrase()),
+    Pulsed => ("pulsed",crate::ModulationKind::Pulsed.label(),
+        crate::ModulationKind::Pulsed.phrase()),
+    Sinusoidal => ("sinusoidal",crate::ModulationKind::Sinusoidal.label(),
+        crate::ModulationKind::Sinusoidal.phrase()),
+    SteadyTone => ("steady_tone",crate::vocabulary::STEADY_TONE.label,
+        crate::vocabulary::STEADY_TONE.phrase),
 }}
 
 crate::vocabulary::vocabulary! { Completeness,"completeness" {
@@ -551,72 +533,48 @@ crate::diagnostic_codes! {
 }
 
 #[cfg(test)]
-mod primary_tests {
-    use super::*;
-    use crate::{ComponentForm, Ears, test_support::finite};
+mod heading_tests {
+    use crate::{ChannelRouting, ComponentForm, Modulation, SoundSource, test_support::finite};
     #[test]
-    fn primary_method_keeps_modulation_precedence_and_zero_depth_carriers() {
-        for (modulation, tone, clicks) in [
-            (None, Method::SteadyTone, Method::Clicks),
-            (
-                Some(Modulation::Gate {
-                    rate_hz: finite(0.0),
-                    width_seconds: finite(0.001),
-                }),
-                Method::Gate,
-                Method::Gate,
-            ),
-            (
-                Some(Modulation::Am {
-                    rate_hz: finite(0.0),
-                    depth: finite(0.5),
-                }),
-                Method::Am,
-                Method::Am,
-            ),
-            (
-                Some(Modulation::Am {
-                    rate_hz: finite(7.0),
-                    depth: finite(0.0),
-                }),
-                Method::SteadyTone,
-                Method::Clicks,
-            ),
-        ] {
-            let form = ComponentForm::Tone {
-                ears: Ears::Both,
+    fn headings_describe_source_and_shared_modulation_together() {
+        let form = ComponentForm {
+            source: SoundSource::BinauralPair {
+                first_hz: finite(200.0),
+                offset_hz: finite(6.0),
+                first_peak_dbfs: finite(-30.0),
+                second_peak_dbfs: finite(-30.0),
+            },
+            modulation: Some(Modulation::Pulsed {
+                pulse: crate::test_support::rectangular_pulse(10.0, 0.001),
+            }),
+        };
+        assert_eq!(form.heading(), "Pulsed binaural pair");
+        let form = ComponentForm {
+            source: SoundSource::PulseTrain {
+                pulse: crate::test_support::rectangular_pulse(40.0, 0.001),
+                route: ChannelRouting::Both,
+                peak_dbfs: finite(-30.0),
+            },
+            ..form
+        };
+        assert_eq!(form.heading(), "Pulse train with pulsed modulation");
+        assert!(!form.heading().contains("isochronic"));
+        let tone = ComponentForm {
+            source: SoundSource::Tone {
                 frequency_hz: finite(440.0),
                 peak_dbfs: finite(-30.0),
-                modulation,
-            };
-            assert_eq!(Method::primary_of(form), tone);
-            let form = ComponentForm::Clicks {
-                ears: Ears::Both,
-                rate_hz: finite(40.0),
-                width_seconds: finite(0.001),
-                peak_dbfs: finite(-30.0),
-                modulation,
-            };
-            assert_eq!(Method::primary_of(form), clicks);
-        }
+                route: ChannelRouting::Both,
+            },
+            ..form
+        };
+        assert_eq!(tone.heading(), "Pulsed tone (isochronic)");
         assert_eq!(
-            Method::primary_of(ComponentForm::BinauralPair {
-                left_hz: finite(440.0),
-                offset_hz: finite(7.0),
-                left_peak_dbfs: finite(-30.0),
-                right_peak_dbfs: finite(-30.0)
-            }),
-            Method::Binaural
-        );
-        assert_eq!(
-            Method::primary_of(ComponentForm::MonauralPair {
-                ears: Ears::Both,
-                first_hz: finite(440.0),
-                offset_hz: finite(7.0),
-                first_peak_dbfs: finite(-30.0),
-                second_peak_dbfs: finite(-30.0)
-            }),
-            Method::Monaural
+            ComponentForm {
+                modulation: None,
+                ..tone
+            }
+            .heading(),
+            "Steady tone"
         );
     }
 }

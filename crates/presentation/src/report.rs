@@ -25,7 +25,7 @@ use {
 };
 
 /// Version of the command-line JSON report envelope.
-pub const OUTPUT_SCHEMA_VERSION: u32 = 2;
+pub const OUTPUT_SCHEMA_VERSION: u32 = 3;
 
 macro_rules! report_struct {
     ($(#[$attr:meta])* $name:ident { $($(#[$field_attr:meta])* $field:ident: $ty:ty),* $(,)? }) => {
@@ -149,7 +149,7 @@ pub enum Validation {
         sample_rate_hz: u32,
         /// Finite envelope length.
         frames: u64,
-        /// Conservative per-ear peak bounds.
+        /// Conservative per-channel peak bounds.
         peak_dbfs: [f64; 2],
         /// Compiled voice facts.
         voices: Vec<VoiceReport>,

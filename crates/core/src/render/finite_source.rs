@@ -125,19 +125,19 @@ impl FiniteSource {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Carrier, Ears, Sound, Voice};
+    use crate::ChannelRouting;
     use alloc::{vec, vec::Vec};
 
     fn signal(frames: u32) -> Arc<Signal> {
         Arc::new(
-            Sound::new(
+            crate::test_support::FiniteFixture::new(
                 crate::test_support::finite(f64::from(frames) / 8_000.0),
                 crate::test_support::finite(0.0),
-                (vec![Voice {
-                    ears: Ears::Both,
-                    peak_dbfs: -20.0,
-                    carrier: Carrier::Tone {
-                        frequency_hz: 100.0,
+                (vec![crate::ComponentForm {
+                    source: crate::SoundSource::Tone {
+                        route: ChannelRouting::Both,
+                        peak_dbfs: crate::test_support::finite(-20.0),
+                        frequency_hz: crate::test_support::finite(100.0),
                     },
                     modulation: None,
                 }])
@@ -145,7 +145,7 @@ mod tests {
                 .enumerate()
                 .map(|(index, voice)| crate::Component {
                     id: crate::ComponentId::numbered(index).unwrap(),
-                    form: crate::test_support::form(voice),
+                    form: voice,
                 })
                 .collect(),
             )

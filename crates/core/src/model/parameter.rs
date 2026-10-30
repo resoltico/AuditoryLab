@@ -4,12 +4,10 @@
 //! The editable quantities of a recipe, their units and the component choices.
 //!
 //! Each [`ParameterId`] names one model quantity. Its [`ParameterDescriptor`]
-//! states the label, the unit people read and type it in, and a short help
-//! text. Model values keep the recipe's units (seconds, hertz, a 0..1 depth);
+//! states the label and the unit people read and type it in. Shared presentation
+//! supplies explanatory help. Model values keep the recipe's units (seconds, hertz, a 0..1 depth);
 //! [`Unit`] converts them to and from the displayed unit.
-#[cfg(test)]
-use crate::Voice;
-use crate::{Carrier, Modulation, Sound};
+use crate::Modulation;
 use core::fmt::{self, Display, Formatter};
 use serde::Serialize;
 
@@ -189,7 +187,7 @@ macro_rules! define_parameters {
         }
     };
 }
-crate::component_schema::component_schema!(define_parameters);
+crate::parameter_schema::parameter_schema!(define_parameters);
 
 /// What a person needs to read, enter and understand one quantity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -215,10 +213,10 @@ impl ParameterId {
 
     /// The sound's value of [`ParameterId::Duration`] or [`ParameterId::Fade`].
     #[must_use]
-    pub const fn read_envelope(self, sound: &Sound) -> Option<crate::Finite> {
+    pub const fn read_envelope(self, timing: &crate::FiniteTiming) -> Option<crate::Finite> {
         match self {
-            Self::Duration => Some(sound.duration_seconds()),
-            Self::Fade => Some(sound.fade_seconds()),
+            Self::Duration => Some(timing.duration_seconds),
+            Self::Fade => Some(timing.fade_seconds),
             _ => None,
         }
     }
@@ -235,28 +233,17 @@ impl Display for ParameterId {
 pub enum CarrierKind {
     /// A sine tone.
     Tone,
-    /// A train of rectangular clicks.
-    Clicks,
-}
-
-impl Carrier {
-    /// The carrier's kind.
-    #[must_use]
-    pub const fn kind(&self) -> CarrierKind {
-        match self {
-            Self::Tone { .. } => CarrierKind::Tone,
-            Self::Clicks { .. } => CarrierKind::Clicks,
-        }
-    }
+    /// A train of explicitly shaped unipolar pulses.
+    PulseTrain,
 }
 
 /// The kind of amplitude modulation a component has.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ModulationKind {
     /// A sinusoidal envelope.
-    Am,
-    /// Periodic rectangular gating.
-    Gate,
+    Sinusoidal,
+    /// Periodic gain pulses with an explicit window shape.
+    Pulsed,
 }
 
 impl Modulation {
@@ -264,56 +251,59 @@ impl Modulation {
     #[must_use]
     pub const fn kind(&self) -> ModulationKind {
         match self {
-            Self::Am { .. } => ModulationKind::Am,
-            Self::Gate { .. } => ModulationKind::Gate,
+            Self::Sinusoidal { .. } => ModulationKind::Sinusoidal,
+            Self::Pulsed { .. } => ModulationKind::Pulsed,
         }
     }
 }
 
 crate::vocabulary::vocabulary! { CarrierKind,"carrier_kind" {
     Tone => ("tone","Tone","tone"),
-    Clicks => ("clicks","Clicks","clicks"),
+    PulseTrain => ("pulse_train","Pulse train","pulse train"),
 }}
 
 crate::vocabulary::vocabulary! { ModulationKind,"modulation_kind" {
-    Am => ("am","AM","AM"),
-    Gate => ("gate","Gate","gate"),
+    Sinusoidal => ("sinusoidal","Sinusoidal AM","sinusoidal AM"),
+    Pulsed => ("pulsed","Pulsed modulation","pulsed modulation"),
 }}
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Ears;
+    use crate::ChannelRouting;
     use alloc::vec::Vec;
 
-    fn every_shape() -> Vec<Voice> {
+    fn every_shape() -> Vec<crate::ComponentForm> {
         let mut shapes = Vec::new();
-        for carrier in [
-            Carrier::Tone {
-                frequency_hz: 440.0,
+        for source in [
+            crate::SoundSource::Tone {
+                frequency_hz: crate::test_support::finite(440.0),
+                route: ChannelRouting::Both,
+                peak_dbfs: crate::test_support::finite(-30.0),
             },
-            Carrier::Clicks {
-                rate_hz: 40.0,
-                width_seconds: 0.001,
+            crate::SoundSource::PulseTrain {
+                route: ChannelRouting::Both,
+                peak_dbfs: crate::test_support::finite(-30.0),
+                pulse: crate::test_support::rectangular_pulse(40.0, 0.001),
             },
         ] {
             for modulation in [
                 None,
-                Some(Modulation::Am {
+                Some(Modulation::Sinusoidal {
                     rate_hz: crate::test_support::finite(8.0),
                     depth: crate::test_support::finite(0.5),
                 }),
-                Some(Modulation::Gate {
-                    rate_hz: crate::test_support::finite(8.0),
-                    width_seconds: crate::test_support::finite(0.002),
+                Some(Modulation::Pulsed {
+                    pulse: crate::PulseSpec {
+                        rate_hz: crate::test_support::finite(8.0),
+                        width: crate::PulseWidth::Duration {
+                            seconds: crate::test_support::finite(0.002),
+                        },
+                        shape: crate::PulseShape::Rectangular {},
+                    },
                 }),
             ] {
-                shapes.push(Voice {
-                    ears: Ears::Both,
-                    peak_dbfs: -30.0,
-                    carrier,
-                    modulation,
-                });
+                shapes.push(crate::ComponentForm { source, modulation });
             }
         }
         shapes
@@ -321,7 +311,7 @@ mod tests {
 
     #[test]
     fn every_component_quantity_reads_back_what_was_written_and_nothing_else() {
-        for shape in every_shape().into_iter().map(crate::test_support::form) {
+        for shape in every_shape() {
             for id in ParameterId::COMPONENT {
                 let mut changed = shape;
                 let applies = shape.get(id).is_some();
@@ -343,7 +333,7 @@ mod tests {
             }
         }
         // Independently: a gated tone has frequency, level, gate rate and width.
-        let gated = crate::test_support::form(every_shape()[2]);
+        let gated = every_shape()[2];
         let present: Vec<_> = ParameterId::COMPONENT
             .into_iter()
             .filter(|id| gated.get(*id).is_some())
@@ -353,8 +343,8 @@ mod tests {
             [
                 ParameterId::ToneFrequency,
                 ParameterId::PeakLevel,
-                ParameterId::GateRate,
-                ParameterId::GateWidth
+                ParameterId::ModulationPulseRate,
+                ParameterId::ModulationPulseDuration
             ]
         );
     }
@@ -369,8 +359,11 @@ mod tests {
             assert_eq!(unit.to_display(-3.5), -3.5);
             assert_eq!(unit.to_model(-3.5), -3.5);
         }
-        assert_eq!(ParameterId::ClickWidth.descriptor().unit.symbol(), "ms");
-        assert_eq!(ParameterId::AmDepth.descriptor().unit.symbol(), "%");
+        assert_eq!(
+            ParameterId::SourcePulseDuration.descriptor().unit.symbol(),
+            "ms"
+        );
+        assert_eq!(ParameterId::ModulationDepth.descriptor().unit.symbol(), "%");
         for id in ParameterId::ALL {
             let descriptor = id.descriptor();
             assert_eq!(descriptor.id, id);
@@ -382,22 +375,16 @@ mod tests {
     #[test]
     fn finite_invalid_rates_never_hide_active_modulation() {
         let mut c = every_shape()[1];
-        assert_eq!(
-            crate::rhythm::Method::primary_of(crate::test_support::form(c)),
-            crate::rhythm::Method::Am
-        );
-        c.modulation = Some(Modulation::Am {
+        assert_eq!(c.heading(), "Tone with sinusoidal AM");
+        c.modulation = Some(Modulation::Sinusoidal {
             rate_hz: crate::test_support::finite(0.0),
             depth: crate::test_support::finite(0.0),
         });
-        assert_eq!(
-            crate::rhythm::Method::primary_of(crate::test_support::form(c)),
-            crate::rhythm::Method::SteadyTone
-        );
-        let form = crate::test_support::form(c);
+        assert_eq!(c.heading(), "Steady tone");
+        let form = c;
         let issues: Vec<_> = form.intrinsic_issues().collect();
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].parameter, ParameterId::AmRate);
+        assert_eq!(issues[0].parameter, ParameterId::ModulationRate);
         assert_eq!(issues[0].rule, crate::ValueRule::Positive);
         assert_eq!(ComponentId::numbered(0), ComponentId::new(1));
         assert_eq!(ComponentId::numbered(usize::MAX), None);

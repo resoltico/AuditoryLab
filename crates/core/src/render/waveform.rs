@@ -1,4 +1,4 @@
-//! Exact per-ear extrema for a window of the signal.
+//! Exact per-channel extrema for a window of the signal.
 use crate::Signal;
 use alloc::vec::Vec;
 /// The lowest and highest sample in a bin.
@@ -40,7 +40,7 @@ pub fn trace(signal: &Signal, start: u64, frames: u64, bins: usize, out: &mut Ve
 /// A nonfinite sample cannot define a truthful waveform scale or level.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NonFiniteSample;
-/// Reduce every finite sample into per-ear extrema. No sparse point selection.
+/// Reduce every finite sample into per-channel extrema. No sparse point selection.
 /// Nonfinite input clears the output and fails rather than hiding a bad sample.
 pub fn sample_trace(
     samples: &[[f64; 2]],

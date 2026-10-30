@@ -1,10 +1,8 @@
-//! Comfortable slider spans, slider gestures and new-component defaults.
+//! Comfortable slider spans and deliberately quantized slider gestures.
 //!
 //! This is control convenience, not validation: typed values outside a
 //! slider's span are kept exactly and validated by the core.
-use auditorylab_core::{
-    CarrierKind, Ears, Finite, Modulation, ModulationKind, ParameterId, SampleRate,
-};
+use auditorylab_core::{ModulationKind, ParameterId, SampleRate};
 
 /// Waveform spans offered by application monitors, in milliseconds.
 pub const MONITOR_SPANS_MS: [u32; 4] = [2, 10, 40, 100];
@@ -74,14 +72,21 @@ pub fn range(id: ParameterId, rate: SampleRate) -> Option<Range> {
             )
         }
         ParameterId::PairOffset => (-80.0, 80.0, 6.0, Linear),
-        ParameterId::ClickRate => (0.5, 1000.0, 40.0, Logarithmic),
-        ParameterId::ClickWidth | ParameterId::GateWidth => (0.1, 50.0, 1.0, Logarithmic),
+        ParameterId::SourcePulseRate => (0.5, 1000.0, 40.0, Logarithmic),
+        ParameterId::SourcePulseDuration | ParameterId::ModulationPulseDuration => {
+            (0.1, 50.0, 1.0, Logarithmic)
+        }
         ParameterId::PeakLevel | ParameterId::PairFirstLevel | ParameterId::PairSecondLevel => {
             (-80.0, 0.0, -30.0, Linear)
         }
-        ParameterId::AmRate => (0.1, 100.0, 40.0, Logarithmic),
-        ParameterId::AmDepth => (0.0, 100.0, 100.0, Linear),
-        ParameterId::GateRate => (0.5, 100.0, 40.0, Logarithmic),
+        ParameterId::ModulationRate => (0.1, 100.0, 40.0, Logarithmic),
+        ParameterId::ModulationDepth => (0.0, 100.0, 100.0, Linear),
+        ParameterId::ModulationPulseRate => (0.5, 100.0, 40.0, Logarithmic),
+        ParameterId::SourceDuty | ParameterId::ModulationDuty => (1.0, 99.0, 50.0, Linear),
+        ParameterId::SourceRise
+        | ParameterId::SourceFall
+        | ParameterId::ModulationRise
+        | ParameterId::ModulationFall => (0.1, 50.0, 2.0, Logarithmic),
         ParameterId::Duration | ParameterId::Fade => return None,
     };
     Some(Range {
@@ -92,75 +97,7 @@ pub fn range(id: ParameterId, rate: SampleRate) -> Option<Range> {
     })
 }
 
-/// A quiet unmodulated component, routed to both ears.
-#[must_use]
-pub fn default_component(kind: CarrierKind) -> auditorylab_core::ComponentForm {
-    let ears = Ears::Both;
-    let peak_dbfs = model_default(ParameterId::PeakLevel);
-    let modulation = None;
-    match kind {
-        CarrierKind::Tone => auditorylab_core::ComponentForm::Tone {
-            ears,
-            peak_dbfs,
-            modulation,
-            frequency_hz: model_default(ParameterId::ToneFrequency),
-        },
-        CarrierKind::Clicks => auditorylab_core::ComponentForm::Clicks {
-            ears,
-            peak_dbfs,
-            modulation,
-            rate_hz: model_default(ParameterId::ClickRate),
-            width_seconds: model_default(ParameterId::ClickWidth),
-        },
-    }
-}
-
-/// Quiet explicit pair with numeric defaults from the parameter control ranges.
-#[must_use]
-pub fn default_pair(kind: auditorylab_core::PairKind) -> auditorylab_core::ComponentForm {
-    match kind {
-        auditorylab_core::PairKind::Binaural => auditorylab_core::ComponentForm::BinauralPair {
-            left_hz: model_default(ParameterId::PairFirstFrequency),
-            offset_hz: model_default(ParameterId::PairOffset),
-            left_peak_dbfs: model_default(ParameterId::PairFirstLevel),
-            right_peak_dbfs: model_default(ParameterId::PairSecondLevel),
-        },
-        auditorylab_core::PairKind::Monaural => auditorylab_core::ComponentForm::MonauralPair {
-            ears: Ears::Both,
-            first_hz: model_default(ParameterId::PairFirstFrequency),
-            offset_hz: model_default(ParameterId::PairOffset),
-            first_peak_dbfs: model_default(ParameterId::PairFirstLevel),
-            second_peak_dbfs: model_default(ParameterId::PairSecondLevel),
-        },
-    }
-}
-
-fn finite_default(value: f64) -> Finite {
-    Finite::new(value).unwrap_or_else(|| unreachable!("finite control defaults"))
-}
-fn model_default(id: ParameterId) -> Finite {
-    finite_default(
-        range(id, SampleRate::DEFAULT).map_or(0.0, |r| id.descriptor().unit.to_model(r.default)),
-    )
-}
-
-/// Default parameters for a modulation kind, in model units.
-#[must_use]
-pub fn default_modulation(kind: ModulationKind, rate: SampleRate) -> Modulation {
-    let model = |id: ParameterId| {
-        finite_default(range(id, rate).map_or(0.0, |r| id.descriptor().unit.to_model(r.default)))
-    };
-    match kind {
-        ModulationKind::Am => Modulation::Am {
-            rate_hz: model(ParameterId::AmRate),
-            depth: model(ParameterId::AmDepth),
-        },
-        ModulationKind::Gate => Modulation::Gate {
-            rate_hz: model(ParameterId::GateRate),
-            width_seconds: model(ParameterId::GateWidth),
-        },
-    }
-}
+pub use crate::document::construction::{default_component, default_modulation, default_pair};
 
 /// Map a normalized slider position to a displayed value within the span;
 /// nonfinite positions give the default. `None` without a slider.
@@ -186,7 +123,7 @@ pub fn quantize(id: ParameterId, value: f64) -> f64 {
         return value;
     }
     let rounded = match id {
-        ParameterId::AmDepth => value.round(),
+        ParameterId::ModulationDepth => value.round(),
         id if id.descriptor().unit == auditorylab_core::Unit::DecibelsFullScale => {
             format!("{value:.1}").parse().unwrap_or(value)
         }
@@ -232,11 +169,12 @@ const fn finite(value: f64) -> auditorylab_core::Finite {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use auditorylab_core::CarrierKind;
     use auditorylab_core::ComponentForm;
     use auditorylab_core::ComponentId;
 
     fn valid(component: ComponentForm, rate: SampleRate) -> bool {
-        auditorylab_core::Sound::new(
+        auditorylab_core::test_support::FiniteFixture::new(
             finite(1.0),
             finite(0.0),
             ([(ComponentId::new(1).unwrap(), component)])
@@ -271,7 +209,7 @@ mod tests {
                         ParameterId::PeakLevel
                         | ParameterId::PairFirstLevel
                         | ParameterId::PairSecondLevel => 0.050_000_1,
-                        ParameterId::AmDepth => 0.500_001,
+                        ParameterId::ModulationDepth => 0.500_001,
                         _ => raw.abs() * 0.005 + 1e-12,
                     };
                     assert!(
@@ -286,13 +224,13 @@ mod tests {
             }
         }
         assert_eq!(
-            quantize(ParameterId::ClickRate, 117.769_070_344_013_4),
+            quantize(ParameterId::SourcePulseRate, 117.769_070_344_013_4),
             118.0
         );
-        assert_eq!(quantize(ParameterId::ClickRate, 39.0625), 39.1);
-        assert_eq!(quantize(ParameterId::AmRate, 0.123_456), 0.123);
+        assert_eq!(quantize(ParameterId::SourcePulseRate, 39.0625), 39.1);
+        assert_eq!(quantize(ParameterId::ModulationRate, 0.123_456), 0.123);
         assert_eq!(quantize(ParameterId::PeakLevel, -30.123), -30.1);
-        assert_eq!(quantize(ParameterId::AmDepth, 39.6), 40.0);
+        assert_eq!(quantize(ParameterId::ModulationDepth, 39.6), 40.0);
         assert_eq!(range(ParameterId::Duration, SampleRate::DEFAULT), None);
     }
 
@@ -300,7 +238,10 @@ mod tests {
     fn independent_boundary_oracles_for_spans_and_positions() {
         let rate = SampleRate::DEFAULT;
         assert_eq!(slider_value(ParameterId::PeakLevel, rate, 0.5), Some(-40.0));
-        assert_eq!(slider_value(ParameterId::AmDepth, rate, 0.5), Some(50.0));
+        assert_eq!(
+            slider_value(ParameterId::ModulationDepth, rate, 0.5),
+            Some(50.0)
+        );
         assert_eq!(
             slider_value(ParameterId::ToneFrequency, rate, 0.5),
             Some(632.0)
@@ -315,9 +256,53 @@ mod tests {
             Some(0.0)
         );
         assert_eq!(
-            slider_position(ParameterId::ClickWidth, rate, 0.05),
+            slider_position(ParameterId::SourcePulseDuration, rate, 0.05),
             Some(1.0)
         );
+    }
+
+    fn parameter_fixture(id: ParameterId) -> ComponentForm {
+        let mut component = default_component(CarrierKind::Tone);
+        if matches!(
+            id,
+            ParameterId::SourcePulseRate | ParameterId::SourcePulseDuration
+        ) {
+            component = default_component(CarrierKind::PulseTrain);
+        }
+        if matches!(
+            id,
+            ParameterId::ModulationRate | ParameterId::ModulationDepth
+        ) {
+            component.set_modulation(Some(default_modulation(ModulationKind::Sinusoidal)));
+        }
+        if matches!(
+            id,
+            ParameterId::ModulationPulseRate | ParameterId::ModulationPulseDuration
+        ) {
+            component.set_modulation(Some(default_modulation(ModulationKind::Pulsed)));
+        }
+        if matches!(
+            id,
+            ParameterId::SourceDuty | ParameterId::SourceRise | ParameterId::SourceFall
+        ) {
+            component = crate::document::construction::CreationKind::PulseTrain.component();
+            if let crate::core::SoundSource::PulseTrain { pulse, .. } = &mut component.source {
+                pulse.width = crate::core::PulseWidth::DutyCycle {
+                    fraction: finite(0.5),
+                };
+                pulse.shape = crate::core::PulseShape::RaisedCosine {
+                    rise_seconds: finite(0.002),
+                    fall_seconds: finite(0.002),
+                };
+            }
+        }
+        if matches!(
+            id,
+            ParameterId::ModulationDuty | ParameterId::ModulationRise | ParameterId::ModulationFall
+        ) {
+            component = crate::document::construction::CreationKind::PulsedTone.component();
+        }
+        component
     }
 
     #[test]
@@ -328,7 +313,7 @@ mod tests {
                 for modulation in ModulationKind::ALL {
                     let mut component = default_component(kind);
                     assert!(valid(component, rate));
-                    component.set_modulation(Some(default_modulation(modulation, rate)));
+                    component.set_modulation(Some(default_modulation(modulation)));
                     assert!(valid(component, rate), "{kind:?} {modulation:?}");
                 }
             }
@@ -356,7 +341,7 @@ mod tests {
                             form,
                         }];
                         assert!(
-                            auditorylab_core::Sound::new(
+                            auditorylab_core::test_support::FiniteFixture::new(
                                 finite(1.0),
                                 finite(0.0),
                                 authored.to_vec()
@@ -369,16 +354,7 @@ mod tests {
                     }
                     continue;
                 }
-                let mut component = default_component(CarrierKind::Tone);
-                if matches!(id, ParameterId::ClickRate | ParameterId::ClickWidth) {
-                    component = default_component(CarrierKind::Clicks);
-                }
-                if matches!(id, ParameterId::AmRate | ParameterId::AmDepth) {
-                    component.set_modulation(Some(default_modulation(ModulationKind::Am, rate)));
-                }
-                if matches!(id, ParameterId::GateRate | ParameterId::GateWidth) {
-                    component.set_modulation(Some(default_modulation(ModulationKind::Gate, rate)));
-                }
+                let mut component = parameter_fixture(id);
                 assert!(component.set(id, finite(id.descriptor().unit.to_model(r.default))));
                 assert!(valid(component, rate), "{id:?} default at {hz}");
             }
@@ -389,10 +365,12 @@ mod tests {
             assert!(r.min > 0.0 && r.min < r.max && r.max < 0.5 * f64::from(hz));
             let component = {
                 let base = default_component(CarrierKind::Tone);
-                ComponentForm::Tone {
-                    frequency_hz: finite(r.default),
-                    ears: base.route().unwrap(),
-                    peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
+                ComponentForm {
+                    source: auditorylab_core::SoundSource::Tone {
+                        frequency_hz: finite(r.default),
+                        route: base.route().unwrap(),
+                        peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
+                    },
                     modulation: base.modulation(),
                 }
             };

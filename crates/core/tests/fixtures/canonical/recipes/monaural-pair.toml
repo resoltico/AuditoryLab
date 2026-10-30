@@ -1,4 +1,4 @@
-schema_version = 4
+schema_version = 5
 
 [document]
 id = "00000000-0000-4000-8000-000000000007"
@@ -8,15 +8,20 @@ modified_at = "2026-10-23T12:30:00.000000000Z"
 [description]
 title = "Same-ear 7 Hz pair"
 
-[sound]
+[timing]
 duration_seconds = 10.0
 fade_seconds = 0.1
 
 [[sound.component]]
-kind = "monaural_pair"
 id = 1
-ears = "both"
+
+[sound.component.source]
+kind = "monaural_pair"
+route = "both"
 first_hz = 396.5
 offset_hz = 7.0
 first_peak_dbfs = -23.0103
 second_peak_dbfs = -23.0103
+
+[sound.component.modulation]
+kind = "none"

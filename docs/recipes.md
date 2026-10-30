@@ -2,7 +2,9 @@
 
 A recipe describes ordered stereo components, finite duration/fades, identity and optional research context. It contains no sample rate. Inspect/export choose one; playback validates against the device’s actual rate. The [format reference](formats.md#recipe-schema) defines all fields, limits and the supported schema.
 
-Start from a built-in:
+Create a generic document with `auditorylab new tone`, `pulse-train`, `binaural-pair`, `monaural-pair` or `pulsed-tone`. The command prints a complete schema-5 recipe with a fresh identity; optional `--output PATH` never overwrites. Desktop Add component uses the same constructors. New blank Workbench documents remain silent.
+
+Or start from a built-in:
 
 ```text
 auditorylab recipe builtin:ioannou-2015-binaural-10-hz --output custom.toml
@@ -11,12 +13,12 @@ auditorylab inspect --file custom.toml --sample-rate 48000
 
 Use **Edit a copy** or `library add --as-copy` to allocate a separate identity. Portable export retains the source identity. Keep your own notes in `[description]`; retain source methods and limitations in scoped evidence.
 
-## A signed-offset pair
+## A pair with a negative beat offset
 
 Save the example as UTF-8. It sends 250 Hz left and 240 Hz right:
 
 ```toml
-schema_version = 4
+schema_version = 5
 
 [document]
 id = "00000000-0000-4000-8000-000000000001"
@@ -24,73 +26,88 @@ id = "00000000-0000-4000-8000-000000000001"
 [description]
 title = "Ten-hertz pair example"
 
-[sound]
+[timing]
 duration_seconds = 2.0
 fade_seconds = 0.01
 
 [[sound.component]]
 id = 17
+
+[sound.component.source]
 kind = "binaural_pair"
-left_hz = 250.0
+first_hz = 250.0
 offset_hz = -10.0
-left_peak_dbfs = -24.0
-right_peak_dbfs = -24.0
+first_peak_dbfs = -24.0
+second_peak_dbfs = -24.0
+
+[sound.component.modulation]
+kind = "none"
 ```
 
 The UUID is an illustrative fixture. The positive component ID names this authored owner in Workbench, diagnostics and reports, independently of row position. A pair expands to primary/secondary generator lanes, with the secondary described as its second tone. Use an explicit pair when its carrier relationship is part of the sound.
 
-## AM and gates
+## Sinusoidal and pulsed modulation
 
 This component gives a 1 kHz carrier full-depth 40 Hz AM:
 
 ```toml
-schema_version = 4
+schema_version = 5
 [document]
 id = "00000000-0000-4000-8000-000000000002"
-[sound]
+[timing]
 duration_seconds = 2.0
 fade_seconds = 0.01
 [[sound.component]]
 id = 1
+
+[sound.component.source]
 kind = "tone"
-ears = "both"
+route = "both"
 frequency_hz = 1000.0
 peak_dbfs = -24.0
+
 [sound.component.modulation]
-kind = "am"
+kind = "sinusoidal"
 rate_hz = 40.0
 depth = 1.0
 ```
 
-For a gated tone, use modulation `kind = "gate"`, `rate_hz` and `width_seconds` instead of depth. For a click carrier, use component `kind = "clicks"`, its rate/width, ears and peak level. Modulation belongs to its component. [Component fields](formats.md#components) show the complete shapes.
+**Pulsed tone (isochronic)** means a single sine carrier under periodic gain pulses, with continuous carrier phase through the silent windows. It uses a `tone` source plus shared `pulsed` modulation; `pulsed-tone` is its CLI construction key. A unipolar pulse-train source and a pulsed pair keep their own names.
+
+Create `auditorylab new pulsed-tone --output pulse.toml`. Its generic defaults are a 440 Hz carrier in both channels at −30 dBFS, 10 pulses/s, 50% requested duty and 2 ms raised-cosine rise/fall. It carries no study or benefit claims. Add the same shared modulation to either explicit pair kind; a generic pulse source is not a tonal construction.
+
+The modulation table uses `kind = "pulsed"` and a nested pulse with `rate_hz`, `width` and `shape`; see [component fields](formats.md#components). Pulse sources use that identical pulse definition under their source table.
+
+A fixed-duration width stays fixed when rate changes. Duty mode stores a fraction of the nominal period and changes the window with rate. Converting modes uses `seconds × rate_hz` or `fraction / rate_hz` atomically, without clamping. Binary64 round trips need not recover the original bits or boundary frame. Related staged rate/width text participates in conversion; unrelated staged text survives. Turning rectangular edges into raised cosine initializes each edge to 10% of the requested window, retaining a diagnosed candidate when positive edges cannot resolve at the chosen rate.
 
 ## Check and save
 
 Run `inspect --file custom.toml` after editing. A finite portable document can remain savable while failing acoustic validation at a chosen rate. Correct the named quantities before WAV export or playback.
 
-Peak amplitudes add per ear. Lower component levels until their summed linear bounds fit full scale, including both voices of a monaural pair. These bounds protect against possible peaks rather than relying on phase cancellation. Endpoint fades require room within the finite duration.
+Peak bounds add per digital channel. Lower component levels until their summed linear bounds fit full scale, including both lanes of a monaural pair. These bounds protect against possible peaks rather than relying on phase cancellation. Endpoint fades require room within the finite duration.
 
-Workbench typing stages values; committing applies the complete finite candidate. Numeric fields accept values outside comfortable slider ranges without gesture quantization; [display-unit conversion](desktop.md#build-and-edit-a-sound) uses binary64. An independent copy gets a fresh identity and bounded ancestry; its first User Library save sets its declared dates. Sound changes demote current source evidence to ancestor scope; title/notes changes alone retain it.
+Workbench typing stages values; committing applies the complete finite candidate. Numeric fields accept values outside comfortable slider ranges without gesture quantization; [display-unit conversion](desktop.md#build-and-edit-a-sound) uses binary64. An independent copy gets a fresh identity and bounded ancestry; its first User Library save sets its declared dates. Sound and finite-timing changes demote current source evidence to ancestor scope; title/notes changes alone retain it.
 
 ## Waveforms
 
-For frame `n` at rate `fs`, let `c` be phase in cycles, `d` AM depth and `A = 10^(peak_dbfs/20)`:
+Tone and sinusoidal-AM phases use a 64-bit cycle with step `ceil(hz × 2^64 / fs)`, derived from the exact binary64 requested frequency. Origin-zero frame `n` uses `n × step` modulo `2^64`. Portable libm evaluates sine from the signed top 53 phase bits as cycles in `[-0.5,0.5)`. Each tone starts at phase zero and continues through closed pulses. There is no per-pulse phase reset.
 
-| Process | Sample rule |
-| --- | --- |
-| Tone | `A × sin(2πc)` |
-| AM | Multiply the carrier by `(1 + d × sin(2πc_m)) / (1 + d)`. |
-| Clicks | Gain 1 during each resolved open pulse, 0 otherwise. |
-| Gate | Multiply the carrier by that click/pulse gain; carrier phase continues while closed. |
-| Mix | Sum each ear’s voices in authored order, then apply the finite fade. |
+Evaluate lanes in source order (first/left, then second/right), applying levels `A = 10^(peak_dbfs/20)` and digital routes to form a stereo component sum. Multiply that sum by its one shared modulation gain. Sum components in authored order, then apply the finite or interactive outer gain. Levels are not normalized. Active sinusoidal AM uses `(1 + depth × sin(phase)) / (1 + depth)` and has an upper-sideband guard for each tonal lane.
 
-Tone/AM phases use a 64-bit cycle with step `ceil(hz × 2^64 / fs)`, derived exactly from the binary64 requested frequency. Frame `n` uses `n × step` modulo `2^64`. Sine evaluation uses the signed top 53 phase bits as cycles in `[-0.5,0.5)`.
+Pulse onsets are `ceil(k × fs / rate_hz)` using the requested binary64 rate as an exact binary rational, without accumulating floating-point periods. The resolved window is constant:
 
-Pulse width resolves as `W = round(width_seconds × fs)`, halves away from zero. Pulses start on the first frame at or after a period onset and stay open for exactly `W` frames. With `K(n) = floor(n × rate_hz / fs)`, frames after the initial open span are open when `K(n) > K(n-W)`. [Rate validation](formats.md#validation-at-a-sample-rate) leaves a closed frame in every period.
+- Duration: `W = round_away(seconds × fs)`.
+- Duty: `W = round_away((fraction × fs) / rate_hz)`, in that evaluation order.
 
-With `N` total frames, `F` fade frames and `q = min(n,N-1-n)`, the fade is 1 when `F=0` or `q≥F`, otherwise `0.5 - 0.5×cos(πq/F)`. A resolved positive fade silences both endpoints. Export rounds stereo samples to binary32.
+Halves round away from zero. Require `1 ≤ W ≤ 2^36` and the exact `(W+1) × rate_hz ≤ fs` rule, leaving a closed frame. Duty is strictly between zero and one. Fractional periods can alternate integer onset spacings; `W/fs × rate_hz` is a derived **nominal** duty, not identical duty in every integer interval.
 
-Clicks and gates have abrupt edges and broadband spectra. Requested and realized pulse quantities can differ after frame resolution. Inspect shows both. **Fit signal** changes the monitor’s axes, while audio samples and meters retain their values.
+Rectangular gain is one on local frames `0..W-1` and zero elsewhere. Raised cosine resolves positive rise/fall durations to `A`/`R` frames using the same rounding. Require `A≥1`, `R≥1`, `A+R≤W-1`; positive sub-frame edges are rejected rather than replaced by rectangular edges. At local frame `i`, use `(1-cos(πi/A))/2` for `i<A`, `(1-cos(π(W-1-i)/R))/2` when `W-1-i<R`, otherwise one. The regions do not overlap below unity. `W=3,A=R=1` gives `[0,1,0]`.
+
+The total window includes zero-valued shaped endpoints; it is not the count of strictly nonzero samples. Calculated previews retain exact discrete extrema, including narrow pulses. Pulse trains are unipolar and retain DC. Rectangular and smooth sampled pulses can alias: raised-cosine edges are not band limited, and smoothing does not reduce every individual spectral bin. No automatic filtering, high-pass or normalization is applied. Independent discrete Fourier tests check expected DC, carrier/sidebands and specified pulse coefficients.
+
+With `N` finite frames, `F` fade frames and `q=min(n,N-1-n)`, the overall fade is one when `F=0` or `q≥F`, otherwise `0.5-0.5×cos(πq/F)`. Positive finite fades silence both endpoints. Finite timing governs Library playback and export; live audition remains open-ended with named 30 ms startup/change/Stop transitions. Kind, pulse timing/width/shape changes restart and crossfade the entire component. Eligible carrier/AM frequencies glide with retained phase; levels/routes/depth ramp linearly. Facts-only changes that compile to the same audio keep phase and start no ramp. Settled finite/live output is bit-identical under identical origins, parameters and outer gain.
+
+Export converts stereo samples to binary32. Peak/RMS and dBFS describe digital values, not perceived loudness or calibrated SPL. **Fit signal** changes only monitor axes. A static timing preview is origin-zero target data; recorded monitor samples and output-position estimates are separate quantities.
 
 ## Research context and catalog entries
 

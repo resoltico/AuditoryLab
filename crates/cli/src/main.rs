@@ -39,6 +39,15 @@ struct Cli {
 }
 #[derive(Subcommand)]
 enum Command {
+    /// Create a complete editable recipe using the shared application defaults.
+    New {
+        /// Source construction; edit the emitted TOML to customize it.
+        #[arg(value_parser = creation_kind, help = creation_help())]
+        kind: lab::document::construction::CreationKind,
+        /// File to create; existing files are never replaced.
+        #[arg(long, value_name = "PATH")]
+        output: Option<PathBuf>,
+    },
     /// List built-in sounds and your own recipes, with search, filters and sorting.
     List(library_cli::ListArgs),
     /// Manage your User Library: set it up, add, rename, trash, restore and check recipes.
@@ -103,6 +112,27 @@ struct Source {
     stdin: bool,
 }
 
+fn creation_help() -> String {
+    format!(
+        "Construction to create: {}. Edit the emitted TOML to customize it.",
+        lab::document::construction::CreationKind::ALL
+            .map(|kind| format!("{} — {}", kind.key(), kind.term().label))
+            .join("; ")
+    )
+}
+fn creation_kind(text: &str) -> Result<lab::document::construction::CreationKind, String> {
+    lab::document::construction::CreationKind::ALL
+        .into_iter()
+        .find(|kind| kind.key() == text)
+        .ok_or_else(|| {
+            format!(
+                "expected one of: {}",
+                lab::document::construction::CreationKind::ALL
+                    .map(auditorylab_app::document::construction::CreationKind::key)
+                    .join(", ")
+            )
+        })
+}
 fn library_override(text: &str) -> Result<lab::services::LibraryContext, String> {
     lab::services::LibraryContext::from_override(std::path::Path::new(text))
         .map_err(|error| error.explain())
@@ -402,6 +432,14 @@ fn run(cli: Cli) -> Result<Ended, CliError> {
         .library_dir
         .unwrap_or_else(|| lab::services::LibraryContext::resolve(None));
     match command {
+        Command::New { kind, output: path } => {
+            let text = lab::document::construction::new_recipe(kind)?.to_toml()?;
+            if let Some(path) = path {
+                lab::services::save_recipe_text(&text, &path, Replace::Never)?;
+            } else {
+                output(text.as_bytes())?;
+            }
+        }
         Command::List(args) => {
             return Ok(Ended::Code(library_cli::list(args, &context)?));
         }
@@ -489,6 +527,7 @@ fn command_output(command: Option<&Command>) -> Option<(bool, Operation)> {
         Command::Inspect { format, .. } => {
             (*format == library_cli::ReadFormat::Json, Operation::Inspect)
         }
+        Command::New { .. } => (false, Operation::NewSound),
         Command::Recipe { .. } => (false, Operation::Recipe),
         Command::Export { .. } => (false, Operation::Export),
         Command::Play(_) => (false, Operation::Play),
@@ -616,6 +655,7 @@ mod operation_tests {
             (&["library", "purge", id, "--yes"], Operation::LibraryPurge),
             (&["library", "list-trash"], Operation::ListTrash),
             (&["library", "check"], Operation::LibraryCheck),
+            (&["new", "tone"], Operation::NewSound),
         ];
         let mut operations = BTreeSet::new();
         let mut names = BTreeSet::new();

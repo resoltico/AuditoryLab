@@ -3,29 +3,37 @@
 //! Strict one-version portable contract; independent shape, byte and numeric oracles.
 use super::{Recipe, RecipeError};
 use crate::ContractError;
-use crate::{
-    Carrier, Component, ComponentForm, ComponentId, Description, DocumentIdentity, Sound, Voice,
-};
+use crate::{Component, ComponentForm, ComponentId, Description, DocumentIdentity};
 use alloc::{format, string::ToString, vec, vec::Vec};
 const PAIR: &str = r#"# Two raw tones retain their source order and authored identities.
-schema_version = 4
-[sound]
+schema_version = 5
+[timing]
 duration_seconds = 10.0
 fade_seconds = 0.1
 [document]
 id = "00000000-0000-4000-8000-000000000001"
 [[sound.component]]
 id = 7
-ears = "left"
+
+[sound.component.source]
+route = "left"
 kind = "tone"
 frequency_hz = 250.0
 peak_dbfs = -20.0
+
+[sound.component.modulation]
+kind = "none"
 [[sound.component]]
 id = 19
-ears = "right"
+
+[sound.component.source]
+route = "right"
 kind = "tone"
 frequency_hz = 256.0
 peak_dbfs = -20.0
+
+[sound.component.modulation]
+kind = "none"
 "#;
 fn edited(from: &str, to: &str) -> Result<Recipe, RecipeError> {
     assert!(PAIR.contains(from));
@@ -34,7 +42,7 @@ fn edited(from: &str, to: &str) -> Result<Recipe, RecipeError> {
 #[test]
 fn the_format_rejects_missing_unknown_duplicated_and_mistyped_fields() {
     for (from, to) in [
-        ("schema_version = 4\n", ""),
+        ("schema_version = 5\n", ""),
         ("duration_seconds = 10.0\n", ""),
         ("fade_seconds = 0.1\n", ""),
         ("fade_seconds = 0.1", "fade_seconds = 0.1\ngain = 0.1"),
@@ -47,9 +55,9 @@ fn the_format_rejects_missing_unknown_duplicated_and_mistyped_fields() {
             "fade_seconds = 0.1\nfade_seconds = 0.2",
         ),
         ("duration_seconds = 10.0", "duration_seconds = \"ten\""),
-        ("ears = \"left\"\n", ""),
-        ("ears = \"left\"", "ears = \"centre\""),
-        ("ears = \"left\"", "ears = \"left\"\nchannel = 1"),
+        ("route = \"left\"\n", ""),
+        ("route = \"left\"", "route = \"centre\""),
+        ("route = \"left\"", "route = \"left\"\nchannel = 1"),
         ("kind = \"tone\"\n", ""),
         ("kind = \"tone\"", "kind = \"noise\""),
         ("frequency_hz = 250.0\n", ""),
@@ -73,13 +81,15 @@ fn the_format_rejects_missing_unknown_duplicated_and_mistyped_fields() {
             "accepted {to:?}"
         );
     }
-    let modulated = format!(
-        "{PAIR}\n[sound.component.modulation]\nkind = \"am\"\nrate_hz = 4.0\ndepth = 0.5\n"
+    let modulated = PAIR.replacen(
+        "kind = \"none\"",
+        "kind = \"sinusoidal\"\nrate_hz = 4.0\ndepth = 0.5",
+        1,
     );
     assert!(Recipe::parse(&modulated).is_ok());
     for (from, to) in [
-        ("kind = \"am\"\n", ""),
-        ("kind = \"am\"", "kind = \"square\""),
+        ("kind = \"sinusoidal\"\n", ""),
+        ("kind = \"sinusoidal\"", "kind = \"square\""),
         ("depth = 0.5\n", ""),
         ("depth = 0.5", "depth = 0.5\nphase = 0.0"),
         ("rate_hz = 4.0\n", ""),
@@ -96,10 +106,10 @@ fn the_format_rejects_missing_unknown_duplicated_and_mistyped_fields() {
 
 #[test]
 fn another_schema_version_is_reported_before_its_fields_are_read() {
-    for version in [0, 1, 2, 3, 999, u32::MAX] {
+    for version in [0, 1, 2, 3, 4, 999, u32::MAX] {
         // A later version may add fields this build does not know.
         let text = PAIR
-            .replace("schema_version = 4", &format!("schema_version = {version}"))
+            .replace("schema_version = 5", &format!("schema_version = {version}"))
             .replace(
                 "peak_dbfs = -20.0",
                 "peak_dbfs = -20.0\nphase_degrees = 90.0",
@@ -108,7 +118,7 @@ fn another_schema_version_is_reported_before_its_fields_are_read() {
         assert_eq!(error, RecipeError::UnsupportedVersion { found: version });
     }
     assert!(matches!(
-        edited("schema_version = 4", "schema_version = \"1\""),
+        edited("schema_version = 5", "schema_version = \"1\""),
         Err(RecipeError::Format(_))
     ));
 }
@@ -182,13 +192,7 @@ fn raw_nodes_keep_ids_source_order_and_optional_description_is_not_audio() {
         finite.to_toml().is_ok(),
         "finite acoustically invalid content remains serializable"
     );
-    assert!(
-        finite
-            .content
-            .sound
-            .signal(crate::SampleRate::DEFAULT)
-            .is_err()
-    );
+    assert!(finite.signal(crate::SampleRate::DEFAULT).is_err());
 }
 #[test]
 fn all_owned_proposed_examples_roundtrip_and_all_rejection_examples_fail() {
@@ -210,7 +214,7 @@ fn all_owned_proposed_examples_roundtrip_and_all_rejection_examples_fail() {
     }
     assert_eq!(
         counts,
-        [16, 10],
+        [17, 10],
         "test fixture discovery must not be empty or silently omit files"
     );
 }
@@ -280,7 +284,7 @@ fn every_catalog_recipe_reads_back_equal_after_writing() {
     for entry in crate::catalog::ENTRIES {
         let recipe = Recipe::parse(&entry.text()).unwrap();
         let text = recipe.to_toml().unwrap();
-        assert!(text.starts_with("schema_version = 4\n"));
+        assert!(text.starts_with("schema_version = 5\n"));
         assert_eq!(Recipe::parse(&text).unwrap(), recipe, "{}", entry.id);
     }
 }
@@ -326,35 +330,41 @@ fn bounded_property_roundtrips_preserve_all_finite_bits_and_authored_shapes() {
                     title: format!("Title {title}"),
                     notes: Some("quote \" slash \\ newline\n é 🎧".into()),
                 });
-                recipe.content.sound = Sound::new(
-                    crate::test_support::finite(duration),
-                    crate::test_support::finite(fade),
-                    vec![Component {
-                        id: ComponentId::new(91).unwrap(),
-                        form: if compound {
-                            ComponentForm::BinauralPair {
-                                left_hz: crate::test_support::finite(base),
-                                offset_hz: crate::test_support::finite(offset),
-                                left_peak_dbfs: crate::test_support::finite(left),
-                                right_peak_dbfs: crate::test_support::finite(right),
-                            }
-                        } else {
-                            crate::test_support::form(Voice {
-                                ears: crate::Ears::Both,
-                                peak_dbfs: left,
-                                carrier: Carrier::Clicks {
-                                    rate_hz: base,
-                                    width_seconds: offset,
-                                },
-                                modulation: Some(crate::Modulation::Am {
-                                    rate_hz: crate::test_support::finite(right),
-                                    depth: crate::test_support::finite(0.0),
-                                }),
-                            })
-                        },
-                    }],
-                )
-                .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
+                recipe.content.sound = {
+                    let fixture = crate::test_support::FiniteFixture::new(
+                        crate::test_support::finite(duration),
+                        crate::test_support::finite(fade),
+                        vec![Component {
+                            id: ComponentId::new(91).unwrap(),
+                            form: if compound {
+                                ComponentForm {
+                                    source: crate::SoundSource::BinauralPair {
+                                        first_hz: crate::test_support::finite(base),
+                                        offset_hz: crate::test_support::finite(offset),
+                                        first_peak_dbfs: crate::test_support::finite(left),
+                                        second_peak_dbfs: crate::test_support::finite(right),
+                                    },
+                                    modulation: None,
+                                }
+                            } else {
+                                crate::ComponentForm {
+                                    source: crate::SoundSource::PulseTrain {
+                                        route: crate::ChannelRouting::Both,
+                                        peak_dbfs: crate::test_support::finite(left),
+                                        pulse: crate::test_support::rectangular_pulse(base, offset),
+                                    },
+                                    modulation: Some(crate::Modulation::Sinusoidal {
+                                        rate_hz: crate::test_support::finite(right),
+                                        depth: crate::test_support::finite(0.0),
+                                    }),
+                                }
+                            },
+                        }],
+                    )
+                    .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
+                    recipe.content.timing = fixture.timing;
+                    fixture.sound
+                };
                 let recipe = recipe.build().unwrap();
                 let back = Recipe::parse(&recipe.to_toml().unwrap()).unwrap();
 
@@ -379,11 +389,7 @@ fn documented_toml_examples_are_actual_supported_inputs() {
     {
         let text = block.split("```").next().unwrap();
         let recipe = Recipe::parse(text).unwrap();
-        recipe
-            .content
-            .sound
-            .signal(crate::SampleRate::DEFAULT)
-            .unwrap();
+        recipe.signal(crate::SampleRate::DEFAULT).unwrap();
         count += 1;
     }
     assert_eq!(
@@ -472,14 +478,15 @@ fn metadata_capacity_checks_are_independent_and_never_drop_records() {
 
 #[test]
 fn sound_is_required_for_silence_and_root_envelopes_are_rejected() {
-    let silent = "schema_version = 4\n[document]\nid='00000000-0000-4000-8000-000000000001'\n";
+    let silent = "schema_version = 5\n[document]\nid='00000000-0000-4000-8000-000000000001'\n";
     assert!(matches!(Recipe::parse(silent), Err(RecipeError::Format(_))));
-    let valid = format!("{silent}[sound]\nduration_seconds=1\nfade_seconds=0\n");
+    let valid =
+        format!("{silent}[timing]\nduration_seconds=1\nfade_seconds=0\n[sound]\ncomponent=[]\n");
     assert_eq!(
         Recipe::parse(&valid).unwrap().content.sound.components(),
         []
     );
-    let root_envelope = "schema_version = 4\nduration_seconds=1\nfade_seconds=0\n[document]\nid\
+    let root_envelope = "schema_version = 5\nduration_seconds=1\nfade_seconds=0\n[document]\nid\
         ='00000000-0000-4000-8000-000000000001'\n[sound]\nduration_seconds=1\n\
         fade_seconds=0\n";
     assert!(matches!(
@@ -501,8 +508,10 @@ fn canonical_tables_follow_document_description_sound_and_attribution_order() {
         [
             "[document]",
             "[description]",
-            "[sound]",
+            "[timing]",
             "[[sound.component]]",
+            "[sound.component.source]",
+            "[sound.component.modulation]",
             "[[source]]",
             "[[evidence]]",
             "[[lineage]]"
@@ -514,13 +523,10 @@ fn canonical_tables_follow_document_description_sound_and_attribution_order() {
 fn the_builder_separates_portable_contracts_from_acoustic_validity() {
     let original = Recipe::parse(PAIR).unwrap();
     let mut builder = original.clone().into_builder();
-    builder
-        .content
-        .sound
-        .set_duration(crate::test_support::finite(-1.0));
+    builder.content.timing.duration_seconds = crate::test_support::finite(-1.0);
     let finite = builder.clone().build().unwrap();
     assert!(finite.to_toml().is_ok());
-    assert!(finite.sound().signal(crate::SampleRate::DEFAULT).is_err());
+    assert!(finite.signal(crate::SampleRate::DEFAULT).is_err());
     assert!(matches!(
         Recipe::parse(&PAIR.replace("duration_seconds = 10.0", "duration_seconds = nan")),
         Err(RecipeError::Format(_))
@@ -543,15 +549,18 @@ fn the_builder_separates_portable_contracts_from_acoustic_validity() {
 fn nonfinite_format_errors_locate_the_actual_component_and_modulation_fields() {
     let offset = include_str!("../../../tests/fixtures/invalid/nonfinite-offset.toml");
     let tone = PAIR.replace("frequency_hz = 250.0", "frequency_hz = nan");
-    let am = format!("{PAIR}\n[sound.component.modulation]\nkind='am'\nrate_hz=4.0\ndepth=nan\n");
-    let gate = format!(
-        "{PAIR}\n[sound.component.modulation]\nkind='gate'\nrate_hz=4.0\nwidth_seconds=inf\n"
+    let am = PAIR.replacen(
+        "kind = \"none\"",
+        "kind='sinusoidal'\nrate_hz=4.0\ndepth=nan",
+        1,
     );
+    let gate = include_str!("../../../tests/fixtures/recipes/pulsed-tone.toml")
+        .replace("fraction = 0.5", "fraction = inf");
     for (text, token, key) in [
         (offset, "nan", "offset_hz"),
         (tone.as_str(), "nan", "frequency_hz"),
         (am.as_str(), "nan", "depth"),
-        (gate.as_str(), "inf", "width_seconds"),
+        (gate.as_str(), "inf", "fraction"),
     ] {
         let RecipeError::Format(error) = Recipe::parse(text).unwrap_err() else {
             panic!("nonfinite input must be a format error");
@@ -564,17 +573,20 @@ fn nonfinite_format_errors_locate_the_actual_component_and_modulation_fields() {
     let RecipeError::Format(error) = Recipe::parse(offset).unwrap_err() else {
         panic!()
     };
-    assert!(error.to_string().contains("line 20, column 13"));
+    assert!(error.to_string().contains("offset_hz = nan"));
 }
 
 fn authored_bits(recipe: &Recipe) -> Vec<u64> {
     let s = &recipe.content.sound;
     let mut values = vec![
-        s.duration_seconds().get().to_bits(),
-        s.fade_seconds().get().to_bits(),
+        recipe.timing().duration_seconds.get().to_bits(),
+        recipe.timing().fade_seconds.get().to_bits(),
     ];
     match s.components()[0].form {
-        form @ ComponentForm::BinauralPair { .. } => {
+        form @ ComponentForm {
+            source: crate::SoundSource::BinauralPair { .. },
+            modulation: _,
+        } => {
             let p = form.pair().unwrap();
             values.extend(
                 [
@@ -586,17 +598,22 @@ fn authored_bits(recipe: &Recipe) -> Vec<u64> {
                 .map(|value| value.get().to_bits()),
             );
         }
-        form @ ComponentForm::Clicks { .. } => {
-            let c = form.primitive().unwrap();
-            values.push(c.peak_dbfs.to_bits());
-            if let Carrier::Clicks {
-                rate_hz,
-                width_seconds,
-            } = c.carrier
-            {
-                values.extend([rate_hz.to_bits(), width_seconds.to_bits()]);
-            }
-            if let Some(crate::Modulation::Am { rate_hz, depth }) = c.modulation {
+        form @ ComponentForm {
+            source: crate::SoundSource::PulseTrain { .. },
+            modulation: _,
+        } => {
+            let crate::SoundSource::PulseTrain {
+                peak_dbfs, pulse, ..
+            } = form.source
+            else {
+                unreachable!()
+            };
+            values.extend([
+                peak_dbfs.get().to_bits(),
+                pulse.rate_hz.get().to_bits(),
+                pulse.requested_seconds().to_bits(),
+            ]);
+            if let Some(crate::Modulation::Sinusoidal { rate_hz, depth }) = form.modulation {
                 values.extend([rate_hz.get().to_bits(), depth.get().to_bits()]);
             }
         }

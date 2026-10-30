@@ -1,0 +1,36 @@
+# Target schema 5 example; intentionally not supported by the baseline schema-4 reader.
+schema_version = 5
+
+[document]
+id = "5565db50-b536-4fd4-9e81-f8fd09c4d235"
+
+[description]
+title = "10 Hz pulsed 440 Hz tone"
+
+[timing]
+duration_seconds = 2.0
+fade_seconds = 0.01
+
+[[sound.component]]
+id = 1
+
+[sound.component.source]
+kind = "tone"
+frequency_hz = 440.0
+peak_dbfs = -30.0
+route = "both"
+
+[sound.component.modulation]
+kind = "pulsed"
+
+[sound.component.modulation.pulse]
+rate_hz = 10.0
+
+[sound.component.modulation.pulse.width]
+kind = "duty_cycle"
+fraction = 0.5
+
+[sound.component.modulation.pulse.shape]
+kind = "raised_cosine"
+rise_seconds = 0.002
+fall_seconds = 0.002

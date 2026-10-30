@@ -83,28 +83,28 @@ pub fn model_view_lane_label(lane: &auditorylab_core::timing::ModelLane) -> Stri
                     crate::numbers::format(NumberStyle::Compact, rate.realized_hz)
                 )
             }
-            auditorylab_core::CarrierFacts::Clicks(_) => "Steady carrier".into(),
+            auditorylab_core::CarrierFacts::PulseTrain(_) => "Steady carrier".into(),
         },
-        ModelKind::Clicks => match lane.facts.carrier {
-            auditorylab_core::CarrierFacts::Clicks(p) => {
+        ModelKind::PulseTrain => match lane.facts.carrier {
+            auditorylab_core::CarrierFacts::PulseTrain(p) => {
                 format!(
-                    "{} Hz clicks",
+                    "{} Hz pulse train",
                     crate::numbers::format(NumberStyle::Compact, p.rate_hz)
                 )
             }
-            auditorylab_core::CarrierFacts::Tone(_) => unreachable!("click lane carrier"),
+            auditorylab_core::CarrierFacts::Tone(_) => unreachable!("pulse source lane carrier"),
         },
-        ModelKind::Gate => match lane.facts.modulation {
-            Some(auditorylab_core::ModulationFacts::Gate(p)) => {
+        ModelKind::Pulsed => match lane.facts.modulation {
+            Some(auditorylab_core::ModulationFacts::Pulsed(p)) => {
                 format!(
-                    "{} Hz gate",
+                    "{} Hz pulsed modulation",
                     crate::numbers::format(NumberStyle::Compact, p.rate_hz)
                 )
             }
-            _ => unreachable!("gate lane modulation"),
+            _ => unreachable!("pulsed lane modulation"),
         },
         ModelKind::Envelope => match lane.facts.modulation {
-            Some(auditorylab_core::ModulationFacts::Am { rate, depth }) => format!(
+            Some(auditorylab_core::ModulationFacts::Sinusoidal { rate, depth }) => format!(
                 "{} Hz AM · {}%",
                 crate::numbers::format(NumberStyle::Compact, rate.realized_hz),
                 crate::numbers::format(NumberStyle::Compact, depth * 100.0)
