@@ -20,7 +20,6 @@
 - Desktop save confirmations name the saved sound; Filters label study role and rhythm analysis plainly and show the timezone once.
 - The desktop has an Edit menu for text fields and **Help › Auditory Lab desktop guide**; macOS no longer lists Quit twice.
 - Labels read **New sound**, **Open recipe…** and **Beat offset** (formerly signed offset).
-
 - Sort the library by sound duration: `--sort duration` in the CLI and Duration in the desktop Sort menu; shortest first by default.
 
 ## [0.8.0] - 2026-10-29
