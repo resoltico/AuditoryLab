@@ -8,7 +8,7 @@ Auditory Lab's “Woven” icon shows two sine waves woven across each other. Th
 
 ## Onboarding illustrations
 
-[Onboarding artwork](onboarding/README.md) retains the selected **Spectral ribbon / A spectrum of rhythms**, matched sinusoidal band examples, editable masters, palette/layout/glyph sources and original generators and prior concepts. The separated Python exporter and verification software are MPL-covered; creative inputs, generated images and historical art-bearing sources use the root proprietary artwork terms. The root LICENSE names the proprietary reference payloads and explicitly retains MPL for mixed-mockup UI software and the software-only preview/build helpers; reference documentation and provenance records remain MPL-covered. The existing icon is unchanged.
+[Onboarding artwork](onboarding/README.md) supplies **Spectral ribbon / A spectrum of rhythms**, matched sinusoidal band illustrations and their SVG masters, glyphs, palettes and layout inputs. Drawing generators, reference compositions and design mockups are available under `onboarding/reference/`. The exporter, verifier and identified preview/build software use MPL-2.0; creative inputs, generated images and art-bearing source use the root proprietary artwork terms. The root LICENSE is authoritative for the exact path and mixed-content scope.
 
 The shared application learning data defines representative rates; core owns band intervals. Illustrations are normalized one-second sine examples, distinct from real pulse-amplitude envelopes. Regeneration and independent semantic checks are optional authoring operations; Rust builds use tracked exports.
 

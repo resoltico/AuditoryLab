@@ -1,11 +1,5 @@
 [
   {
-    "original": "/Users/erst/.codex/visualizations/2026/10/29/01a18744-f3ff-7ee2-9369-2ea8d9f8e438/rhythm-context-options/SHA256SUMS.json",
-    "package": "implementation-materials/artwork/onboarding/reference/rhythm-context-options/SHA256SUMS.json",
-    "sha256": "b055ae0290242174362a5dd7bbc298d7cce09be3741ec017b87158551c557187",
-    "role": "historical unselected/selected art source and prior exports; not runtime authority"
-  },
-  {
     "original": "/Users/erst/.codex/visualizations/2026/10/29/01a18744-f3ff-7ee2-9369-2ea8d9f8e438/rhythm-context-options/a-frequency-and-context.png",
     "package": "implementation-materials/artwork/onboarding/reference/rhythm-context-options/a-frequency-and-context.png",
     "sha256": "9cbe3f4fc736979b80b994c02dfe8821dc7ae8f07033d8c7d3cd0ccc25efe9bd",
@@ -57,18 +51,6 @@
     "original": "/Users/erst/.codex/visualizations/2026/10/29/01a18744-f3ff-7ee2-9369-2ea8d9f8e438/rhythm-context-options/verification.json",
     "package": "implementation-materials/artwork/onboarding/reference/rhythm-context-options/verification.json",
     "sha256": "85691df496d352d4110e70e616648a2b5f808027644ab939e2160b6c00255c4f",
-    "role": "historical unselected/selected art source and prior exports; not runtime authority"
-  },
-  {
-    "original": "/Users/erst/.codex/visualizations/2026/10/29/01a18744-f3ff-7ee2-9369-2ea8d9f8e438/rhythm-spectrum-studies/PROVENANCE.md",
-    "package": "implementation-materials/artwork/onboarding/reference/rhythm-spectrum-studies/PROVENANCE.md",
-    "sha256": "bed445a6cf032591e6e1b668f2208cd6f7542cf66885d987a79de3291892b8c2",
-    "role": "historical unselected/selected art source and prior exports; not runtime authority"
-  },
-  {
-    "original": "/Users/erst/.codex/visualizations/2026/10/29/01a18744-f3ff-7ee2-9369-2ea8d9f8e438/rhythm-spectrum-studies/SHA256SUMS.json",
-    "package": "implementation-materials/artwork/onboarding/reference/rhythm-spectrum-studies/SHA256SUMS.json",
-    "sha256": "4ec9ba46860f2da888a27b67ac4cd19cfc3f6cedc0eec8291eab57e4333f2d8b",
     "role": "historical unselected/selected art source and prior exports; not runtime authority"
   },
   {

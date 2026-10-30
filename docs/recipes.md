@@ -4,7 +4,7 @@ A recipe describes ordered stereo components, finite duration/fades, identity an
 
 Create a generic document with `auditorylab new tone`, `pulse-train`, `binaural-pair`, `monaural-pair` or `pulsed-tone`. The command prints a complete schema-5 recipe with a fresh identity; optional `--output PATH` never overwrites. Desktop Add component uses the same constructors. New blank Workbench documents remain silent.
 
-Desktop **Start here → Create a pulsed tone** captures the same pulsed-tone constructor as a complete new document. Its 440 Hz carrier, −30 dBFS level, 10 Hz repetition, 50% duty and 2 ms raised-cosine edges are editable in Workbench. It has no research attribution and does not play or save automatically. The guide's band pictures instead show normalized sine illustrations; they do not replace actual sound-envelope previews.
+Desktop **Start here → Create a pulsed tone** captures the same [pulsed-tone constructor](#sinusoidal-and-pulsed-modulation) as a complete editable document. It has no research attribution and does not play or save automatically. The guide’s band pictures are normalized sine illustrations; Workbench’s sound-envelope previews describe the actual modulation.
 
 Or start from a built-in:
 

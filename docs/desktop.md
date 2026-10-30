@@ -4,15 +4,15 @@ Open **Auditory Lab.app**, `auditorylab-gui.exe`, or `auditorylab-gui`. Start wi
 
 ## Start here
 
-On a fresh profile, **Start here** offers optional orientation. **Browse Library** keeps the current query and selection; **Create a pulsed tone** captures a fresh Workbench example through the same Save/Discard/Cancel decision as other document replacements. Neither starts playback or saves the example. **New sound** still starts empty and silent.
+On a fresh profile, **Start here** offers optional orientation. **Browse Library** keeps the current query and selection; **Create a pulsed tone** captures a fresh Workbench example through the same Save/Discard/Cancel decision as other document replacements. Neither starts playback or saves the example. **New sound** starts empty and silent.
 
-Reopen **Start here** from the workspace navigation or Help. Its Library, Pitch and rhythm, Sound types and Rhythm bands topics are revisitable. **Return to work** restores the working destination in this session. Reading preserves drafts, pending text, Library selection, playback and exports. Play, Save and Export require a working destination; Stop and Cancel export still address the actual running work.
+Reopen **Start here** from the workspace navigation or Help. Its **Meet the Library**, **Pitch and rhythm**, **Six ways to construct sound** and **A spectrum of rhythms** topics are revisitable. **Return to work** restores the working destination in this session. Reading preserves drafts, pending text, Library selection, playback and exports. Play, Save and Export require a working destination; Stop and Cancel export still address the actual running work.
 
-Pitch and rhythm compares the continuous carrier with its actual compiled amplitude envelope. Sound types offers six selectable constructions with real stereo waveform and envelope traces; choosing a diagram creates no document, device, playback or save. Quantities come from the constructors’ compiled facts. These bounded static comparisons replace the prototype’s simulated interactive waveforms; Workbench remains the place to change actual sound parameters.
+Pitch and rhythm compares the continuous carrier with its actual compiled amplitude envelope. Sound types offers six selectable constructions with real stereo waveform and envelope traces; choosing a diagram creates no document, device, playback or save. Quantities come from the constructors’ compiled facts. The comparisons are static; use Workbench to change sound parameters.
 
 Native band descriptions remain readable independently of image lettering. Choose an individual band for its normalized one-second sine illustration; **Enlarge illustration** provides a larger scrollable view. Artwork follows the resolved native light/dark palette. These diagrams are neither audio envelopes nor measured EEG. Real pulse previews retain their rectangular or shaped envelopes.
 
-The first deliberate entry to work remembers only an onboarding-seen flag in the platform application configuration directory, separately from the library and `AUDITORYLAB_LIBRARY_DIR`. Later ordinary launches start in Library. Closing before departure leaves orientation unseen. A malformed or unwritable preference is reported without replacing its bytes or blocking work; no course progress or last-workspace restoration is stored.
+The first deliberate entry to work remembers only the `onboarding-seen` file in the platform application configuration directory, separately from the library and `AUDITORYLAB_LIBRARY_DIR`. Later ordinary launches start in Library. Closing before departure leaves orientation unseen. A malformed or unwritable preference is reported without replacing its bytes or blocking work; no course progress or last-workspace restoration is stored.
 
 The learning context draws on the [IFCN glossary](https://pmc.ncbi.nlm.nih.gov/articles/PMC6123891/), [human memory MEG observations](https://pmc.ncbi.nlm.nih.gov/articles/PMC6674196/) and [NIH sleep-stage overview](https://www.nhlbi.nih.gov/health/sleep/stages-of-sleep). Associations overlap and depend on region, task and measurement. The memory study used 4.5–8.5 and 60–90 Hz, not the app’s exact reference intervals. Matching an audio rate to a band does not imply a therapeutic effect or establish a listener’s brain state.
 
@@ -93,6 +93,14 @@ The monitor displays generated stereo samples before device conversion, with pea
 Worker completion, export progress and native preference changes arrive as events. The desktop redraw timer runs while audio is bound or the monitor is visible; an idle closed monitor needs no periodic workspace polling. Commands refresh their calculated source models before projection, independently of that redraw timer.
 
 The drawer can be resized by pointer, keyboard or accessibility slider actions. When it cannot fit, a focused monitor window provides scrollable content. Closing that window returns focus to its opener. Reduce Motion defaults to a held display; Hold/Return to live overrides it, and **Follow system motion** restores the native preference.
+
+## Appearance, typography and accessibility
+
+The desktop follows the resolved native light/dark appearance and system UI font family. Changing appearance updates the instructional artwork and native controls without selecting a different lesson or band. Native text describes diagram meanings independently of image lettering; names identify bands alongside their colors. Use Tab and arrow keys for workspace navigation and the lesson, construction and band choices.
+
+Font sizing follows the platform adapter: macOS uses AppKit’s `systemFontSize`, Windows uses message-font metrics at 96 DPI, and Linux uses toolkit DPI with GNOME Wayland’s text-scaling preference where applicable. The macOS Accessibility **Text size** preferred-reading control does not resize this application. It applies to its listed compatible apps; the desktop does not expose a separate font-size setting. **Enlarge illustration** changes the selected band image’s presentation and permits horizontal scrolling; it does not change the application font size.
+
+See [toolkit integration](../third_party/README.md) for native preference handling and [contributor checks](../CONTRIBUTING.md#checks) for accessibility/layout verification.
 
 ## Platforms
 
