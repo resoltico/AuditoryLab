@@ -455,13 +455,26 @@ export component LibraryPane inherits Rectangle {
                                 width: parent.width - 20px;
                                 height: parent.height - 16px;
                                 spacing: 4px;
-                                Text {
-                                    text: item.title;
-                                    font-size: root.ui-size * 1.08;
-                                    font-weight: 600;
-                                    min-width: 0px;
-                                    wrap: word-wrap;
-                                    color: Palette.control-foreground;
+                                // Title and length on one line; what it is and what it
+                                // was studied for on the next.
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Text {
+                                        text: item.title;
+                                        font-size: root.ui-size * 1.08;
+                                        font-weight: 600;
+                                        min-width: 0px;
+                                        horizontal-stretch: 1;
+                                        wrap: word-wrap;
+                                        color: Palette.control-foreground;
+                                    }
+
+                                    if item.duration != "": Text {
+                                        text: item.duration;
+                                        horizontal-stretch: 0;
+                                        horizontal-alignment: right;
+                                        color: Palette.control-foreground.with-alpha(0.72);
+                                    }
                                 }
 
                                 if !item.built-in && item.collection != "": Text {
@@ -471,23 +484,12 @@ export component LibraryPane inherits Rectangle {
                                     color: Palette.control-foreground;
                                 }
 
-                                if item.summary != "": Text {
-                                    text: item.summary;
+                                if item.summary != "" || item.studied-for != "": Text {
+                                    text: item.summary + (item.summary != "" &&
+                                        item.studied-for != "" ? " · " : "") + item.studied-for;
                                     min-width: 0px;
                                     wrap: word-wrap;
-                                    color: Palette.control-foreground;
-                                }
-                                if item.studied-for != "": Text {
-                                    text: item.studied-for;
-                                    min-width: 0px;
-                                    wrap: word-wrap;
-                                    color: Palette.control-foreground;
-                                }
-                                if item.duration != "": Text {
-                                    text: item.duration;
-                                    min-width: 0px;
-                                    wrap: word-wrap;
-                                    color: Palette.control-foreground;
+                                    color: Palette.control-foreground.with-alpha(0.72);
                                 }
                                 if item.dates != "" && (!item.built-in ||
                                     root.show-built-in-dates): Text {
@@ -564,10 +566,17 @@ export component LibraryPane inherits Rectangle {
                     }
                 }
             }
+            // A hairline divider with a wider grab area; it highlights while
+            // pointed at or focused.
             if !root.compact && root.has-results: Rectangle {
-                width: 6px;
-                background: resize-touch.has-hover || resize-focus.has-focus ?
-                    Palette.accent-background : Palette.border;
+                width: 8px;
+                Rectangle {
+                    x: (parent.width - self.width) / 2;
+                    width: resize-touch.has-hover || resize-focus.has-focus ? 3px : 1px;
+                    background: resize-touch.has-hover || resize-focus.has-focus ?
+                        Palette.accent-background : Palette.border;
+                }
+
                 accessible-role: slider;
                 accessible-label: Terms.caption-library-pane-width;
                 accessible-value: root.sidebar-width / 1px;
