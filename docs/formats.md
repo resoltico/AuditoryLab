@@ -397,6 +397,7 @@ For example, an out-of-range rate reports `sample_rate.range` with `hz`, `min_hz
 | `workspace.file_busy` |
 | `workspace.input` |
 | `workspace.invalid` |
+| `workspace.learning_visible` |
 | `workspace.no_audio` |
 | `workspace.no_export` |
 | `workspace.no_selection` |

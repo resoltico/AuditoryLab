@@ -43,6 +43,9 @@ jobs:
           mkdir -p target/tmp
           echo "TMPDIR=${GITHUB_WORKSPACE}/target/tmp" >> "$GITHUB_ENV"
           echo "${CARGO_HOME}/bin" >> "$GITHUB_PATH"
+      - name: Verify editable onboarding artwork and sine examples
+        if: github.event_name != 'schedule'
+        run: python3 artwork/onboarding/verify_art.py --scratch target/onboarding-art-qa
       - run: rustup toolchain install
       - name: Install Linux build prerequisites
         if: github.event_name != 'schedule'

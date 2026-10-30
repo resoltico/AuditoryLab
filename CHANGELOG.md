@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Desktop Start here offers optional, revisitable Library, sound-construction and rhythm lessons, with matching light/dark sine illustrations and native text.
+- Learning compares real compiled carrier, stereo waveform and envelope traces for six sound constructions without opening a device or creating a document.
+- Create a pulsed tone opens a captured quiet Workbench example through Save/Discard/Cancel; New sound stays empty. Learning retains work and running tasks.
+- Fresh desktop profiles start with orientation; deliberate entry to work remembers one flag outside the library. Later launches start in Library.
 - Recipe schema 5 replaces schema 4. Recreate old recipes with `new KIND` or updated built-ins; unsupported files remain intact and reported.
 - Update method filters to `pulse_train`, `pulsed` and `sinusoidal`; JSON schema 3/classifier 3 reports source and shared modulation independently.
 - Create tone, pulse-train, pair or pulsed-tone (isochronic) templates in Desktop Add component or `auditorylab new KIND`; `--output` never overwrites.

@@ -9,6 +9,7 @@ Keep tool scratch under this checkout’s `target/`:
 ```sh
 mkdir -p target/tmp
 export TMPDIR="$PWD/target/tmp"
+python3 artwork/onboarding/verify_art.py --scratch target/onboarding-art-qa
 cargo fmt --all -- --check
 cargo xtask check-style
 cargo clippy --workspace --all-targets --locked -- -D warnings
@@ -19,6 +20,8 @@ cargo deny check
 cargo xtask verify-vendor
 actionlint
 ```
+
+The artwork check needs Python 3.9+ with its standard library; ordinary Rust builds use tracked SVGs without running Python. See the [editable source guide](artwork/onboarding/README.md) for generation and ownership.
 
 The compiler warns about ordinary hygiene locally. Core emits missing-documentation warnings; unsafe-code rules remain denied. CI denies workspace Clippy pedantic findings and documentation warnings without applying a global warning denial to vendored path dependencies.
 

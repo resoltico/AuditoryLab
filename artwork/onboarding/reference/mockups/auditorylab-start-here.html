@@ -1,0 +1,295 @@
+<div id="al-onboarding-preview">
+  <div class="al-preview-label">Interactive design study · no audio or files are written</div>
+  <div class="viz-carousel" aria-label="Auditory Lab onboarding approaches">
+    <section data-variant="Start here" aria-label="Dedicated starting page">
+      <div class="al-app" data-layout="start" aria-label="Auditory Lab starting page"></div>
+    </section>
+    <section data-variant="Learn alongside" aria-label="Guidance beside the Workbench" hidden>
+      <div class="al-app" data-layout="alongside" aria-label="Auditory Lab with contextual guidance"></div>
+    </section>
+  </div>
+</div>
+<style>
+#al-onboarding-preview { color-scheme:light dark; }
+#al-onboarding-preview .al-preview-label { font:12px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; margin:0 0 10px; color:light-dark(#58616a,#aeb8c2); }
+#al-onboarding-preview .al-app {
+  --al-bg:light-dark(#f5f6f7,#191c20); --al-paper:light-dark(#ffffff,#22262b);
+  --al-ink:light-dark(#20262c,#ecf0f4); --al-sub:light-dark(#56616c,#b4bfc9);
+  --al-line:light-dark(#d9dee3,#414850); --al-soft:light-dark(#edf0f3,#2c333a);
+  --al-action:light-dark(#215d8e,#aad5fa); --al-on-action:light-dark(#ffffff,#122a3e);
+  --al-wave:light-dark(#187885,#86cbd3); --al-wave-soft:light-dark(#e8f4f5,#243b40);
+  --al-titlebar:light-dark(#e9ecef,#282d33); --al-backdrop:light-dark(#25313a88,#00000099);
+  --al-size:14px; --al-space:24px;
+  font:var(--al-size)/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  color:var(--al-ink); background:var(--al-bg); border:1px solid var(--al-line); border-radius:11px;
+  min-height:790px; position:relative; overflow:clip;
+}
+#al-onboarding-preview .al-app * { box-sizing:border-box; }
+#al-onboarding-preview .al-app [hidden] { display:none !important; }
+#al-onboarding-preview .al-app h1 { font-size:26px; font-weight:500; letter-spacing:-.5px; line-height:1.25; margin:0 0 10px; }
+#al-onboarding-preview .al-app h2 { font-size:19px; font-weight:500; line-height:1.35; margin:0 0 9px; }
+#al-onboarding-preview .al-app h3 { font-size:15px; font-weight:500; margin:0 0 8px; }
+#al-onboarding-preview .al-app p { margin:0 0 12px; }
+#al-onboarding-preview .al-app strong { font-weight:500; }
+#al-onboarding-preview .al-app button, #al-onboarding-preview .al-app input, #al-onboarding-preview .al-app select { font:inherit; }
+#al-onboarding-preview .al-app button { color:var(--al-ink); background:var(--al-paper); border:1px solid var(--al-line); border-radius:6px; padding:7px 12px; min-height:34px; text-align:center; }
+#al-onboarding-preview .al-app button.al-primary { background:var(--al-action); border-color:var(--al-action); color:var(--al-on-action); }
+#al-onboarding-preview .al-app button.al-link { color:var(--al-action); border:0; background:transparent; padding:3px 0; min-height:30px; text-align:left; }
+#al-onboarding-preview .al-app button[aria-pressed="true"] { background:var(--al-soft); border-color:var(--al-sub); }
+#al-onboarding-preview .al-app button:disabled { opacity:.6; }
+#al-onboarding-preview .al-titlebar { padding:10px 18px; background:var(--al-titlebar); display:flex; align-items:center; gap:9px; min-height:40px; border-bottom:1px solid var(--al-line); }
+#al-onboarding-preview .al-titlebar .al-dots { display:flex; gap:5px; margin-right:8px; }
+#al-onboarding-preview .al-dots span { width:10px; height:10px; background:var(--al-sub); opacity:.35; border-radius:50%; }
+#al-onboarding-preview .al-titlebar .al-caption { font-size:12px; color:var(--al-sub); }
+#al-onboarding-preview .al-toolbar { display:flex; gap:6px; align-items:center; flex-wrap:wrap; padding:11px 18px; border-bottom:1px solid var(--al-line); background:var(--al-paper); }
+#al-onboarding-preview .al-toolbar .al-help { margin-left:auto; }
+#al-onboarding-preview .al-content { min-height:640px; }
+#al-onboarding-preview .al-page { padding:30px var(--al-space) 24px; max-width:900px; margin:auto; }
+#al-onboarding-preview .al-intro { max-width:650px; color:var(--al-sub); }
+#al-onboarding-preview .al-eyebrow { font-size:12px; color:var(--al-sub); margin-bottom:9px; }
+#al-onboarding-preview .al-choices { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin:23px 0 22px; }
+#al-onboarding-preview .al-choice { padding:22px; border:1px solid var(--al-line); border-radius:8px; background:var(--al-paper); display:flex; align-items:flex-start; flex-direction:column; }
+#al-onboarding-preview .al-choice p { color:var(--al-sub); flex:1; }
+#al-onboarding-preview .al-choice .al-meta { font-size:12px; color:var(--al-sub); margin-bottom:14px; }
+#al-onboarding-preview .al-lesson-links { display:flex; flex-wrap:wrap; gap:10px 23px; margin:10px 0 14px; }
+#al-onboarding-preview .al-reference { border-top:1px solid var(--al-line); padding-top:17px; margin-top:18px; }
+#al-onboarding-preview .al-small { font-size:12px; color:var(--al-sub); }
+#al-onboarding-preview .al-back { margin-bottom:18px; }
+#al-onboarding-preview .al-figure { padding:15px; background:var(--al-paper); border:1px solid var(--al-line); border-radius:7px; margin:14px 0; }
+#al-onboarding-preview .al-figure svg { display:block; width:100%; height:112px; overflow:visible; }
+#al-onboarding-preview .al-figure .al-wave { stroke:var(--al-wave); stroke-width:2; fill:none; }
+#al-onboarding-preview .al-figure .al-grid { stroke:var(--al-line); stroke-width:1; }
+#al-onboarding-preview .al-figure text { fill:var(--al-sub); font:12px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+#al-onboarding-preview .al-figure .al-fill { fill:var(--al-wave-soft); stroke:none; }
+#al-onboarding-preview .al-figure .al-line-label { font-size:12px; color:var(--al-sub); display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+#al-onboarding-preview .al-control-row { display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+#al-onboarding-preview .al-control-row input[type="range"] { flex:1; min-width:110px; accent-color:var(--al-action); }
+#al-onboarding-preview .al-value { font-variant-numeric:tabular-nums; }
+#al-onboarding-preview .al-band-picks { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:7px; margin:20px 0 12px; }
+#al-onboarding-preview .al-band-picks button { padding:10px 6px; }
+#al-onboarding-preview .al-band-picks span { display:block; font-size:12px; color:var(--al-sub); margin-top:4px; }
+#al-onboarding-preview .al-types { display:grid; grid-template-columns:170px minmax(0,1fr); gap:20px; margin-top:20px; }
+#al-onboarding-preview .al-type-list { display:flex; flex-direction:column; gap:7px; }
+#al-onboarding-preview .al-type-list button { text-align:left; }
+#al-onboarding-preview .al-topic { background:var(--al-paper); border:1px solid var(--al-line); border-radius:7px; padding:18px; }
+#al-onboarding-preview .al-app table { width:100%; border-collapse:collapse; }
+#al-onboarding-preview .al-app th, #al-onboarding-preview .al-app td { padding:11px 8px; border-bottom:1px solid var(--al-line); text-align:left; font-weight:400; vertical-align:top; }
+#al-onboarding-preview .al-app th { color:var(--al-sub); font-size:12px; }
+#al-onboarding-preview .al-library { display:grid; grid-template-columns:190px minmax(0,1fr); gap:24px; margin:20px 0; }
+#al-onboarding-preview .al-side-nav { display:flex; align-items:flex-start; flex-direction:column; gap:7px; }
+#al-onboarding-preview .al-study { margin-top:18px; padding:18px; border:1px solid var(--al-line); border-radius:7px; background:var(--al-paper); }
+#al-onboarding-preview .al-study-facts { display:flex; gap:20px; flex-wrap:wrap; margin:12px 0; }
+#al-onboarding-preview .al-work-layout { display:grid; grid-template-columns:minmax(0,1fr); gap:22px; padding:24px var(--al-space); }
+#al-onboarding-preview .al-work-layout.al-with-guide { grid-template-columns:minmax(0,1fr) 245px; }
+#al-onboarding-preview .al-guide { background:var(--al-paper); border:1px solid var(--al-line); border-radius:7px; padding:18px; align-self:start; }
+#al-onboarding-preview .al-guide .al-guide-links { display:flex; flex-direction:column; gap:7px; margin-top:18px; }
+#al-onboarding-preview .al-guide .al-steps { padding-left:19px; color:var(--al-sub); margin:15px 0; }
+#al-onboarding-preview .al-guide li { padding:3px 0; }
+#al-onboarding-preview .al-work-header { display:flex; gap:12px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:17px; }
+#al-onboarding-preview .al-work-header h1 { font-size:22px; margin:0; }
+#al-onboarding-preview .al-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px 18px; margin:16px 0; }
+#al-onboarding-preview .al-fields label { display:flex; flex-direction:column; gap:5px; }
+#al-onboarding-preview .al-fields input, #al-onboarding-preview .al-fields select { min-width:0; width:100%; color:var(--al-ink); background:var(--al-paper); border:1px solid var(--al-line); border-radius:5px; padding:7px 9px; }
+#al-onboarding-preview .al-field-note { color:var(--al-sub); font-size:12px; }
+#al-onboarding-preview .al-component { padding:18px; background:var(--al-paper); border:1px solid var(--al-line); border-radius:7px; }
+#al-onboarding-preview .al-component .al-figure { border:0; border-radius:0; padding:0; margin-bottom:0; }
+#al-onboarding-preview .al-work-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:18px; }
+#al-onboarding-preview .al-empty { padding:28px 22px; border:1px solid var(--al-line); border-radius:7px; background:var(--al-paper); }
+#al-onboarding-preview .al-transport { border-top:1px solid var(--al-line); display:flex; flex-wrap:wrap; align-items:center; gap:12px; padding:13px 18px; background:var(--al-paper); }
+#al-onboarding-preview .al-transport .al-transport-status { color:var(--al-sub); font-size:12px; }
+#al-onboarding-preview .al-transport .al-clock { margin-left:auto; font-variant-numeric:tabular-nums; color:var(--al-sub); }
+#al-onboarding-preview .al-app dialog { background:var(--al-paper); color:var(--al-ink); border:1px solid var(--al-line); border-radius:9px; padding:22px; max-width:min(420px,90%); }
+#al-onboarding-preview .al-app dialog::backdrop { background:var(--al-backdrop); }
+#al-onboarding-preview .al-dialog-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:8px; margin-top:20px; }
+@media(max-width:680px) {
+  #al-onboarding-preview .al-app { min-height:1020px; }
+  #al-onboarding-preview .al-page { padding-top:24px; }
+  #al-onboarding-preview .al-choices { grid-template-columns:1fr; }
+  #al-onboarding-preview .al-choice { padding:18px; }
+  #al-onboarding-preview .al-work-layout.al-with-guide { grid-template-columns:1fr; }
+  #al-onboarding-preview .al-types { grid-template-columns:1fr; }
+  #al-onboarding-preview .al-type-list { flex-direction:row; flex-wrap:wrap; }
+  #al-onboarding-preview .al-library { grid-template-columns:1fr; gap:14px; }
+  #al-onboarding-preview .al-side-nav { flex-direction:row; flex-wrap:wrap; }
+}
+@media(max-width:430px) {
+  #al-onboarding-preview .al-band-picks { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  #al-onboarding-preview .al-fields { grid-template-columns:1fr; }
+  #al-onboarding-preview .al-page,#al-onboarding-preview .al-work-layout { padding-left:16px; padding-right:16px; }
+  #al-onboarding-preview .al-toolbar { padding-left:12px; padding-right:12px; }
+  #al-onboarding-preview .al-toolbar .al-help { margin-left:0; }
+  #al-onboarding-preview .al-app h1 { font-size:23px; }
+}
+</style>
+<script>
+(() => {
+  const root = document.getElementById('al-onboarding-preview');
+  const bands = [
+    {name:'Delta', range:'0.1–<4 Hz', rate:2},
+    {name:'Theta', range:'4–<8 Hz', rate:6},
+    {name:'Alpha', range:'8–13 Hz', rate:10},
+    {name:'Beta', range:'>13–30 Hz', rate:20},
+    {name:'Gamma', range:'>30–80 Hz', rate:40}
+  ];
+  const types = [
+    {key:'steady',name:'Steady tone',body:'One continuous sine tone. Its frequency sets the pitch; it has no added repetition rhythm.',note:'Example: a 440 Hz tone.',action:'Create a steady tone'},
+    {key:'pulsed',name:'Pulsed tone',body:'A tone shaped into regular pulses, also called an isochronic tone. Pitch and pulse rate are separate settings.',note:'Example: 440 Hz pitch, 10 pulses per second.',action:'Create a pulsed tone'},
+    {key:'am',name:'Sinusoidal AM',body:'The tone’s amplitude rises and falls smoothly. At full depth it touches zero, with no sustained silent interval.',note:'Example: 440 Hz pitch, 10 Hz amplitude modulation.',action:'Try sinusoidal AM'},
+    {key:'binaural',name:'Binaural pair',body:'Two different tones, one in each digital channel. Headphones provide the intended separate-ear delivery.',note:'Example: 200 Hz left, 210 Hz right; 10 Hz difference.',action:'Create a binaural pair'},
+    {key:'monaural',name:'Monaural pair',body:'Two different tones combined on the same route. Their interference produces a physical amplitude pattern.',note:'Example: 200 Hz and 210 Hz in both channels.',action:'Create a monaural pair'},
+    {key:'train',name:'Pulse train',body:'A sequence of short pulses without a sine-tone carrier. Pulse duration and edge shape determine the waveform.',note:'Example: 40 pulses per second, each 1 ms long.',action:'Create a pulse train'}
+  ];
+  const studies = [
+    {title:'10 Hz binaural beat',study:'Ioannou · 2015',duration:'1 min',population:'Human study',detail:'One binaural condition from a longer EEG experiment. Silence and control-tone intervals are omitted.',kind:'binaural',pitch:200,rate:10,seconds:60},
+    {title:'40 Hz train of 1 ms 5 kHz tones',study:'Lahijanian · 2024',duration:'40 s',population:'Human study',detail:'One sound trial. Repeated trials and the intervening 20-second silences are omitted.',kind:'pulsed',pitch:5000,rate:40,seconds:40},
+    {title:'40 Hz train of 1 ms 10 kHz tones',study:'Martorell · 2019',duration:'1 h',population:'Mouse study',detail:'One exposure session from an animal protocol. The repeated daily schedule is omitted.',kind:'pulsed',pitch:10000,rate:40,seconds:3600}
+  ];
+  const saved = window.openai?.widgetState;
+  const states = [];
+  let snapshotRevision=Number(saved?.privateContent?.revision)||0;
+  const esc = value => String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  function remember() {
+    snapshotRevision+=1;
+    if (window.openai?.setWidgetState) window.openai.setWidgetState({modelContent:{mockup:'Auditory Lab onboarding',screens:states.map(s=>({approach:s.layout,page:s.page,topic:s.type,band:bands[s.band].name}))},privateContent:{revision:snapshotRevision,states:states.map(s=>({page:s.page,type:s.type,band:s.band,rate:s.rate,draft:s.draft,savedDraft:s.savedDraft,collection:s.collection,study:s.study}))}}).catch(()=>{});
+  }
+  function fresh(kind='pulsed',record=null) {
+    const durationMode=Boolean(record)||kind==='train';
+    return {kind,pitch:record?.pitch??(['binaural','monaural'].includes(kind)?200:440),rate:record?.rate??(kind==='train'?40:10),duty:durationMode?4:50,width:durationMode?1:50,mode:durationMode?'duration':'duty',shape:durationMode?'rectangular':'raised',seconds:record?.seconds??60,dirty:false,saved:false};
+  }
+  root.querySelectorAll('.al-app').forEach((app,index) => {
+    const layout = app.dataset.layout;
+    const previous = saved?.privateContent?.states?.[index];
+    const allowed = ['overview','basics','types','bands','library','workbench'];
+    const state = {app,layout,page:allowed.includes(previous?.page)?previous.page:(layout==='start'?'overview':'workbench'),type:types.some(t=>t.key===previous?.type)?previous.type:'pulsed',band:Number.isInteger(previous?.band)&&previous.band>=0&&previous.band<5?previous.band:2,rate:10,draft:null,collection:'builtin',study:0,settings:{size:14,spacing:24}};
+    if(previous?.draft && types.some(t=>t.key===previous.draft.kind)) state.draft=previous.draft;
+    if(previous?.savedDraft && types.some(t=>t.key===previous.savedDraft.kind)) state.savedDraft=previous.savedDraft;
+    if(Number.isFinite(previous?.rate)&&previous.rate>=2&&previous.rate<=20)state.rate=previous.rate;
+    states.push(state);
+    app.innerHTML = `<header class="al-titlebar"><div class="al-dots" aria-hidden="true"><span></span><span></span><span></span></div><strong>Auditory Lab</strong><span class="al-caption">Sound exploration</span></header><nav class="al-toolbar" aria-label="Workspaces"><button type="button" data-nav="library">Library</button><button type="button" data-nav="workbench">Workbench</button><button type="button" class="al-help" data-nav="overview">Start here</button></nav><main class="al-content"></main><footer class="al-transport"><button type="button" disabled aria-label="Audio playback is unavailable in this mockup">Play</button><span>Not playing</span><span class="al-transport-status">Nothing starts automatically</span><span class="al-clock">0:00</span></footer><dialog aria-label="Unsaved sound"><h2>Keep your unsaved sound?</h2><p>Creating another sound would replace the draft in the Workbench.</p><div class="al-dialog-actions"><button type="button" data-decision="keep">Keep editing</button><button type="button" data-decision="replace">Discard and create</button><button type="button" class="al-primary" data-decision="save">Save and create</button></div></dialog>`;
+    const body=app.querySelector('main');
+    const dialog=app.querySelector('dialog');
+    let pending=null;
+    function create(kind,record=null,rateOverride=null) {
+      if(state.draft?.dirty) {pending={kind,record,rateOverride};dialog.showModal();return;}
+      state.draft=fresh(kind,record); if(rateOverride!==null)state.draft.rate=rateOverride; state.page='workbench';render();remember();
+    }
+    app.querySelector('[data-decision="keep"]').onclick=()=>{dialog.close();pending=null;state.page='workbench';render();};
+    app.querySelector('[data-decision="replace"]').onclick=()=>{dialog.close();const next=pending;pending=null;state.draft=null;if(next)create(next.kind,next.record,next.rateOverride);};
+    app.querySelector('[data-decision="save"]').onclick=()=>{state.savedDraft={...state.draft,saved:true,dirty:false};dialog.close();const next=pending;pending=null;state.draft=null;if(next)create(next.kind,next.record,next.rateOverride);};
+    app.querySelectorAll('[data-nav]').forEach(button=>button.onclick=()=>go(button.dataset.nav));
+    function go(page) {state.page=page;render();remember();}
+    function button(label,action,primary=false) {return `<button type="button" class="${primary?'al-primary':'al-link'}" data-act="${action}">${label}</button>`;}
+    function lessons() {return `<div class="al-lesson-links">${button('Pitch and rhythm','basics')}${button('Types of sound','types')}${button('Delta to Gamma','bands')}</div>`;}
+    function overview() {return `<div class="al-page"><div class="al-eyebrow">Start here</div><h1>Explore how rhythmic sounds work</h1><p class="al-intro">Examine sounds adapted from published research, or build a sound of your own.</p><div class="al-choices"><section class="al-choice"><h2>Explore the Library</h2><p>Find research examples, inspect their settings and read what was studied.</p><div class="al-meta">Study durations · populations · adaptations</div>${button('Browse built-in sounds','library')}</section><section class="al-choice"><h2>Make your first sound</h2><p>Start with a pulsed tone. Explore its pitch, pulse rate and shape in the Workbench.</p><div class="al-meta">An unsaved draft · ready to change</div>${button('Create a pulsed tone','create:pulsed',true)}</section></div><section class="al-reference"><h3>Understand the sounds</h3><p class="al-small">Short explanations you can return to whenever you need them.</p>${lessons()}</section><section class="al-reference"><h3>What are the built-ins?</h3><p class="al-intro">Adaptations of research conditions, with their sources and limitations. Their durations follow those conditions; they are not prescribed listening times.</p><p class="al-small">Your own saved sounds live in User Library. Open files remain separate until you add or save them.</p></section></div>`;}
+    function back() {return `<div class="al-back">${button('← Start here','overview')}</div>`;}
+    function basics() {return `<div class="al-page">${back()}<h1>Pitch and rhythm are different settings</h1><p class="al-intro">A 440 Hz tone can pulse 10 times per second. The pitch stays the same as you change how often it pulses.</p><div class="al-figure"><div class="al-line-label"><span>Carrier · one short slice</span><span>440 cycles per second</span></div><svg data-plot="carrier" role="img" aria-label="Schematic 440 hertz carrier over ten milliseconds"></svg></div><div class="al-control-row"><label for="al-rate-${index}">Pulse rate</label><input id="al-rate-${index}" type="range" min="2" max="20" value="${state.rate}" data-learn-rate aria-label="Example pulse repetitions per second"><output class="al-value" data-rate-value>${state.rate} / second</output></div><div class="al-figure"><div class="al-line-label"><span>Amplitude envelope · schematic</span><span>One second</span></div><svg data-plot="envelope" role="img" aria-label="Schematic amplitude envelope over one second"></svg></div><p class="al-small">The envelope describes the changing amplitude. These are sound diagrams, not brain recordings.</p>${button('Try these settings in Workbench','try-rate',true)}</div>`;}
+    function soundTypes() {const t=types.find(t=>t.key===state.type);return `<div class="al-page">${back()}<h1>Different ways to construct a sound</h1><div class="al-types"><nav class="al-type-list" aria-label="Sound constructions">${types.map(t=>`<button type="button" data-type="${t.key}" aria-pressed="${state.type===t.key}">${t.name}</button>`).join('')}</nav><section class="al-topic"><h2>${t.name}${t.key==='pulsed'?' (isochronic)':''}</h2><p>${t.body}</p><div class="al-figure"><svg data-plot="type" role="img" aria-label="Schematic ${t.name.toLowerCase()}"></svg></div><p class="al-small">${t.note}</p>${button(t.action,'create:'+t.key,true)}</section></div></div>`;}
+    function rhythmBands() {const b=bands[state.band];return `<div class="al-page">${back()}<h1>Five names for rhythm ranges</h1><p class="al-intro">Delta, Theta, Alpha, Beta and Gamma are frequency-band names from EEG. Here, they group the rhythm rates in a sound’s definition.</p><div class="al-band-picks" aria-label="Rhythm band examples">${bands.map((b,i)=>`<button type="button" data-band="${i}" aria-pressed="${state.band===i}">${b.name}<span>${b.range}</span></button>`).join('')}</div><div class="al-figure"><div class="al-line-label"><strong>${b.name} example · ${b.rate} pulses / second</strong><span>One second</span></div><svg data-plot="band" role="img" aria-label="${b.rate} schematic pulses over one second"></svg></div><p>The ${b.name} label describes a rhythm in this sound. It does not mean your brain is in a “${b.name} state.”</p><p class="al-small">Ranges follow the app’s stated EEG reference convention. A sound can contain several rhythms, including rates outside these five bands.</p>${button('Explore pitch and rhythm','basics')}</div>`;}
+    function library() {const s=studies[state.study];return `<div class="al-page"><div class="al-work-header"><h1>Library</h1>${button('What are these sounds?','overview')}</div><div class="al-library"><nav class="al-side-nav" aria-label="Library collections"><button type="button" data-collection="builtin" aria-pressed="${state.collection==='builtin'}">Built-in</button><button type="button" data-collection="user" aria-pressed="${state.collection==='user'}">User Library</button><button type="button" data-collection="open" aria-pressed="${state.collection==='open'}">Open files</button></nav><div>${state.collection==='builtin'?`<p class="al-small">Research conditions adapted into editable sounds. Durations come from those conditions.</p><table><thead><tr><th>Sound</th><th>Duration</th></tr></thead><tbody>${studies.map((s,i)=>`<tr><td><button type="button" class="al-link" data-study="${i}" aria-pressed="${state.study===i}">${s.title}</button><div class="al-small">${s.study}</div></td><td>${s.duration}</td></tr>`).join('')}</tbody></table><section class="al-study"><h2>${s.title}</h2><div class="al-study-facts"><span>${s.population}</span><span>${s.duration} · one condition</span></div><p>${s.detail}</p><p class="al-small">Digital levels and routing are disclosed adaptations. The sound is not a calibrated reproduction of the experiment.</p>${button('Edit a copy in Workbench','edit-study',true)}</section>`:`<div class="al-empty"><h2>${state.collection==='user'?'Your saved sounds':'Recipes you open'}</h2><p>${state.collection==='user'?(state.savedDraft?types.find(t=>t.key===state.savedDraft.kind).name+' · '+state.savedDraft.seconds+' seconds':'Save a Workbench sound to keep it here.'):'Opened recipe files appear here without being added to your saved library.'}</p>${button(state.collection==='user'&&state.savedDraft?'Edit saved sound':'Open the Workbench',state.collection==='user'&&state.savedDraft?'edit-saved':'workbench',true)}</div>`}</div></div></div>`;}
+    function guide() {return `<aside class="al-guide"><div class="al-eyebrow">Getting started</div><h2>One sound, a few choices</h2><p>Start with a pulsed tone, then change one setting at a time.</p><ol class="al-steps"><li>Choose a component.</li><li>Adjust pitch or repetition.</li><li>Inspect its pattern.</li><li>Play, then Stop.</li><li>Save or export your sound.</li></ol>${!state.draft?button('Add a pulsed tone','create:pulsed',true):''}<div class="al-guide-links">${button('Pitch and rhythm','basics')}${button('Types of sound','types')}${button('Delta to Gamma','bands')}${button('About the Library','overview')}</div></aside>`;}
+    function workbench() {const d=state.draft;const pair=d&&['binaural','monaural'].includes(d.kind);const pulsed=d&&['pulsed','train'].includes(d.kind);const t=d?types.find(t=>t.key===d.kind):null;return `<div class="al-work-layout ${layout==='alongside'?'al-with-guide':''}"><div><div class="al-work-header"><h1>Workbench</h1>${button('New sound','create:pulsed')}</div>${!d?`<section class="al-empty"><h2>Your sound starts here</h2><p>Add a component, then choose its settings. This empty draft is silent.</p>${button('Add a pulsed tone','create:pulsed',true)}</section>`:`<div class="al-eyebrow" data-draft-status>${d.saved?'Saved sound':'Unsaved sound'}</div><section class="al-component"><h2>${t.name}${d.kind==='pulsed'?' (isochronic)':''}</h2><p class="al-small">${pair?(d.kind==='binaural'?'First tone left · second tone right':'Both tones in both channels'):'Both digital channels · peak −30 dBFS'}</p><div class="al-fields"><label>${d.kind==='train'?'Pulse rate':'Pitch'+(pair?' · first tone':'')} (${d.kind==='train'?'pulses/s':'Hz'})<input type="number" min="1" max="20000" value="${d.kind==='train'?d.rate:d.pitch}" data-field="${d.kind==='train'?'rate':'pitch'}"></label>${pair?`<label>Beat offset (Hz)<input type="number" min="1" max="80" value="${d.rate}" data-field="rate"></label>`:['steady','train'].includes(d.kind)?'':`<label>${d.kind==='am'?'AM rate':'Pulse rate'} (Hz)<input type="number" min="1" max="80" value="${d.rate}" data-field="rate"></label>`}${pulsed?`<label>Window definition<select data-field="mode"><option value="duty" ${d.mode==='duty'?'selected':''}>Duty cycle (%)</option><option value="duration" ${d.mode==='duration'?'selected':''}>Fixed duration (ms)</option></select></label><label>${d.mode==='duty'?'Duty (%)':'Total window (ms)'}<input type="number" min="1" max="${d.mode==='duty'?99:500}" value="${d.mode==='duty'?d.duty:d.width}" data-field="${d.mode==='duty'?'duty':'width'}"></label>`:''}</div><div class="al-figure"><div class="al-line-label"><span>${pair?(d.kind==='binaural'?'Separate carrier slices':'Combined waveform'):d.kind==='steady'?'Carrier slice':'Amplitude envelope'} · schematic</span><span>${pair?(d.kind==='binaural'?'25 ms':'100 ms'):d.kind==='steady'?'10 ms':'1 second'}</span></div><svg data-plot="draft" role="img" aria-label="Schematic preview of the draft sound"></svg></div>${button('Why these settings?','basics')}</section><div class="al-fields"><label>Saved duration (seconds)<input type="number" min="1" max="3600" value="${d.seconds}" data-field="seconds"></label><div class="al-field-note">Library playback and WAV export use this duration. Live Workbench Play continues until Stop.</div></div><div class="al-work-actions"><button type="button" data-save>Save sound</button><button type="button" disabled>Export WAV…</button></div>`}${layout==='start'?`<div class="al-reference"><h3>Need a hand?</h3>${lessons()}</div>`:''}</div>${layout==='alongside'?guide():''}</div>`;}
+    function render() {
+      app.querySelector('.al-transport-status').textContent=['workbench','library'].includes(state.page)?'Set device volume low before Play':'Nothing starts automatically';
+      app.querySelectorAll('[data-nav]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.nav===state.page || (b.dataset.nav==='overview'&&['basics','types','bands'].includes(state.page)))));
+      body.innerHTML=({overview,basics,types:soundTypes,bands:rhythmBands,library,workbench}[state.page])();
+      body.querySelectorAll('[data-act]').forEach(b=>b.onclick=()=>{
+        const a=b.dataset.act;
+        if(a.startsWith('create:'))create(a.split(':')[1]);
+        else if(a==='edit-study')create(studies[state.study].kind,studies[state.study]);
+        else if(a==='try-rate')create('pulsed',null,state.rate);
+        else if(a==='edit-saved'){state.page='workbench';state.draft={...state.savedDraft};render();remember();}else go(a);
+      });
+      body.querySelectorAll('[data-type]').forEach(b=>b.onclick=()=>{state.type=b.dataset.type;render();remember();});
+      body.querySelectorAll('[data-band]').forEach(b=>b.onclick=()=>{state.band=Number(b.dataset.band);render();remember();});
+      body.querySelectorAll('[data-collection]').forEach(b=>b.onclick=()=>{state.collection=b.dataset.collection;render();remember();});
+      body.querySelectorAll('[data-study]').forEach(b=>b.onclick=()=>{state.study=Number(b.dataset.study);render();remember();});
+      const learn=body.querySelector('[data-learn-rate]');
+      if(learn)learn.oninput=()=>{state.rate=Number(learn.value);body.querySelector('[data-rate-value]').textContent=state.rate+' / second';drawAll();remember();};
+      body.querySelectorAll('[data-field]').forEach(input=>{
+        const event=input.tagName==='SELECT'?'onchange':'oninput';
+        input[event]=()=>{
+          const d=state.draft; const key=input.dataset.field;
+          if(key==='mode'){
+            if(input.value==='duration')d.width=1000*d.duty/100/d.rate;
+            else d.duty=d.width*d.rate/10;
+            d.mode=input.value;d.dirty=true;d.saved=false;render();remember();return;
+          }
+          if(!input.validity.valid || input.value==='')return;
+          d[key]=Number(input.value);d.dirty=true;d.saved=false;
+          body.querySelector('[data-draft-status]').textContent='Unsaved sound';drawAll();remember();
+        };
+      });
+      const saveButton=body.querySelector('[data-save]');
+      if(saveButton)saveButton.onclick=()=>{state.draft.saved=true;state.draft.dirty=false;state.savedDraft={...state.draft};body.querySelector('[data-draft-status]').textContent='Saved sound';remember();};
+      requestAnimationFrame(drawAll);
+    }
+    function plot(svg,fn,seconds,label,second=null) {
+      const width=Math.max(210,svg.getBoundingClientRect().width);
+      const left=28,right=width-8,top=10,bottom=83,mid=(top+bottom)/2,amp=(bottom-top)/2;
+      const positive=/envelope|pulses|pulse train/i.test(label);
+      svg.setAttribute('viewBox',`0 0 ${width} 112`);
+      const count=seconds===1?4000:Math.ceil(width*1.5);
+      const pathFor=(f)=>Array.from({length:count},(_,i)=>{const t=i/(count-1);return `${i?'L':'M'}${(left+t*(right-left)).toFixed(2)},${(mid-amp*f(t*seconds)).toFixed(2)}`;}).join(' ');
+      svg.innerHTML=`<title>${esc(label)}</title><text x="4" y="15">1</text><text x="4" y="86">${positive?'0':'−1'}</text><path class="al-grid" d="M${left} ${mid}H${right}"/><path class="al-wave" d="${pathFor(fn)}"/>${second?`<path class="al-wave" style="stroke-dasharray:4 3;opacity:.6" d="${pathFor(second)}"/>`:''}<text x="${left}" y="105">0</text><text x="${right}" y="105" text-anchor="end">${seconds===1?'1 second':(seconds*1000)+' ms'}</text>`;
+    }
+    function envelope(t,rate,duty=.5,smooth=true) {
+      const p=(t*rate)%1;
+      if(p>=duty)return -1;
+      const u=p/duty;
+      const e=smooth?Math.min(1,u/.1,(1-u)/.1):1;
+      return 2*(smooth?(1-Math.cos(Math.PI*Math.max(0,e)))/2:e)-1;
+    }
+    function drawAll() {
+      body.querySelectorAll('svg[data-plot]').forEach(svg=>{
+        const kind=svg.dataset.plot;
+        if(kind==='carrier')plot(svg,t=>Math.sin(2*Math.PI*440*t),.01,'440 Hz carrier, ten millisecond slice');
+        else if(kind==='envelope')plot(svg,t=>envelope(t,state.rate),1,`${state.rate} pulses per second, schematic envelope`);
+        else if(kind==='band')plot(svg,t=>envelope(t,bands[state.band].rate),1,`${bands[state.band].name} example, ${bands[state.band].rate} pulses per second`);
+        else if(kind==='type'){
+          const type=state.type;
+          if(type==='steady')plot(svg,t=>Math.sin(2*Math.PI*440*t),.01,'Steady tone carrier slice');
+          else if(type==='pulsed'||type==='train')plot(svg,t=>envelope(t,type==='train'?40:10,type==='train'?.04:.5,type!=='train'),1,type==='train'?'Short rectangular pulse train':'Pulsed tone amplitude envelope');
+          else if(type==='am')plot(svg,t=>Math.sin(2*Math.PI*10*t),1,'Sinusoidal amplitude envelope');
+          else if(type==='binaural')plot(svg,t=>Math.sin(2*Math.PI*200*t),.025,'Left carrier solid, right carrier dashed',t=>Math.sin(2*Math.PI*210*t));
+          else plot(svg,t=>(Math.sin(2*Math.PI*200*t)+Math.sin(2*Math.PI*210*t))/2,.1,'Combined two-tone waveform');
+        } else if(kind==='draft'&&state.draft){
+          const d=state.draft;
+          if(d.kind==='binaural')plot(svg,t=>Math.sin(2*Math.PI*d.pitch*t),.025,'First carrier solid, second carrier dashed',t=>Math.sin(2*Math.PI*(d.pitch+d.rate)*t));
+          else if(d.kind==='monaural')plot(svg,t=>(Math.sin(2*Math.PI*d.pitch*t)+Math.sin(2*Math.PI*(d.pitch+d.rate)*t))/2,.1,'Combined two-tone waveform');
+          else if(d.kind==='steady')plot(svg,t=>Math.sin(2*Math.PI*d.pitch*t),.01,'Steady carrier slice');
+          else if(d.kind==='am')plot(svg,t=>Math.sin(2*Math.PI*d.rate*t),1,'Sinusoidal amplitude envelope');
+          else plot(svg,t=>envelope(t,d.rate,Math.min(.99,d.mode==='duty'?d.duty/100:d.width*d.rate/1000),d.shape==='raised'),1,'Draft amplitude envelope');
+        }
+      });
+    }
+    state.restore=(next)=>{
+      if(allowed.includes(next?.page))state.page=next.page;
+      if(types.some(t=>t.key===next?.type))state.type=next.type;
+      if(Number.isInteger(next?.band)&&next.band>=0&&next.band<5)state.band=next.band;
+      if(Number.isFinite(next?.rate)&&next.rate>=2&&next.rate<=20)state.rate=next.rate;
+      if(next?.draft&&types.some(t=>t.key===next.draft.kind))state.draft={...next.draft};
+      if(next?.savedDraft&&types.some(t=>t.key===next.savedDraft.kind))state.savedDraft={...next.savedDraft};
+      if(['builtin','user','open'].includes(next?.collection))state.collection=next.collection;
+      if(Number.isInteger(next?.study)&&next.study>=0&&next.study<studies.length)state.study=next.study;
+      render();
+    };
+    render();
+    new ResizeObserver(drawAll).observe(app);
+    if(globalThis.Tweak){
+      const tweak=new Tweak({container:app,onChange:()=>{app.style.setProperty('--al-size',state.settings.size+'px');app.style.setProperty('--al-space',state.settings.spacing+'px');drawAll();}});
+      tweak.addSlider(state.settings,'size',{label:'Text size',min:13,max:17,step:1,unit:'px'});
+      tweak.addSlider(state.settings,'spacing',{label:'Page spacing',min:16,max:32,step:4,unit:'px'});
+    }
+  });
+  window.addEventListener('openai:set_globals',event=>{
+    const incoming=event.detail?.globals?.widgetState?.privateContent;
+    const next=incoming?.states;
+    if(!Array.isArray(next))return;
+    const revision=Number(incoming.revision)||0;
+    if(revision<=snapshotRevision)return;
+    snapshotRevision=revision;
+    states.forEach((state,index)=>state.restore(next[index]));
+    // Host restoration never writes state or starts an interaction.
+  });
+})();
+</script>

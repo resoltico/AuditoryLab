@@ -1,13 +1,17 @@
-import { ViewCaptions } from "view-captions.slint";
+import { ViewCaptions as Views } from "view-captions.slint";
 import { Palette } from "std-widgets.slint";
 import { Terms } from "vocabulary.slint";
 
-// One keyboard stop for the two destinations, with real panels owned by MainWindow.
+// One keyboard stop for the working destinations and Start here.
 export component WorkspaceNavigation inherits FocusScope {
-    in-out property <int> current;
+    in property <int> current;
     in property <length> text-size:13px;
+    private property <string> start-label: "Start here";
+    private property <[string]> destinations: [Views.library, Views.workbench, root.start-label];
     callback selected(int);
-    changed current => { root.selected(self.current); }
+    function choose(index: int) {
+        root.selected(index);
+    }
     accessible-role: tab-list;
     accessible-label: Terms.caption-workspace-navigation;
     min-width: tabs.min-width;
@@ -18,19 +22,21 @@ export component WorkspaceNavigation inherits FocusScope {
     max-height: tabs.preferred-height;
     horizontal-stretch: 0;
     key-pressed(event) => {
-        if event.text == Key.LeftArrow || event.text == Key.Home {
-            root.current = 0;
+        if event.text == Key.Home {
+            root.choose(0);
             return accept;
         }
-        if event.text == Key.RightArrow || event.text == Key.End {
-            root.current = 1;
+        if event.text == Key.End {
+            root.choose(2);
             return accept;
         }
+        if event.text == Key.LeftArrow { root.choose(max(0,root.current - 1)); return accept; }
+        if event.text == Key.RightArrow { root.choose(min(2,root.current + 1)); return accept; }
         return reject;
     }
     tabs := HorizontalLayout {
         spacing: 4px;
-        for label[index] in [ViewCaptions.library, ViewCaptions.workbench]: Rectangle {
+        for label[index] in root.destinations: Rectangle {
             min-width: caption.preferred-width + 24px;
             min-height: max(root.text-size * 2.5,caption.preferred-height + 12px);
             border-radius: 5px;
@@ -43,7 +49,7 @@ export component WorkspaceNavigation inherits FocusScope {
             accessible-item-index: index;
             accessible-item-selectable: true;
             accessible-item-selected: root.current == index;
-            accessible-action-default => { root.current = index; root.focus(); }
+            accessible-action-default => { root.choose(index); root.focus(); }
             caption := Text {
                 width: parent.width;
                 height: parent.height;
@@ -55,7 +61,7 @@ export component WorkspaceNavigation inherits FocusScope {
             }
 
             TouchArea {
-                clicked => { root.current = index; root.focus(); }
+                clicked => { root.choose(index); root.focus(); }
             }
         }
     }

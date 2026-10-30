@@ -1,0 +1,11 @@
+{
+  "a-frequency-and-context.png": "9cbe3f4fc736979b80b994c02dfe8821dc7ae8f07033d8c7d3cd0ccc25efe9bd",
+  "a-frequency-and-context.svg": "1da6571bfe20dbcbb58131d182f6dc41a2bbdd715c9b9ba2c972e6eb3e8b6649",
+  "b-overlapping-contexts.png": "a8d0fe1d644b8dcd8bb383cfc64a864b13cc123603a57a5fad5c8f69ed13d06f",
+  "b-overlapping-contexts.svg": "339771e4326f7657b2b74f51c7598932afa519aef40fce986e2b27190d7f9d26",
+  "c-context-first.png": "67c70fd8da56823db43925b68f4b1d86a9d46cf4350a6108672b20d874afb468",
+  "c-context-first.svg": "d9230eed572f18614ca9d0edef30917a1a7fc861677e063b89b4a8ce59285e55",
+  "make_graphics.py": "007cc2326812fb47dc6201497f7ae2fc0907da753ec8b1a71e254c9f4b61038f",
+  "provenance.json": "2c310f5fb14cf4d203ed8023848e582baf54d265ab976bd1bffce40153501f99",
+  "verification.json": "85691df496d352d4110e70e616648a2b5f808027644ab939e2160b6c00255c4f"
+}

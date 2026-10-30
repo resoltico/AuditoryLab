@@ -82,11 +82,30 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     };
     selector.select()?;
     let windows = Windows::new()?;
-    let workspace = Workspace::with_binding(
+    let mut workspace = Workspace::with_binding(
         auditorylab_app::services::catalog()?,
         Capabilities::available(),
         auditorylab_app::workspace::LibraryBinding::configured()?,
     )?;
+    let onboarding = auditorylab_app::onboarding::Preference::configured();
+    let (seen, notice) = match &onboarding {
+        Ok(preference) => match preference.seen() {
+            Ok(seen) => (seen, String::new()),
+            Err(error) => (false, auditorylab_presentation::Explain::explain(&error)),
+        },
+        Err(error) => (false, auditorylab_presentation::Explain::explain(error)),
+    };
+    if !notice.is_empty() {
+        eprintln!("{notice}");
+        windows.main.set_onboarding_notice(notice.into());
+    }
+    if !seen {
+        workspace.apply(auditorylab_app::workspace::Command::Learning(
+            auditorylab_app::learning::LearningCommand::Open(
+                auditorylab_app::learning::Topic::Overview,
+            ),
+        ))?;
+    }
     let adapter = SlintAdapter::install(
         &windows,
         workspace,
@@ -94,6 +113,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         Box::new(auditorylab_app::workspace::Runner::new()),
         Some(Preferences::start()),
     );
+    adapter.set_onboarding_preference(onboarding.ok());
     #[cfg(target_os = "macos")]
     {
         *handler_slot.borrow_mut() = std::rc::Rc::downgrade(&adapter);

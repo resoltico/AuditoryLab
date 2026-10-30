@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "window_seconds": 1,
+  "normalized_amplitude": 1,
+  "initial_phase_cycles": 0,
+  "examples": [
+    {
+      "band": "delta",
+      "example_hz": 2
+    },
+    {
+      "band": "theta",
+      "example_hz": 6
+    },
+    {
+      "band": "alpha",
+      "example_hz": 10
+    },
+    {
+      "band": "beta",
+      "example_hz": 20
+    },
+    {
+      "band": "gamma",
+      "example_hz": 32
+    }
+  ]
+}

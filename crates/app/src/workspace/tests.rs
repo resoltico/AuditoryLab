@@ -1743,3 +1743,5 @@ fn workbench_save_activations_capture_jobs() {
         assert_eq!(workspace.next_id, next + 1);
     }
 }
+
+mod learning;

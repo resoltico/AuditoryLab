@@ -1,0 +1,1410 @@
+[
+  {
+    "file": "luminous-spectrum-light.svg",
+    "theme": "light",
+    "lettering_boxes": [
+      {
+        "text": "FIVE RHYTHM BANDS",
+        "x": 492.65,
+        "y": 35,
+        "width": 414.7,
+        "height": 31.900000000000002
+      },
+      {
+        "text": "SELECTED EEG ASSOCIATIONS",
+        "x": 485.0,
+        "y": 83,
+        "width": 430.0,
+        "height": 22.0
+      },
+      {
+        "text": "DELTA",
+        "x": 88.3,
+        "y": 140,
+        "width": 163.4,
+        "height": 41.800000000000004
+      },
+      {
+        "text": "0.1-<4 HZ",
+        "x": 87.5,
+        "y": 197,
+        "width": 165.0,
+        "height": 24.200000000000003
+      },
+      {
+        "text": "DEEP NREM SLEEP",
+        "x": 57.5,
+        "y": 253,
+        "width": 225.0,
+        "height": 19.8
+      },
+      {
+        "text": "SLOW-WAVE",
+        "x": 98.9,
+        "y": 466,
+        "width": 142.2,
+        "height": 19.8
+      },
+      {
+        "text": "ACTIVITY",
+        "x": 107.0,
+        "y": 494,
+        "width": 126.0,
+        "height": 19.8
+      },
+      {
+        "text": "THETA",
+        "x": 353.3,
+        "y": 140,
+        "width": 163.4,
+        "height": 41.800000000000004
+      },
+      {
+        "text": "4-<8 HZ",
+        "x": 372.3,
+        "y": 197,
+        "width": 125.4,
+        "height": 24.200000000000003
+      },
+      {
+        "text": "DROWSINESS",
+        "x": 355.8,
+        "y": 253,
+        "width": 158.4,
+        "height": 19.8
+      },
+      {
+        "text": "ALSO WAKING",
+        "x": 351.3,
+        "y": 466,
+        "width": 167.4,
+        "height": 19.8
+      },
+      {
+        "text": "MEMORY TASKS",
+        "x": 343.2,
+        "y": 494,
+        "width": 183.6,
+        "height": 19.8
+      },
+      {
+        "text": "ALPHA",
+        "x": 618.3,
+        "y": 140,
+        "width": 163.4,
+        "height": 41.800000000000004
+      },
+      {
+        "text": "8-13 HZ",
+        "x": 637.3,
+        "y": 197,
+        "width": 125.4,
+        "height": 24.200000000000003
+      },
+      {
+        "text": "QUIET",
+        "x": 661.3,
+        "y": 240,
+        "width": 77.4,
+        "height": 19.8
+      },
+      {
+        "text": "WAKEFULNESS",
+        "x": 612.7,
+        "y": 266,
+        "width": 174.6,
+        "height": 19.8
+      },
+      {
+        "text": "ESPECIALLY",
+        "x": 620.8,
+        "y": 466,
+        "width": 158.4,
+        "height": 19.8
+      },
+      {
+        "text": "EYES CLOSED",
+        "x": 616.3,
+        "y": 494,
+        "width": 167.4,
+        "height": 19.8
+      },
+      {
+        "text": "BETA",
+        "x": 900.4,
+        "y": 140,
+        "width": 129.2,
+        "height": 41.800000000000004
+      },
+      {
+        "text": ">13-30 HZ",
+        "x": 882.5,
+        "y": 197,
+        "width": 165.0,
+        "height": 24.200000000000003
+      },
+      {
+        "text": "WAKING ACTIVITY",
+        "x": 848.9,
+        "y": 253,
+        "width": 232.2,
+        "height": 19.8
+      },
+      {
+        "text": "FRONT-CENTRAL",
+        "x": 861.5,
+        "y": 466,
+        "width": 207.0,
+        "height": 19.8
+      },
+      {
+        "text": "EEG ACTIVITY",
+        "x": 873.2,
+        "y": 494,
+        "width": 183.6,
+        "height": 19.8
+      },
+      {
+        "text": "GAMMA",
+        "x": 1148.3,
+        "y": 140,
+        "width": 163.4,
+        "height": 41.800000000000004
+      },
+      {
+        "text": ">30-80 HZ",
+        "x": 1147.5,
+        "y": 197,
+        "width": 165.0,
+        "height": 24.200000000000003
+      },
+      {
+        "text": "LOCAL",
+        "x": 1191.3,
+        "y": 240,
+        "width": 77.4,
+        "height": 19.8
+      },
+      {
+        "text": "PROCESSING",
+        "x": 1150.8,
+        "y": 266,
+        "width": 158.4,
+        "height": 19.8
+      },
+      {
+        "text": "ENGAGED NEURAL",
+        "x": 1122.0,
+        "y": 466,
+        "width": 216.0,
+        "height": 19.8
+      },
+      {
+        "text": "NETWORKS",
+        "x": 1167.0,
+        "y": 494,
+        "width": 126.0,
+        "height": 19.8
+      },
+      {
+        "text": "SCHEMATIC WAVES - ONE SECOND PER SECTION",
+        "x": 366.0,
+        "y": 553,
+        "width": 668.0,
+        "height": 22.0
+      },
+      {
+        "text": "SLOWER",
+        "x": 60,
+        "y": 650,
+        "width": 104.0,
+        "height": 22.0
+      },
+      {
+        "text": "INCREASING FREQUENCY",
+        "x": 508.6,
+        "y": 650,
+        "width": 382.8,
+        "height": 24.200000000000003
+      },
+      {
+        "text": "FASTER",
+        "x": 1244.0,
+        "y": 650,
+        "width": 104.0,
+        "height": 22.0
+      },
+      {
+        "text": "BANDS OVERLAP. FREQUENCY IS NOT AN ALERTNESS SCALE.",
+        "x": 356.8,
+        "y": 692,
+        "width": 686.4,
+        "height": 17.6
+      }
+    ]
+  },
+  {
+    "file": "luminous-spectrum-dark.svg",
+    "theme": "dark",
+    "lettering_boxes": [
+      {
+        "text": "FIVE RHYTHM BANDS",
+        "x": 492.65,
+        "y": 35,
+        "width": 414.7,
+        "height": 31.900000000000002
+      },
+      {
+        "text": "SELECTED EEG ASSOCIATIONS",
+        "x": 485.0,
+        "y": 83,
+        "width": 430.0,
+        "height": 22.0
+      },
+      {
+        "text": "DELTA",
+        "x": 88.3,
+        "y": 140,
+        "width": 163.4,
+        "height": 41.800000000000004
+      },
+      {
+        "text": "0.1-<4 HZ",
+        "x": 87.5,
+        "y": 197,
+        "width": 165.0,
+        "height": 24.200000000000003
+      },
+      {
+        "text": "DEEP NREM SLEEP",
+        "x": 57.5,
+        "y": 253,
+        "width": 225.0,
+        "height": 19.8
+      },
+      {
+        "text": "SLOW-WAVE",
+        "x": 98.9,
+        "y": 466,
+        "width": 142.2,
+        "height": 19.8
+      },
+      {
+        "text": "ACTIVITY",
+        "x": 107.0,
+        "y": 494,
+        "width": 126.0,
+        "height": 19.8
+      },
+      {
+        "text": "THETA",
+        "x": 353.3,
+        "y": 140,
+        "width": 163.4,
+        "height": 41.800000000000004
+      },
+      {
+        "text": "4-<8 HZ",
+        "x": 372.3,
+        "y": 197,
+        "width": 125.4,
+        "height": 24.200000000000003
+      },
+      {
+        "text": "DROWSINESS",
+        "x": 355.8,
+        "y": 253,
+        "width": 158.4,
+        "height": 19.8
+      },
+      {
+        "text": "ALSO WAKING",
+        "x": 351.3,
+        "y": 466,
+        "width": 167.4,
+        "height": 19.8
+      },
+      {
+        "text": "MEMORY TASKS",
+        "x": 343.2,
+        "y": 494,
+        "width": 183.6,
+        "height": 19.8
+      },
+      {
+        "text": "ALPHA",
+        "x": 618.3,
+        "y": 140,
+        "width": 163.4,
+        "height": 41.800000000000004
+      },
+      {
+        "text": "8-13 HZ",
+        "x": 637.3,
+        "y": 197,
+        "width": 125.4,
+        "height": 24.200000000000003
+      },
+      {
+        "text": "QUIET",
+        "x": 661.3,
+        "y": 240,
+        "width": 77.4,
+        "height": 19.8
+      },
+      {
+        "text": "WAKEFULNESS",
+        "x": 612.7,
+        "y": 266,
+        "width": 174.6,
+        "height": 19.8
+      },
+      {
+        "text": "ESPECIALLY",
+        "x": 620.8,
+        "y": 466,
+        "width": 158.4,
+        "height": 19.8
+      },
+      {
+        "text": "EYES CLOSED",
+        "x": 616.3,
+        "y": 494,
+        "width": 167.4,
+        "height": 19.8
+      },
+      {
+        "text": "BETA",
+        "x": 900.4,
+        "y": 140,
+        "width": 129.2,
+        "height": 41.800000000000004
+      },
+      {
+        "text": ">13-30 HZ",
+        "x": 882.5,
+        "y": 197,
+        "width": 165.0,
+        "height": 24.200000000000003
+      },
+      {
+        "text": "WAKING ACTIVITY",
+        "x": 848.9,
+        "y": 253,
+        "width": 232.2,
+        "height": 19.8
+      },
+      {
+        "text": "FRONT-CENTRAL",
+        "x": 861.5,
+        "y": 466,
+        "width": 207.0,
+        "height": 19.8
+      },
+      {
+        "text": "EEG ACTIVITY",
+        "x": 873.2,
+        "y": 494,
+        "width": 183.6,
+        "height": 19.8
+      },
+      {
+        "text": "GAMMA",
+        "x": 1148.3,
+        "y": 140,
+        "width": 163.4,
+        "height": 41.800000000000004
+      },
+      {
+        "text": ">30-80 HZ",
+        "x": 1147.5,
+        "y": 197,
+        "width": 165.0,
+        "height": 24.200000000000003
+      },
+      {
+        "text": "LOCAL",
+        "x": 1191.3,
+        "y": 240,
+        "width": 77.4,
+        "height": 19.8
+      },
+      {
+        "text": "PROCESSING",
+        "x": 1150.8,
+        "y": 266,
+        "width": 158.4,
+        "height": 19.8
+      },
+      {
+        "text": "ENGAGED NEURAL",
+        "x": 1122.0,
+        "y": 466,
+        "width": 216.0,
+        "height": 19.8
+      },
+      {
+        "text": "NETWORKS",
+        "x": 1167.0,
+        "y": 494,
+        "width": 126.0,
+        "height": 19.8
+      },
+      {
+        "text": "SCHEMATIC WAVES - ONE SECOND PER SECTION",
+        "x": 366.0,
+        "y": 553,
+        "width": 668.0,
+        "height": 22.0
+      },
+      {
+        "text": "SLOWER",
+        "x": 60,
+        "y": 650,
+        "width": 104.0,
+        "height": 22.0
+      },
+      {
+        "text": "INCREASING FREQUENCY",
+        "x": 508.6,
+        "y": 650,
+        "width": 382.8,
+        "height": 24.200000000000003
+      },
+      {
+        "text": "FASTER",
+        "x": 1244.0,
+        "y": 650,
+        "width": 104.0,
+        "height": 22.0
+      },
+      {
+        "text": "BANDS OVERLAP. FREQUENCY IS NOT AN ALERTNESS SCALE.",
+        "x": 356.8,
+        "y": 692,
+        "width": 686.4,
+        "height": 17.6
+      }
+    ]
+  },
+  {
+    "file": "spectral-ribbon-light.svg",
+    "theme": "light",
+    "lettering_boxes": [
+      {
+        "text": "A SPECTRUM OF RHYTHMS",
+        "x": 428.75,
+        "y": 38,
+        "width": 542.5,
+        "height": 34.1
+      },
+      {
+        "text": "FREQUENCY BANDS AND EXAMPLE CONTEXTS",
+        "x": 394.0,
+        "y": 87,
+        "width": 612.0,
+        "height": 22.0
+      },
+      {
+        "text": "DELTA",
+        "x": 92.6,
+        "y": 160,
+        "width": 154.8,
+        "height": 39.6
+      },
+      {
+        "text": "0.1-<4 HZ",
+        "x": 83.75,
+        "y": 217,
+        "width": 172.5,
+        "height": 25.3
+      },
+      {
+        "text": "DEEP NREM SLEEP",
+        "x": 57.5,
+        "y": 480,
+        "width": 225.0,
+        "height": 19.8
+      },
+      {
+        "text": "SLOW-WAVE",
+        "x": 102.85,
+        "y": 540,
+        "width": 134.3,
+        "height": 18.700000000000003
+      },
+      {
+        "text": "ACTIVITY",
+        "x": 110.5,
+        "y": 566,
+        "width": 119.0,
+        "height": 18.700000000000003
+      },
+      {
+        "text": "THETA",
+        "x": 357.6,
+        "y": 160,
+        "width": 154.8,
+        "height": 39.6
+      },
+      {
+        "text": "4-<8 HZ",
+        "x": 369.45,
+        "y": 217,
+        "width": 131.1,
+        "height": 25.3
+      },
+      {
+        "text": "DROWSINESS",
+        "x": 355.8,
+        "y": 480,
+        "width": 158.4,
+        "height": 19.8
+      },
+      {
+        "text": "ALSO WAKING",
+        "x": 355.95,
+        "y": 540,
+        "width": 158.1,
+        "height": 18.700000000000003
+      },
+      {
+        "text": "MEMORY TASKS",
+        "x": 348.3,
+        "y": 566,
+        "width": 173.4,
+        "height": 18.700000000000003
+      },
+      {
+        "text": "ALPHA",
+        "x": 622.6,
+        "y": 160,
+        "width": 154.8,
+        "height": 39.6
+      },
+      {
+        "text": "8-13 HZ",
+        "x": 634.45,
+        "y": 217,
+        "width": 131.1,
+        "height": 25.3
+      },
+      {
+        "text": "QUIET",
+        "x": 661.3,
+        "y": 467,
+        "width": 77.4,
+        "height": 19.8
+      },
+      {
+        "text": "WAKEFULNESS",
+        "x": 612.7,
+        "y": 493,
+        "width": 174.6,
+        "height": 19.8
+      },
+      {
+        "text": "ESPECIALLY",
+        "x": 625.2,
+        "y": 540,
+        "width": 149.6,
+        "height": 18.700000000000003
+      },
+      {
+        "text": "EYES CLOSED",
+        "x": 620.95,
+        "y": 566,
+        "width": 158.1,
+        "height": 18.700000000000003
+      },
+      {
+        "text": "BETA",
+        "x": 903.8,
+        "y": 160,
+        "width": 122.4,
+        "height": 39.6
+      },
+      {
+        "text": ">13-30 HZ",
+        "x": 878.75,
+        "y": 217,
+        "width": 172.5,
+        "height": 25.3
+      },
+      {
+        "text": "WAKING ACTIVITY",
+        "x": 848.9,
+        "y": 480,
+        "width": 232.2,
+        "height": 19.8
+      },
+      {
+        "text": "FRONT-CENTRAL",
+        "x": 867.25,
+        "y": 540,
+        "width": 195.5,
+        "height": 18.700000000000003
+      },
+      {
+        "text": "EEG ACTIVITY",
+        "x": 878.3,
+        "y": 566,
+        "width": 173.4,
+        "height": 18.700000000000003
+      },
+      {
+        "text": "GAMMA",
+        "x": 1152.6,
+        "y": 160,
+        "width": 154.8,
+        "height": 39.6
+      },
+      {
+        "text": ">30-80 HZ",
+        "x": 1143.75,
+        "y": 217,
+        "width": 172.5,
+        "height": 25.3
+      },
+      {
+        "text": "LOCAL",
+        "x": 1191.3,
+        "y": 467,
+        "width": 77.4,
+        "height": 19.8
+      },
+      {
+        "text": "PROCESSING",
+        "x": 1150.8,
+        "y": 493,
+        "width": 158.4,
+        "height": 19.8
+      },
+      {
+        "text": "ENGAGED NEURAL",
+        "x": 1128.0,
+        "y": 540,
+        "width": 204.0,
+        "height": 18.700000000000003
+      },
+      {
+        "text": "NETWORKS",
+        "x": 1170.5,
+        "y": 566,
+        "width": 119.0,
+        "height": 18.700000000000003
+      },
+      {
+        "text": "SLOWER RHYTHMS",
+        "x": 56,
+        "y": 630,
+        "width": 240.0,
+        "height": 22.0
+      },
+      {
+        "text": "FASTER RHYTHMS",
+        "x": 1104.0,
+        "y": 630,
+        "width": 240.0,
+        "height": 22.0
+      },
+      {
+        "text": "ONE SECOND PER SECTION - NORMALIZED SCHEMATIC WAVES",
+        "x": 313.9,
+        "y": 668,
+        "width": 772.2,
+        "height": 19.8
+      },
+      {
+        "text": "ASSOCIATIONS OVERLAP. NO LISTENING EFFECT IS IMPLIED.",
+        "x": 361.75,
+        "y": 700,
+        "width": 676.5,
+        "height": 16.5
+      }
+    ]
+  },
+  {
+    "file": "spectral-ribbon-dark.svg",
+    "theme": "dark",
+    "lettering_boxes": [
+      {
+        "text": "A SPECTRUM OF RHYTHMS",
+        "x": 428.75,
+        "y": 38,
+        "width": 542.5,
+        "height": 34.1
+      },
+      {
+        "text": "FREQUENCY BANDS AND EXAMPLE CONTEXTS",
+        "x": 394.0,
+        "y": 87,
+        "width": 612.0,
+        "height": 22.0
+      },
+      {
+        "text": "DELTA",
+        "x": 92.6,
+        "y": 160,
+        "width": 154.8,
+        "height": 39.6
+      },
+      {
+        "text": "0.1-<4 HZ",
+        "x": 83.75,
+        "y": 217,
+        "width": 172.5,
+        "height": 25.3
+      },
+      {
+        "text": "DEEP NREM SLEEP",
+        "x": 57.5,
+        "y": 480,
+        "width": 225.0,
+        "height": 19.8
+      },
+      {
+        "text": "SLOW-WAVE",
+        "x": 102.85,
+        "y": 540,
+        "width": 134.3,
+        "height": 18.700000000000003
+      },
+      {
+        "text": "ACTIVITY",
+        "x": 110.5,
+        "y": 566,
+        "width": 119.0,
+        "height": 18.700000000000003
+      },
+      {
+        "text": "THETA",
+        "x": 357.6,
+        "y": 160,
+        "width": 154.8,
+        "height": 39.6
+      },
+      {
+        "text": "4-<8 HZ",
+        "x": 369.45,
+        "y": 217,
+        "width": 131.1,
+        "height": 25.3
+      },
+      {
+        "text": "DROWSINESS",
+        "x": 355.8,
+        "y": 480,
+        "width": 158.4,
+        "height": 19.8
+      },
+      {
+        "text": "ALSO WAKING",
+        "x": 355.95,
+        "y": 540,
+        "width": 158.1,
+        "height": 18.700000000000003
+      },
+      {
+        "text": "MEMORY TASKS",
+        "x": 348.3,
+        "y": 566,
+        "width": 173.4,
+        "height": 18.700000000000003
+      },
+      {
+        "text": "ALPHA",
+        "x": 622.6,
+        "y": 160,
+        "width": 154.8,
+        "height": 39.6
+      },
+      {
+        "text": "8-13 HZ",
+        "x": 634.45,
+        "y": 217,
+        "width": 131.1,
+        "height": 25.3
+      },
+      {
+        "text": "QUIET",
+        "x": 661.3,
+        "y": 467,
+        "width": 77.4,
+        "height": 19.8
+      },
+      {
+        "text": "WAKEFULNESS",
+        "x": 612.7,
+        "y": 493,
+        "width": 174.6,
+        "height": 19.8
+      },
+      {
+        "text": "ESPECIALLY",
+        "x": 625.2,
+        "y": 540,
+        "width": 149.6,
+        "height": 18.700000000000003
+      },
+      {
+        "text": "EYES CLOSED",
+        "x": 620.95,
+        "y": 566,
+        "width": 158.1,
+        "height": 18.700000000000003
+      },
+      {
+        "text": "BETA",
+        "x": 903.8,
+        "y": 160,
+        "width": 122.4,
+        "height": 39.6
+      },
+      {
+        "text": ">13-30 HZ",
+        "x": 878.75,
+        "y": 217,
+        "width": 172.5,
+        "height": 25.3
+      },
+      {
+        "text": "WAKING ACTIVITY",
+        "x": 848.9,
+        "y": 480,
+        "width": 232.2,
+        "height": 19.8
+      },
+      {
+        "text": "FRONT-CENTRAL",
+        "x": 867.25,
+        "y": 540,
+        "width": 195.5,
+        "height": 18.700000000000003
+      },
+      {
+        "text": "EEG ACTIVITY",
+        "x": 878.3,
+        "y": 566,
+        "width": 173.4,
+        "height": 18.700000000000003
+      },
+      {
+        "text": "GAMMA",
+        "x": 1152.6,
+        "y": 160,
+        "width": 154.8,
+        "height": 39.6
+      },
+      {
+        "text": ">30-80 HZ",
+        "x": 1143.75,
+        "y": 217,
+        "width": 172.5,
+        "height": 25.3
+      },
+      {
+        "text": "LOCAL",
+        "x": 1191.3,
+        "y": 467,
+        "width": 77.4,
+        "height": 19.8
+      },
+      {
+        "text": "PROCESSING",
+        "x": 1150.8,
+        "y": 493,
+        "width": 158.4,
+        "height": 19.8
+      },
+      {
+        "text": "ENGAGED NEURAL",
+        "x": 1128.0,
+        "y": 540,
+        "width": 204.0,
+        "height": 18.700000000000003
+      },
+      {
+        "text": "NETWORKS",
+        "x": 1170.5,
+        "y": 566,
+        "width": 119.0,
+        "height": 18.700000000000003
+      },
+      {
+        "text": "SLOWER RHYTHMS",
+        "x": 56,
+        "y": 630,
+        "width": 240.0,
+        "height": 22.0
+      },
+      {
+        "text": "FASTER RHYTHMS",
+        "x": 1104.0,
+        "y": 630,
+        "width": 240.0,
+        "height": 22.0
+      },
+      {
+        "text": "ONE SECOND PER SECTION - NORMALIZED SCHEMATIC WAVES",
+        "x": 313.9,
+        "y": 668,
+        "width": 772.2,
+        "height": 19.8
+      },
+      {
+        "text": "ASSOCIATIONS OVERLAP. NO LISTENING EFFECT IS IMPLIED.",
+        "x": 361.75,
+        "y": 700,
+        "width": 676.5,
+        "height": 16.5
+      }
+    ]
+  },
+  {
+    "file": "wave-medallions-light.svg",
+    "theme": "light",
+    "lettering_boxes": [
+      {
+        "text": "FIVE RHYTHM BANDS",
+        "x": 485.5,
+        "y": 35,
+        "width": 429.0,
+        "height": 33.0
+      },
+      {
+        "text": "A VISUAL GUIDE TO SELECTED EEG ASSOCIATIONS",
+        "x": 357.05,
+        "y": 83,
+        "width": 685.9,
+        "height": 20.900000000000002
+      },
+      {
+        "text": "DELTA",
+        "x": 92.6,
+        "y": 144,
+        "width": 154.8,
+        "height": 39.6
+      },
+      {
+        "text": "0.1-<4 HZ",
+        "x": 87.5,
+        "y": 199,
+        "width": 165.0,
+        "height": 24.200000000000003
+      },
+      {
+        "text": "DEEP NREM SLEEP",
+        "x": 57.5,
+        "y": 468,
+        "width": 225.0,
+        "height": 19.8
+      },
+      {
+        "text": "SLOW-WAVE",
+        "x": 102.85,
+        "y": 525,
+        "width": 134.3,
+        "height": 18.700000000000003
+      },
+      {
+        "text": "ACTIVITY",
+        "x": 110.5,
+        "y": 551,
+        "width": 119.0,
+        "height": 18.700000000000003
+      },
+      {
+        "text": "THETA",
+        "x": 357.6,
+        "y": 144,
+        "width": 154.8,
+        "height": 39.6
+      },
+      {
+        "text": "4-<8 HZ",
+        "x": 372.3,
+        "y": 199,
+        "width": 125.4,
+        "height": 24.200000000000003
+      },
+      {
+        "text": "DROWSINESS",
+        "x": 355.8,
+        "y": 468,
+        "width": 158.4,
+        "height": 19.8
+      },
+      {
+        "text": "ALSO WAKING",
+        "x": 355.95,
+        "y": 525,
+        "width": 158.1,
+        "height": 18.700000000000003
+      },
+      {
+        "text": "MEMORY TASKS",
+        "x": 348.3,
+        "y": 551,
+        "width": 173.4,
+        "height": 18.700000000000003
+      },
+      {
+        "text": "ALPHA",
+        "x": 622.6,
+        "y": 144,
+        "width": 154.8,
+        "height": 39.6
+      },
+      {
+        "text": "8-13 HZ",
+        "x": 637.3,
+        "y": 199,
+        "width": 125.4,
+        "height": 24.200000000000003
+      },
+      {
+        "text": "QUIET",
+        "x": 661.3,
+        "y": 455,
+        "width": 77.4,
+        "height": 19.8
+      },
+      {
+        "text": "WAKEFULNESS",
+        "x": 612.7,
+        "y": 481,
+        "width": 174.6,
+        "height": 19.8
+      },
+      {
+        "text": "ESPECIALLY",
+        "x": 625.2,
+        "y": 525,
+        "width": 149.6,
+        "height": 18.700000000000003
+      },
+      {
+        "text": "EYES CLOSED",
+        "x": 620.95,
+        "y": 551,
+        "width": 158.1,
+        "height": 18.700000000000003
+      },
+      {
+        "text": "BETA",
+        "x": 903.8,
+        "y": 144,
+        "width": 122.4,
+        "height": 39.6
+      },
+      {
+        "text": ">13-30 HZ",
+        "x": 882.5,
+        "y": 199,
+        "width": 165.0,
+        "height": 24.200000000000003
+      },
+      {
+        "text": "WAKING ACTIVITY",
+        "x": 848.9,
+        "y": 468,
+        "width": 232.2,
+        "height": 19.8
+      },
+      {
+        "text": "FRONT-CENTRAL",
+        "x": 867.25,
+        "y": 525,
+        "width": 195.5,
+        "height": 18.700000000000003
+      },
+      {
+        "text": "EEG ACTIVITY",
+        "x": 878.3,
+        "y": 551,
+        "width": 173.4,
+        "height": 18.700000000000003
+      },
+      {
+        "text": "GAMMA",
+        "x": 1152.6,
+        "y": 144,
+        "width": 154.8,
+        "height": 39.6
+      },
+      {
+        "text": ">30-80 HZ",
+        "x": 1147.5,
+        "y": 199,
+        "width": 165.0,
+        "height": 24.200000000000003
+      },
+      {
+        "text": "LOCAL",
+        "x": 1191.3,
+        "y": 455,
+        "width": 77.4,
+        "height": 19.8
+      },
+      {
+        "text": "PROCESSING",
+        "x": 1150.8,
+        "y": 481,
+        "width": 158.4,
+        "height": 19.8
+      },
+      {
+        "text": "ENGAGED NEURAL",
+        "x": 1128.0,
+        "y": 525,
+        "width": 204.0,
+        "height": 18.700000000000003
+      },
+      {
+        "text": "NETWORKS",
+        "x": 1170.5,
+        "y": 551,
+        "width": 119.0,
+        "height": 18.700000000000003
+      },
+      {
+        "text": "INCREASING FREQUENCY - NOT A RANKING OF MENTAL STATES",
+        "x": 301.3,
+        "y": 645,
+        "width": 797.4,
+        "height": 19.8
+      },
+      {
+        "text": "HALF-SECOND SCHEMATICS. NOT EEG RECORDINGS OR PREDICTED AUDIO EFFECTS.",
+        "x": 253.0,
+        "y": 687,
+        "width": 894.0,
+        "height": 16.5
+      }
+    ]
+  },
+  {
+    "file": "wave-medallions-dark.svg",
+    "theme": "dark",
+    "lettering_boxes": [
+      {
+        "text": "FIVE RHYTHM BANDS",
+        "x": 485.5,
+        "y": 35,
+        "width": 429.0,
+        "height": 33.0
+      },
+      {
+        "text": "A VISUAL GUIDE TO SELECTED EEG ASSOCIATIONS",
+        "x": 357.05,
+        "y": 83,
+        "width": 685.9,
+        "height": 20.900000000000002
+      },
+      {
+        "text": "DELTA",
+        "x": 92.6,
+        "y": 144,
+        "width": 154.8,
+        "height": 39.6
+      },
+      {
+        "text": "0.1-<4 HZ",
+        "x": 87.5,
+        "y": 199,
+        "width": 165.0,
+        "height": 24.200000000000003
+      },
+      {
+        "text": "DEEP NREM SLEEP",
+        "x": 57.5,
+        "y": 468,
+        "width": 225.0,
+        "height": 19.8
+      },
+      {
+        "text": "SLOW-WAVE",
+        "x": 102.85,
+        "y": 525,
+        "width": 134.3,
+        "height": 18.700000000000003
+      },
+      {
+        "text": "ACTIVITY",
+        "x": 110.5,
+        "y": 551,
+        "width": 119.0,
+        "height": 18.700000000000003
+      },
+      {
+        "text": "THETA",
+        "x": 357.6,
+        "y": 144,
+        "width": 154.8,
+        "height": 39.6
+      },
+      {
+        "text": "4-<8 HZ",
+        "x": 372.3,
+        "y": 199,
+        "width": 125.4,
+        "height": 24.200000000000003
+      },
+      {
+        "text": "DROWSINESS",
+        "x": 355.8,
+        "y": 468,
+        "width": 158.4,
+        "height": 19.8
+      },
+      {
+        "text": "ALSO WAKING",
+        "x": 355.95,
+        "y": 525,
+        "width": 158.1,
+        "height": 18.700000000000003
+      },
+      {
+        "text": "MEMORY TASKS",
+        "x": 348.3,
+        "y": 551,
+        "width": 173.4,
+        "height": 18.700000000000003
+      },
+      {
+        "text": "ALPHA",
+        "x": 622.6,
+        "y": 144,
+        "width": 154.8,
+        "height": 39.6
+      },
+      {
+        "text": "8-13 HZ",
+        "x": 637.3,
+        "y": 199,
+        "width": 125.4,
+        "height": 24.200000000000003
+      },
+      {
+        "text": "QUIET",
+        "x": 661.3,
+        "y": 455,
+        "width": 77.4,
+        "height": 19.8
+      },
+      {
+        "text": "WAKEFULNESS",
+        "x": 612.7,
+        "y": 481,
+        "width": 174.6,
+        "height": 19.8
+      },
+      {
+        "text": "ESPECIALLY",
+        "x": 625.2,
+        "y": 525,
+        "width": 149.6,
+        "height": 18.700000000000003
+      },
+      {
+        "text": "EYES CLOSED",
+        "x": 620.95,
+        "y": 551,
+        "width": 158.1,
+        "height": 18.700000000000003
+      },
+      {
+        "text": "BETA",
+        "x": 903.8,
+        "y": 144,
+        "width": 122.4,
+        "height": 39.6
+      },
+      {
+        "text": ">13-30 HZ",
+        "x": 882.5,
+        "y": 199,
+        "width": 165.0,
+        "height": 24.200000000000003
+      },
+      {
+        "text": "WAKING ACTIVITY",
+        "x": 848.9,
+        "y": 468,
+        "width": 232.2,
+        "height": 19.8
+      },
+      {
+        "text": "FRONT-CENTRAL",
+        "x": 867.25,
+        "y": 525,
+        "width": 195.5,
+        "height": 18.700000000000003
+      },
+      {
+        "text": "EEG ACTIVITY",
+        "x": 878.3,
+        "y": 551,
+        "width": 173.4,
+        "height": 18.700000000000003
+      },
+      {
+        "text": "GAMMA",
+        "x": 1152.6,
+        "y": 144,
+        "width": 154.8,
+        "height": 39.6
+      },
+      {
+        "text": ">30-80 HZ",
+        "x": 1147.5,
+        "y": 199,
+        "width": 165.0,
+        "height": 24.200000000000003
+      },
+      {
+        "text": "LOCAL",
+        "x": 1191.3,
+        "y": 455,
+        "width": 77.4,
+        "height": 19.8
+      },
+      {
+        "text": "PROCESSING",
+        "x": 1150.8,
+        "y": 481,
+        "width": 158.4,
+        "height": 19.8
+      },
+      {
+        "text": "ENGAGED NEURAL",
+        "x": 1128.0,
+        "y": 525,
+        "width": 204.0,
+        "height": 18.700000000000003
+      },
+      {
+        "text": "NETWORKS",
+        "x": 1170.5,
+        "y": 551,
+        "width": 119.0,
+        "height": 18.700000000000003
+      },
+      {
+        "text": "INCREASING FREQUENCY - NOT A RANKING OF MENTAL STATES",
+        "x": 301.3,
+        "y": 645,
+        "width": 797.4,
+        "height": 19.8
+      },
+      {
+        "text": "HALF-SECOND SCHEMATICS. NOT EEG RECORDINGS OR PREDICTED AUDIO EFFECTS.",
+        "x": 253.0,
+        "y": 687,
+        "width": 894.0,
+        "height": 16.5
+      }
+    ]
+  }
+]

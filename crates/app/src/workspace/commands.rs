@@ -33,6 +33,8 @@ pub enum Command {
     ChooseControl { row: RowKey, value: ControlValue },
     /// Change the interaction surface.
     SetView(View),
+    /// Optional teaching navigation and captured example creation.
+    Learning(crate::learning::LearningCommand),
     /// Edit the current document or request its replacement.
     Editor(EditorCommand),
     /// Query or act on the current library listing.
@@ -174,7 +176,9 @@ impl Workspace {
     /// # Errors
     /// Returns the typed refusal while retaining its owner-specific status.
     pub fn apply(&mut self, command: Command) -> Result<(), Refusal> {
+        self.learning_command_admission(&command)?;
         match command {
+            Command::Learning(command) => self.apply_learning(command),
             Command::Answer { prompt, answer } => {
                 if self.respond_prompt(prompt, answer) {
                     self.poll();
@@ -1064,6 +1068,9 @@ impl Workspace {
                 .task()
                 .map(|task| super::status::FileActivity::from_kind(&task.kind)),
         };
+        if self.learning.is_some() {
+            Self::suppress_learning_actions(&mut view);
+        }
         view.operations = self.operation_views(&view);
         view
     }
@@ -1076,7 +1083,10 @@ impl Workspace {
                 let enabled = match operation {
                     O::Save => self.view == View::Workbench && view.can_save(),
                     O::SaveCopy => self.view == View::Workbench && view.can_save_copy(),
-                    O::NewSound | O::EditSavedRecipe | O::EditExternalFile => view.can_new(),
+                    O::NewSound => view.can_new(),
+                    O::EditSavedRecipe | O::EditExternalFile => {
+                        self.learning.is_none() && view.can_new()
+                    }
                     O::EditCopy => view.can_copy(),
                     O::OpenRecipe => view.can_import(),
                     O::ExportRecipe => view.can_export_recipe(),

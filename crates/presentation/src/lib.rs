@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 pub mod build_info;
 pub mod errors;
+pub mod learning;
 pub mod library;
 pub mod numbers;
 pub mod recipe;

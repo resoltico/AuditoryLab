@@ -53,6 +53,7 @@ impl SlintAdapter {
         };
         *self.control_choices.borrow_mut() = controls;
         self.project_control_choices(ui);
+        self.project_learning(ui);
         self.project_view_captions(ui, &editor);
         self.reconcile_document(ui, &editor);
         if let Some(workspace) = self.workspace.borrow().as_ref() {
@@ -735,4 +736,152 @@ pub(crate) fn project_captions(
             ViewCaption::AudioDetails => captions.set_audio_details(label),
         }
     }
+}
+
+impl SlintAdapter {
+    fn project_learning(&self, ui: &MainWindow) {
+        use auditorylab_app::learning::Topic;
+        let topics = Topic::ALL;
+        ui.set_learning_overview_index(i32::try_from(Topic::Overview.index()).unwrap_or(0));
+        let workspace = self.workspace.borrow();
+        let Some(workspace) = workspace.as_ref() else {
+            return;
+        };
+        let learning = workspace.learning();
+        ui.set_learning_visible(learning.is_some());
+        ui.set_tab_index(match workspace.view() {
+            auditorylab_app::workspace::View::Library => 0,
+            auditorylab_app::workspace::View::Workbench => 1,
+        });
+        ui.set_learning_topics(
+            Rc::new(VecModel::from(
+                topics
+                    .iter()
+                    .map(|topic| {
+                        SharedString::from(auditorylab_presentation::learning::heading(*topic))
+                    })
+                    .collect::<Vec<_>>(),
+            ))
+            .into(),
+        );
+        let examples = auditorylab_app::learning::band_examples();
+        ui.set_learning_bands(
+            Rc::new(VecModel::from(
+                examples
+                    .iter()
+                    .map(|example| SharedString::from(example.band.to_string()))
+                    .collect::<Vec<_>>(),
+            ))
+            .into(),
+        );
+        if let Some(learning) = learning {
+            ui.set_learning_topic_key(learning.topic.key().into());
+            Self::project_learning_visuals(ui, learning);
+            ui.set_learning_topic(
+                i32::try_from(
+                    topics
+                        .iter()
+                        .position(|t| *t == learning.topic)
+                        .unwrap_or(0),
+                )
+                .unwrap_or(0),
+            );
+            ui.set_learning_band(
+                i32::try_from(
+                    examples
+                        .iter()
+                        .position(|e| e.band == learning.band)
+                        .unwrap_or(0),
+                )
+                .unwrap_or(0),
+            );
+            ui.set_learning_heading(
+                auditorylab_presentation::learning::heading(learning.topic).into(),
+            );
+            ui.set_learning_body(auditorylab_presentation::learning::body(learning.topic).into());
+            ui.set_learning_band_description(
+                auditorylab_presentation::learning::band_description(learning.band).into(),
+            );
+        }
+        ui.invoke_sync_learning_choices();
+    }
+}
+
+impl SlintAdapter {
+    fn project_learning_visuals(
+        ui: &MainWindow,
+        learning: auditorylab_app::learning::LearningState,
+    ) {
+        use auditorylab_app::learning::{Construction, Topic};
+        use auditorylab_presentation::learning as text;
+        ui.set_learning_constructions(
+            Rc::new(VecModel::from(
+                Construction::ALL
+                    .into_iter()
+                    .map(|construction| {
+                        SharedString::from(text::construction_heading(construction))
+                    })
+                    .collect::<Vec<_>>(),
+            ))
+            .into(),
+        );
+        ui.set_learning_construction(i32::try_from(learning.construction.index()).unwrap_or(0));
+        if !matches!(learning.topic, Topic::PitchAndRhythm | Topic::SoundTypes) {
+            ui.set_learning_traces(Rc::new(VecModel::from(Vec::<ModelLane>::new())).into());
+            return;
+        }
+        let construction = if learning.topic == Topic::PitchAndRhythm {
+            Construction::PulsedTone
+        } else {
+            learning.construction
+        };
+        let visual = construction.visual();
+        ui.set_learning_construction_description(
+            text::construction_description(construction).into(),
+        );
+        let mut rows = Vec::new();
+        if learning.topic == Topic::PitchAndRhythm {
+            let trace = fitted_learning_waveform(&visual.carrier);
+            rows.push(ModelLane {
+                component: String::new().into(),
+                label: text::carrier_caption(visual).into(),
+                trace: trace[0].as_str().into(),
+            });
+        } else {
+            let trace = fitted_learning_waveform(&visual.waveform);
+            for (channel, path) in ["Left", "Right"].into_iter().zip(trace) {
+                rows.push(ModelLane {
+                    component: String::new().into(),
+                    label: format!("{} · {channel}", text::waveform_caption(visual)).into(),
+                    trace: path.into(),
+                });
+            }
+        }
+        for lane in &visual.timing.lanes {
+            let columns: Vec<_> = lane.columns.iter().map(|extent| [*extent; 2]).collect();
+            let [trace, _] = scope::paths(&columns, 1.0);
+            rows.push(ModelLane {
+                component: String::new().into(),
+                label: format!(
+                    "{} · {}",
+                    text::timing_caption(visual),
+                    auditorylab_presentation::workspace::monitor::model_view_lane_label(lane)
+                )
+                .into(),
+                trace: trace.into(),
+            });
+        }
+        ui.set_learning_traces(Rc::new(VecModel::from(rows)).into());
+    }
+}
+
+fn fitted_learning_waveform(bins: &[[auditorylab_app::core::waveform::Extent; 2]]) -> [String; 2] {
+    let limit = bins
+        .iter()
+        .flatten()
+        .fold(0.0_f64, |limit, extent| {
+            limit.max(extent.min.abs()).max(extent.max.abs())
+        })
+        .max(f64::MIN_POSITIVE);
+    scope::paths(bins, limit)
 }

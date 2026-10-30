@@ -12,6 +12,7 @@ import { TransportBar } from "transport.slint";
 import { Button } from "button.slint";
 
 
+import { LearningPane } from "learning-pane.slint";
 import { WorkspaceNavigation } from "workspace-navigation.slint";
 export { Terms } from "vocabulary.slint";
 import { Terms } from "vocabulary.slint";
@@ -251,7 +252,31 @@ export component MainWindow inherits Window {
     in property <string> export-reason;
     in property <string> play-reason;
     in property <string> peak;
-    in-out property <int> tab-index: 0;
+    in-out property <string> onboarding-notice;
+    in property <bool> learning-visible;
+    in property <int> learning-topic;
+    in property <int> learning-overview-index;
+    in property <string> learning-topic-key;
+    in property <int> learning-band;
+    in property <int> learning-construction;
+    in property <[string]> learning-constructions;
+    in property <string> learning-construction-description;
+    in property <[ModelLane]> learning-traces;
+    callback select-learning-construction(int);
+    in property <string> learning-heading;
+    in property <string> learning-body;
+    in property <string> learning-band-description;
+    in property <[string]> learning-topics;
+    in property <[string]> learning-bands;
+    callback open-learning(int);
+    callback select-learning-band(int);
+    callback browse-learning-library();
+    callback create-learning-example();
+    callback return-to-work();
+    public function focus-learning() { learning-page.focus-start(); }
+    public function sync-learning-choices() { learning-page.sync-choices(); }
+    public function focus-workspace-navigation() { workspace-navigation.focus(); }
+    in property <int> tab-index: 0;
     in-out property <int> window-index;
     in-out property <int> rate-index: 1;
     in-out property <bool> research: false;
@@ -514,6 +539,11 @@ export component MainWindow inherits Window {
         Menu {
             title: Terms.caption-help;
             MenuItem {
+                title: "Start here";
+                activated => { root.open-learning(root.learning-overview-index); }
+            }
+
+            MenuItem {
                 title: Terms.action-desktop-guide;
                 activated => { root.open-guide(); }
             }
@@ -529,22 +559,33 @@ export component MainWindow inherits Window {
 
     workspace-layout := VerticalBox {
         spacing: 0px;
+        if root.onboarding-notice != "": Text {
+            text: root.onboarding-notice;
+            color: Palette.foreground;
+            wrap: word-wrap;
+            min-width: 0px;
+            vertical-stretch: 0;
+            accessible-role: text;
+        }
         toolbar := HorizontalBox {
             changed preferred-height => { root.update-monitor-layout(); }
             vertical-stretch: 0;
             min-height: root.ui-size * 3;
             padding: 4px;
-            WorkspaceNavigation {
-                current <=> root.tab-index;
+            workspace-navigation := WorkspaceNavigation {
+                current: root.learning-visible ? 2 : root.tab-index;
                 text-size: root.ui-size;
-                selected(index) => { root.tab-changed(index); }
+                selected(index) => {
+                    if index == 2 { root.open-learning(root.learning-overview-index); }
+                    else { root.tab-changed(index); }
+                }
             }
 
             Rectangle {
                 horizontal-stretch: 1;
             }
 
-            if root.tab-index == 0: Button {
+            if !root.learning-visible && root.tab-index == 0: Button {
                 text: Terms.caption-library-options;
                 triggered => { dialogs.open-library-options(); }
             }
@@ -564,7 +605,7 @@ export component MainWindow inherits Window {
                 text: Terms.caption-task-details-dialog;
                 triggered => { root.show-diagnostics(); }
             }
-            if root.tab-index == 1: Button {
+            if !root.learning-visible && root.tab-index == 1: Button {
                 text: Actions.save.label;
                 enabled: Actions.save.enabled;
                 accessible-description: root.save-reason;
@@ -583,6 +624,7 @@ export component MainWindow inherits Window {
         Rectangle {
             min-height: 0px;
             library-page := LibraryPane {
+                visible: !root.learning-visible && root.tab-index == 0;
                 width: parent.width;
                 height: parent.height;
                 add-to-library(arg0) => { root.add-to-library(arg0); }
@@ -667,11 +709,12 @@ export component MainWindow inherits Window {
                 structure: root.structure;
                 studied: root.studied;
                 summary: root.summary;
-                tab-index <=> root.tab-index;
+                tab-index: root.tab-index;
                 ui-size: root.ui-size;
             }
 
             WorkbenchPane {
+                visible: !root.learning-visible && root.tab-index == 1;
                 width: parent.width;
                 height: parent.height;
                 add-reason: root.add-reason;
@@ -733,9 +776,34 @@ export component MainWindow inherits Window {
                 stage-metadata(arg0, arg1) => { root.stage-metadata(arg0, arg1); }
                 stage-parameter(arg0, arg1) => { root.stage-parameter(arg0, arg1); }
                 summary-field: root.summary-field;
-                tab-index <=> root.tab-index;
+                tab-index: root.tab-index;
                 title-field: root.title-field;
                 ui-size: root.ui-size;
+            }
+
+            learning-page := LearningPane {
+                width: parent.width;
+                height: parent.height;
+                active: root.learning-visible;
+                topic: root.learning-topic;
+                topic-key: root.learning-topic-key;
+                band: root.learning-band;
+                construction: root.learning-construction;
+                constructions: root.learning-constructions;
+                construction-description: root.learning-construction-description;
+                traces: root.learning-traces;
+                select-construction(index) => { root.select-learning-construction(index); }
+                heading: root.learning-heading;
+                body: root.learning-body;
+                band-description: root.learning-band-description;
+                topics: root.learning-topics;
+                bands: root.learning-bands;
+                ui-size: root.ui-size;
+                open-topic(index) => { root.open-learning(index); }
+                select-band(index) => { root.select-learning-band(index); }
+                browse-library() => { root.browse-learning-library(); }
+                create-example() => { root.create-learning-example(); }
+                return-to-work() => { root.return-to-work(); }
             }
         }
 

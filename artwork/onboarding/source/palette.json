@@ -1,0 +1,36 @@
+{
+  "copyright": "Copyright (c) 2026 Ervins Strauhmanis. All rights reserved.",
+  "license": "LicenseRef-Proprietary-Artwork",
+  "themes": {
+    "light": {
+      "APPEARANCE": "light",
+      "BACKGROUND": "#f8fafc",
+      "FIELD": "#e9f1f5",
+      "INK": "#18344b",
+      "SUB": "#466477",
+      "LINE": "#d0dde6",
+      "HALO_OPACITY": ".11",
+      "FILL_OPACITY": ".09",
+      "COLOR_DELTA": "#275f9f",
+      "COLOR_THETA": "#096e5d",
+      "COLOR_ALPHA": "#667817",
+      "COLOR_BETA": "#9b5118",
+      "COLOR_GAMMA": "#7944aa"
+    },
+    "dark": {
+      "APPEARANCE": "dark",
+      "BACKGROUND": "#081622",
+      "FIELD": "#122f3a",
+      "INK": "#edf5f7",
+      "SUB": "#aec2ce",
+      "LINE": "#294655",
+      "HALO_OPACITY": ".22",
+      "FILL_OPACITY": ".14",
+      "COLOR_DELTA": "#74acf0",
+      "COLOR_THETA": "#66d3b8",
+      "COLOR_ALPHA": "#c5db73",
+      "COLOR_BETA": "#f2ad6b",
+      "COLOR_GAMMA": "#cc96e9"
+    }
+  }
+}

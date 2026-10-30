@@ -1,0 +1,26 @@
+[
+  {
+    "name": "a-frequency-and-context",
+    "width": 1120,
+    "height": 735,
+    "text_bounds": "passed",
+    "all_bands": true,
+    "original_geometry": true
+  },
+  {
+    "name": "b-overlapping-contexts",
+    "width": 1120,
+    "height": 735,
+    "text_bounds": "passed",
+    "all_bands": true,
+    "original_geometry": true
+  },
+  {
+    "name": "c-context-first",
+    "width": 1120,
+    "height": 695,
+    "text_bounds": "passed",
+    "all_bands": true,
+    "original_geometry": true
+  }
+]

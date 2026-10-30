@@ -1,0 +1,100 @@
+<!-- Copyright (c) 2026 Ervins Strauhmanis. All rights reserved.
+SPDX-License-Identifier: LicenseRef-Proprietary-Artwork
+See the root Auditory Lab LICENSE for artwork permissions. -->
+
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1000" height="260" viewBox="0 0 1000 260" role="img" aria-labelledby="title desc">
+<title id="title">Beta illustrative rhythm, ${EXAMPLE_HZ} cycles per second, ${APPEARANCE} appearance</title>
+<desc id="desc">Normalized one-second sinusoidal frequency illustration. Not recorded EEG, a pulse envelope or rendered audio. It uses the same representative rhythm as the combined spectrum.</desc>
+<defs>${GLYPH_DEFINITIONS}<filter id="wave-glow" x="-20%" y="-100%" width="140%" height="300%"><feGaussianBlur stdDeviation="4"/></filter></defs>
+<rect width="1000" height="260" rx="10" fill="${BACKGROUND}"/>
+<g data-lettering="BETA - ILLUSTRATIVE RHYTHM" aria-label="BETA - ILLUSTRATIVE RHYTHM" transform="translate(55.000 22) scale(2.20000)" fill="none" stroke="${INK}" stroke-width=".8" stroke-linecap="round" stroke-linejoin="round">
+<use xlink:href="#g66" x="0"/>
+<use xlink:href="#g69" x="9"/>
+<use xlink:href="#g84" x="18"/>
+<use xlink:href="#g65" x="27"/>
+<use xlink:href="#g45" x="41"/>
+<use xlink:href="#g73" x="55"/>
+<use xlink:href="#g76" x="64"/>
+<use xlink:href="#g76" x="73"/>
+<use xlink:href="#g85" x="82"/>
+<use xlink:href="#g83" x="91"/>
+<use xlink:href="#g84" x="100"/>
+<use xlink:href="#g82" x="109"/>
+<use xlink:href="#g65" x="118"/>
+<use xlink:href="#g84" x="127"/>
+<use xlink:href="#g73" x="136"/>
+<use xlink:href="#g86" x="145"/>
+<use xlink:href="#g69" x="154"/>
+<use xlink:href="#g82" x="168"/>
+<use xlink:href="#g72" x="177"/>
+<use xlink:href="#g89" x="186"/>
+<use xlink:href="#g84" x="195"/>
+<use xlink:href="#g72" x="204"/>
+<use xlink:href="#g77" x="213"/>
+</g>
+${RATE_LABEL}
+<path d="M55 78V194 M55 136H947" stroke="${LINE}" fill="none"/>
+<path d="${WAVE_BETA}" stroke="${COLOR_BETA}" stroke-width="8" opacity=".16" fill="none" filter="url(#wave-glow)"/>
+<path data-wave="beta" data-example-hz="${EXAMPLE_HZ}" d="${WAVE_BETA}" stroke="${COLOR_BETA}" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<g data-lettering="1" aria-label="1" transform="translate(18.000 79) scale(1.80000)" fill="none" stroke="${SUB}" stroke-width=".8" stroke-linecap="round" stroke-linejoin="round">
+<use xlink:href="#g49" x="0"/>
+</g>
+<g data-lettering="0" aria-label="0" transform="translate(18.000 127) scale(1.80000)" fill="none" stroke="${SUB}" stroke-width=".8" stroke-linecap="round" stroke-linejoin="round">
+<use xlink:href="#g48" x="0"/>
+</g>
+<g data-lettering="-1" aria-label="-1" transform="translate(10.000 179) scale(1.80000)" fill="none" stroke="${SUB}" stroke-width=".8" stroke-linecap="round" stroke-linejoin="round">
+<use xlink:href="#g45" x="0"/>
+<use xlink:href="#g49" x="9"/>
+</g>
+<g data-lettering="0" aria-label="0" transform="translate(55.000 209) scale(1.80000)" fill="none" stroke="${SUB}" stroke-width=".8" stroke-linecap="round" stroke-linejoin="round">
+<use xlink:href="#g48" x="0"/>
+</g>
+<g data-lettering="1 SECOND" aria-label="1 SECOND" transform="translate(828.200 209) scale(1.80000)" fill="none" stroke="${SUB}" stroke-width=".8" stroke-linecap="round" stroke-linejoin="round">
+<use xlink:href="#g49" x="0"/>
+<use xlink:href="#g83" x="14"/>
+<use xlink:href="#g69" x="23"/>
+<use xlink:href="#g67" x="32"/>
+<use xlink:href="#g79" x="41"/>
+<use xlink:href="#g78" x="50"/>
+<use xlink:href="#g68" x="59"/>
+</g>
+<g data-lettering="NORMALIZED SCHEMATIC - NOT AN EEG RECORDING" aria-label="NORMALIZED SCHEMATIC - NOT AN EEG RECORDING" transform="translate(247.300 242) scale(1.40000)" fill="none" stroke="${SUB}" stroke-width=".8" stroke-linecap="round" stroke-linejoin="round">
+<use xlink:href="#g78" x="0"/>
+<use xlink:href="#g79" x="9"/>
+<use xlink:href="#g82" x="18"/>
+<use xlink:href="#g77" x="27"/>
+<use xlink:href="#g65" x="36"/>
+<use xlink:href="#g76" x="45"/>
+<use xlink:href="#g73" x="54"/>
+<use xlink:href="#g90" x="63"/>
+<use xlink:href="#g69" x="72"/>
+<use xlink:href="#g68" x="81"/>
+<use xlink:href="#g83" x="95"/>
+<use xlink:href="#g67" x="104"/>
+<use xlink:href="#g72" x="113"/>
+<use xlink:href="#g69" x="122"/>
+<use xlink:href="#g77" x="131"/>
+<use xlink:href="#g65" x="140"/>
+<use xlink:href="#g84" x="149"/>
+<use xlink:href="#g73" x="158"/>
+<use xlink:href="#g67" x="167"/>
+<use xlink:href="#g45" x="181"/>
+<use xlink:href="#g78" x="195"/>
+<use xlink:href="#g79" x="204"/>
+<use xlink:href="#g84" x="213"/>
+<use xlink:href="#g65" x="227"/>
+<use xlink:href="#g78" x="236"/>
+<use xlink:href="#g69" x="250"/>
+<use xlink:href="#g69" x="259"/>
+<use xlink:href="#g71" x="268"/>
+<use xlink:href="#g82" x="282"/>
+<use xlink:href="#g69" x="291"/>
+<use xlink:href="#g67" x="300"/>
+<use xlink:href="#g79" x="309"/>
+<use xlink:href="#g82" x="318"/>
+<use xlink:href="#g68" x="327"/>
+<use xlink:href="#g73" x="336"/>
+<use xlink:href="#g78" x="345"/>
+<use xlink:href="#g71" x="354"/>
+</g>
+</svg>

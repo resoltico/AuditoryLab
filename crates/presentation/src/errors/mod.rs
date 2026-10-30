@@ -328,6 +328,8 @@ pub trait Explain {
     /// Render the retained context and original cause for a person.
     fn explain(&self) -> String;
 }
+
+mod onboarding;
 struct Human<'a, T>(&'a T);
 impl Explain for FileError {
     fn explain(&self) -> String {

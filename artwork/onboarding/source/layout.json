@@ -1,0 +1,145 @@
+{
+  "license": "LicenseRef-Proprietary-Artwork",
+  "masters": {
+    "spectral-ribbon": {
+      "template": "spectral-ribbon.svg.in",
+      "wave_slots": {
+        "WAVE_DELTA": {
+          "band": "delta",
+          "x0": 37.5,
+          "x1": 302.5,
+          "center_y": 344,
+          "amplitude": 73
+        },
+        "WAVE_THETA": {
+          "band": "theta",
+          "x0": 302.5,
+          "x1": 567.5,
+          "center_y": 344,
+          "amplitude": 73
+        },
+        "WAVE_ALPHA": {
+          "band": "alpha",
+          "x0": 567.5,
+          "x1": 832.5,
+          "center_y": 344,
+          "amplitude": 73
+        },
+        "WAVE_BETA": {
+          "band": "beta",
+          "x0": 832.5,
+          "x1": 1097.5,
+          "center_y": 344,
+          "amplitude": 73
+        },
+        "WAVE_GAMMA": {
+          "band": "gamma",
+          "x0": 1097.5,
+          "x1": 1362.5,
+          "center_y": 344,
+          "amplitude": 73
+        }
+      }
+    },
+    "delta-rhythm": {
+      "template": "delta-rhythm.svg.in",
+      "band": "delta",
+      "wave_slots": {
+        "WAVE_DELTA": {
+          "band": "delta",
+          "x0": 55,
+          "x1": 947,
+          "center_y": 136,
+          "amplitude": 52
+        }
+      },
+      "rate_label": {
+        "x": 947,
+        "y": 24,
+        "size": 20,
+        "color": "SUB",
+        "align": "end"
+      }
+    },
+    "theta-rhythm": {
+      "template": "theta-rhythm.svg.in",
+      "band": "theta",
+      "wave_slots": {
+        "WAVE_THETA": {
+          "band": "theta",
+          "x0": 55,
+          "x1": 947,
+          "center_y": 136,
+          "amplitude": 52
+        }
+      },
+      "rate_label": {
+        "x": 947,
+        "y": 24,
+        "size": 20,
+        "color": "SUB",
+        "align": "end"
+      }
+    },
+    "alpha-rhythm": {
+      "template": "alpha-rhythm.svg.in",
+      "band": "alpha",
+      "wave_slots": {
+        "WAVE_ALPHA": {
+          "band": "alpha",
+          "x0": 55,
+          "x1": 947,
+          "center_y": 136,
+          "amplitude": 52
+        }
+      },
+      "rate_label": {
+        "x": 947,
+        "y": 24,
+        "size": 20,
+        "color": "SUB",
+        "align": "end"
+      }
+    },
+    "beta-rhythm": {
+      "template": "beta-rhythm.svg.in",
+      "band": "beta",
+      "wave_slots": {
+        "WAVE_BETA": {
+          "band": "beta",
+          "x0": 55,
+          "x1": 947,
+          "center_y": 136,
+          "amplitude": 52
+        }
+      },
+      "rate_label": {
+        "x": 947,
+        "y": 24,
+        "size": 20,
+        "color": "SUB",
+        "align": "end"
+      }
+    },
+    "gamma-rhythm": {
+      "template": "gamma-rhythm.svg.in",
+      "band": "gamma",
+      "wave_slots": {
+        "WAVE_GAMMA": {
+          "band": "gamma",
+          "x0": 55,
+          "x1": 947,
+          "center_y": 136,
+          "amplitude": 52
+        }
+      },
+      "rate_label": {
+        "x": 947,
+        "y": 24,
+        "size": 20,
+        "color": "SUB",
+        "align": "end"
+      }
+    }
+  }
+}

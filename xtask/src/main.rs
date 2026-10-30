@@ -125,24 +125,22 @@ fn readme(version: &str, gui: bool, target: &str) -> String {
     } else {
         "linux"
     };
-    let start = match (gui, os) {
-        (false, _) => {
-            "Run auditorylab --help, then auditorylab list. Use auditorylab describe \
-            builtin:ID to read about a sound, and auditorylab recipe builtin:ID \
-            --output recipe.toml to edit one."
-        }
-        (true, "macos") => {
-            "Open Auditory Lab.app. Select a sound, read its summary, then use \
-            Play selected sound or Export WAV…."
-        }
-        (true, "windows") => {
-            "Open auditorylab-gui.exe. Select a sound, read its summary, then use \
-            Play selected sound or Export WAV…."
-        }
-        (true, _) => {
-            "Open auditorylab-gui. Select a sound, read its summary, then use \
-            Play selected sound or Export WAV…."
-        }
+    let start = if gui {
+        let launcher = match os {
+            "macos" => "Auditory Lab.app",
+            "windows" => "auditorylab-gui.exe",
+            _ => "auditorylab-gui",
+        };
+        format!(
+            "Open {launcher}. Start here offers optional orientation and Create a pulsed tone. \
+            Browse Library opens the real collection; select a sound and read its summary \
+            before Play selected sound or Export WAV…. Nothing starts automatically."
+        )
+    } else {
+        "Run auditorylab --help, then auditorylab list. Use auditorylab describe \
+        builtin:ID to read about a sound, and auditorylab recipe builtin:ID \
+        --output recipe.toml to edit one."
+            .to_owned()
     };
     let needs = match (gui, os) {
         (_, "macos") => {
@@ -181,7 +179,7 @@ fn readme(version: &str, gui: bool, target: &str) -> String {
     include_str!("../templates/archive-readme.txt")
         .replace("{version}", version)
         .replace("{product}", if gui { "Desktop" } else { "CLI" })
-        .replace("{start}", start)
+        .replace("{start}", &start)
         .replace("{platform_needs}", needs)
         .replace("{platform_notes}\n", notes)
 }
@@ -724,26 +722,20 @@ mod tests {
     #[test]
     fn each_readme_names_only_its_own_platform() {
         let cases = [
-            (
-                "aarch64-apple-darwin",
-                true,
-                "Open Auditory Lab.app. Select a sound",
-            ),
-            (
-                "x86_64-pc-windows-msvc",
-                true,
-                "Open auditorylab-gui.exe. Select a sound",
-            ),
-            (
-                "x86_64-unknown-linux-gnu",
-                true,
-                "Open auditorylab-gui. Select a sound",
-            ),
+            ("aarch64-apple-darwin", true, "Open Auditory Lab.app."),
+            ("x86_64-pc-windows-msvc", true, "Open auditorylab-gui.exe."),
+            ("x86_64-unknown-linux-gnu", true, "Open auditorylab-gui."),
             ("aarch64-pc-windows-msvc", false, "Run auditorylab --help"),
         ];
         for (target, gui, start) in cases {
             let text = readme("0.4.0", gui, target);
             assert!(text.contains(start), "{target}");
+            assert_eq!(text.contains("Start here"), gui, "{target}");
+            assert_eq!(
+                text.contains("Nothing starts automatically"),
+                gui,
+                "{target}"
+            );
             assert!(!text.contains('{'), "{target}: unreplaced placeholder");
             assert!(text.ends_with(".\n") && !text.ends_with("\n\n"), "{target}");
             let mentions = [

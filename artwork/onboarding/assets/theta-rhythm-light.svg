@@ -1,0 +1,156 @@
+<!-- Copyright (c) 2026 Ervins Strauhmanis. All rights reserved.
+SPDX-License-Identifier: LicenseRef-Proprietary-Artwork
+See the root Auditory Lab LICENSE for artwork permissions. -->
+
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1000" height="260" viewBox="0 0 1000 260" role="img" aria-labelledby="title desc">
+<title id="title">Theta illustrative rhythm, 6 cycles per second, light appearance</title>
+<desc id="desc">Normalized one-second sinusoidal frequency illustration. Not recorded EEG, a pulse envelope or rendered audio. It uses the same representative rhythm as the combined spectrum.</desc>
+<defs><path id="g65" d="M0 10L3.5 0L7 10M1.4 6H5.6"/>
+<path id="g66" d="M0 10V0H3.8Q7 0 7 2.5Q7 5 3.8 5H0M3.8 5Q7 5 7 7.5Q7 10 3.8 10H0"/>
+<path id="g67" d="M7 1.2Q5.9 0 3.5 0Q0 0 0 3.5V6.5Q0 10 3.5 10Q5.9 10 7 8.8"/>
+<path id="g68" d="M0 0V10H3Q7 10 7 5Q7 0 3 0Z"/>
+<path id="g69" d="M7 0H0V10H7M0 5H5.5"/>
+<path id="g70" d="M7 0H0V10M0 5H5.5"/>
+<path id="g71" d="M7 1.4Q5.8 0 3.5 0Q0 0 0 3.5V6.5Q0 10 3.5 10Q5.8 10 7 8.7V5.5H4.2"/>
+<path id="g72" d="M0 0V10M7 0V10M0 5H7"/>
+<path id="g73" d="M0 0H7M3.5 0V10M0 10H7"/>
+<path id="g74" d="M0 0H7V7Q7 10 3.5 10Q0 10 0 7"/>
+<path id="g75" d="M0 0V10M7 0L0 6M2.9 3.5L7 10"/>
+<path id="g76" d="M0 0V10H7"/>
+<path id="g77" d="M0 10V0L3.5 5.7L7 0V10"/>
+<path id="g78" d="M0 10V0L7 10V0"/>
+<path id="g79" d="M3.5 0Q0 0 0 3.5V6.5Q0 10 3.5 10Q7 10 7 6.5V3.5Q7 0 3.5 0Z"/>
+<path id="g80" d="M0 10V0H3.7Q7 0 7 2.6Q7 5.2 3.7 5.2H0"/>
+<path id="g81" d="M3.5 0Q0 0 0 3.5V6.5Q0 10 3.5 10Q7 10 7 6.5V3.5Q7 0 3.5 0M4.5 7L8 11"/>
+<path id="g82" d="M0 10V0H3.7Q7 0 7 2.6Q7 5.2 3.7 5.2H0M3.5 5.2L7 10"/>
+<path id="g83" d="M7 1Q5.8 0 3.5 0Q0 0 0 2.5Q0 4.3 3.5 5Q7 5.7 7 7.5Q7 10 3.5 10Q1.2 10 0 9"/>
+<path id="g84" d="M0 0H7M3.5 0V10"/>
+<path id="g85" d="M0 0V6.5Q0 10 3.5 10Q7 10 7 6.5V0"/>
+<path id="g86" d="M0 0L3.5 10L7 0"/>
+<path id="g87" d="M0 0L1.5 10L3.5 4.5L5.5 10L7 0"/>
+<path id="g88" d="M0 0L7 10M7 0L0 10"/>
+<path id="g89" d="M0 0L3.5 5L7 0M3.5 5V10"/>
+<path id="g90" d="M0 0H7L0 10H7"/>
+<path id="g48" d="M3.5 0Q0 0 0 3.5V6.5Q0 10 3.5 10Q7 10 7 6.5V3.5Q7 0 3.5 0ZM1.4 8.5L5.6 1.5"/>
+<path id="g49" d="M1 2L3.7 0V10M0.8 10H6.8"/>
+<path id="g50" d="M0 2.4Q0 0 3.5 0Q7 0 7 2.6Q7 4.3 4.7 6L0 10H7"/>
+<path id="g51" d="M0 1Q1.1 0 3.5 0Q7 0 7 2.5Q7 5 3.5 5M2.7 5Q7 5 7 7.5Q7 10 3.5 10Q1.1 10 0 9"/>
+<path id="g52" d="M5.5 10V0L0 6.7H7"/>
+<path id="g53" d="M7 0H0V4.8H3.5Q7 4.8 7 7.4Q7 10 3.5 10Q1.1 10 0 9"/>
+<path id="g54" d="M6.7 1Q5.8 0 3.5 0Q0 0 0 4V6.8Q0 10 3.5 10Q7 10 7 7Q7 4.5 3.5 4.5H0"/>
+<path id="g55" d="M0 0H7L2 10"/>
+<path id="g56" d="M3.5 0Q0 0 0 2.5Q0 5 3.5 5Q7 5 7 2.5Q7 0 3.5 0ZM3.5 5Q0 5 0 7.5Q0 10 3.5 10Q7 10 7 7.5Q7 5 3.5 5Z"/>
+<path id="g57" d="M7 5.5H3.5Q0 5.5 0 2.8Q0 0 3.5 0Q7 0 7 3.3V6Q7 10 3.5 10Q1.2 10 0.3 9"/>
+<path id="g45" d="M1 5H6"/>
+<path id="g46" d="M3.4 9.5L3.6 9.5"/>
+<path id="g44" d="M3.8 9L2.8 11"/>
+<path id="g58" d="M3.4 2.3L3.6 2.3M3.4 7.7L3.6 7.7"/>
+<path id="g47" d="M0 10L7 0"/>
+<path id="g60" d="M6.5 1L0.5 5L6.5 9"/>
+<path id="g62" d="M0.5 1L6.5 5L0.5 9"/>
+<path id="g40" d="M5.5 0Q1.5 5 5.5 10"/>
+<path id="g41" d="M1.5 0Q5.5 5 1.5 10"/>
+<path id="g43" d="M0 5H7M3.5 1.5V8.5"/><filter id="wave-glow" x="-20%" y="-100%" width="140%" height="300%"><feGaussianBlur stdDeviation="4"/></filter></defs>
+<rect width="1000" height="260" rx="10" fill="#f8fafc"/>
+<g data-lettering="THETA - ILLUSTRATIVE RHYTHM" aria-label="THETA - ILLUSTRATIVE RHYTHM" transform="translate(55.000 22) scale(2.20000)" fill="none" stroke="#18344b" stroke-width=".8" stroke-linecap="round" stroke-linejoin="round">
+<use xlink:href="#g84" x="0"/>
+<use xlink:href="#g72" x="9"/>
+<use xlink:href="#g69" x="18"/>
+<use xlink:href="#g84" x="27"/>
+<use xlink:href="#g65" x="36"/>
+<use xlink:href="#g45" x="50"/>
+<use xlink:href="#g73" x="64"/>
+<use xlink:href="#g76" x="73"/>
+<use xlink:href="#g76" x="82"/>
+<use xlink:href="#g85" x="91"/>
+<use xlink:href="#g83" x="100"/>
+<use xlink:href="#g84" x="109"/>
+<use xlink:href="#g82" x="118"/>
+<use xlink:href="#g65" x="127"/>
+<use xlink:href="#g84" x="136"/>
+<use xlink:href="#g73" x="145"/>
+<use xlink:href="#g86" x="154"/>
+<use xlink:href="#g69" x="163"/>
+<use xlink:href="#g82" x="177"/>
+<use xlink:href="#g72" x="186"/>
+<use xlink:href="#g89" x="195"/>
+<use xlink:href="#g84" x="204"/>
+<use xlink:href="#g72" x="213"/>
+<use xlink:href="#g77" x="222"/>
+</g>
+<g data-lettering="6 CYCLES/S" aria-label="6 CYCLES/S" transform="translate(779.000 24) scale(2.00000)" fill="none" stroke="#466477" stroke-width=".8" stroke-linecap="round" stroke-linejoin="round">
+<use xlink:href="#g54" x="0"/>
+<use xlink:href="#g67" x="14"/>
+<use xlink:href="#g89" x="23"/>
+<use xlink:href="#g67" x="32"/>
+<use xlink:href="#g76" x="41"/>
+<use xlink:href="#g69" x="50"/>
+<use xlink:href="#g83" x="59"/>
+<use xlink:href="#g47" x="68"/>
+<use xlink:href="#g83" x="77"/>
+</g>
+<path d="M55 78V194 M55 136H947" stroke="#d0dde6" fill="none"/>
+<path d="M55.00 136.00 L59.65 125.86 L64.29 116.10 L68.94 107.11 L73.58 99.23 L78.23 92.76 L82.88 87.96 L87.52 85.00 L92.17 84.00 L96.81 85.00 L101.46 87.96 L106.10 92.76 L110.75 99.23 L115.40 107.11 L120.04 116.10 L124.69 125.86 L129.33 136.00 L133.98 146.14 L138.62 155.90 L143.27 164.89 L147.92 172.77 L152.56 179.24 L157.21 184.04 L161.85 187.00 L166.50 188.00 L171.15 187.00 L175.79 184.04 L180.44 179.24 L185.08 172.77 L189.73 164.89 L194.38 155.90 L199.02 146.14 L203.67 136.00 L208.31 125.86 L212.96 116.10 L217.60 107.11 L222.25 99.23 L226.90 92.76 L231.54 87.96 L236.19 85.00 L240.83 84.00 L245.48 85.00 L250.12 87.96 L254.77 92.76 L259.42 99.23 L264.06 107.11 L268.71 116.10 L273.35 125.86 L278.00 136.00 L282.65 146.14 L287.29 155.90 L291.94 164.89 L296.58 172.77 L301.23 179.24 L305.88 184.04 L310.52 187.00 L315.17 188.00 L319.81 187.00 L324.46 184.04 L329.10 179.24 L333.75 172.77 L338.40 164.89 L343.04 155.90 L347.69 146.14 L352.33 136.00 L356.98 125.86 L361.62 116.10 L366.27 107.11 L370.92 99.23 L375.56 92.76 L380.21 87.96 L384.85 85.00 L389.50 84.00 L394.15 85.00 L398.79 87.96 L403.44 92.76 L408.08 99.23 L412.73 107.11 L417.38 116.10 L422.02 125.86 L426.67 136.00 L431.31 146.14 L435.96 155.90 L440.60 164.89 L445.25 172.77 L449.90 179.24 L454.54 184.04 L459.19 187.00 L463.83 188.00 L468.48 187.00 L473.12 184.04 L477.77 179.24 L482.42 172.77 L487.06 164.89 L491.71 155.90 L496.35 146.14 L501.00 136.00 L505.65 125.86 L510.29 116.10 L514.94 107.11 L519.58 99.23 L524.23 92.76 L528.88 87.96 L533.52 85.00 L538.17 84.00 L542.81 85.00 L547.46 87.96 L552.10 92.76 L556.75 99.23 L561.40 107.11 L566.04 116.10 L570.69 125.86 L575.33 136.00 L579.98 146.14 L584.62 155.90 L589.27 164.89 L593.92 172.77 L598.56 179.24 L603.21 184.04 L607.85 187.00 L612.50 188.00 L617.15 187.00 L621.79 184.04 L626.44 179.24 L631.08 172.77 L635.73 164.89 L640.38 155.90 L645.02 146.14 L649.67 136.00 L654.31 125.86 L658.96 116.10 L663.60 107.11 L668.25 99.23 L672.90 92.76 L677.54 87.96 L682.19 85.00 L686.83 84.00 L691.48 85.00 L696.12 87.96 L700.77 92.76 L705.42 99.23 L710.06 107.11 L714.71 116.10 L719.35 125.86 L724.00 136.00 L728.65 146.14 L733.29 155.90 L737.94 164.89 L742.58 172.77 L747.23 179.24 L751.88 184.04 L756.52 187.00 L761.17 188.00 L765.81 187.00 L770.46 184.04 L775.10 179.24 L779.75 172.77 L784.40 164.89 L789.04 155.90 L793.69 146.14 L798.33 136.00 L802.98 125.86 L807.62 116.10 L812.27 107.11 L816.92 99.23 L821.56 92.76 L826.21 87.96 L830.85 85.00 L835.50 84.00 L840.15 85.00 L844.79 87.96 L849.44 92.76 L854.08 99.23 L858.73 107.11 L863.38 116.10 L868.02 125.86 L872.67 136.00 L877.31 146.14 L881.96 155.90 L886.60 164.89 L891.25 172.77 L895.90 179.24 L900.54 184.04 L905.19 187.00 L909.83 188.00 L914.48 187.00 L919.12 184.04 L923.77 179.24 L928.42 172.77 L933.06 164.89 L937.71 155.90 L942.35 146.14 L947.00 136.00" stroke="#096e5d" stroke-width="8" opacity=".16" fill="none" filter="url(#wave-glow)"/>
+<path data-wave="theta" data-example-hz="6" d="M55.00 136.00 L59.65 125.86 L64.29 116.10 L68.94 107.11 L73.58 99.23 L78.23 92.76 L82.88 87.96 L87.52 85.00 L92.17 84.00 L96.81 85.00 L101.46 87.96 L106.10 92.76 L110.75 99.23 L115.40 107.11 L120.04 116.10 L124.69 125.86 L129.33 136.00 L133.98 146.14 L138.62 155.90 L143.27 164.89 L147.92 172.77 L152.56 179.24 L157.21 184.04 L161.85 187.00 L166.50 188.00 L171.15 187.00 L175.79 184.04 L180.44 179.24 L185.08 172.77 L189.73 164.89 L194.38 155.90 L199.02 146.14 L203.67 136.00 L208.31 125.86 L212.96 116.10 L217.60 107.11 L222.25 99.23 L226.90 92.76 L231.54 87.96 L236.19 85.00 L240.83 84.00 L245.48 85.00 L250.12 87.96 L254.77 92.76 L259.42 99.23 L264.06 107.11 L268.71 116.10 L273.35 125.86 L278.00 136.00 L282.65 146.14 L287.29 155.90 L291.94 164.89 L296.58 172.77 L301.23 179.24 L305.88 184.04 L310.52 187.00 L315.17 188.00 L319.81 187.00 L324.46 184.04 L329.10 179.24 L333.75 172.77 L338.40 164.89 L343.04 155.90 L347.69 146.14 L352.33 136.00 L356.98 125.86 L361.62 116.10 L366.27 107.11 L370.92 99.23 L375.56 92.76 L380.21 87.96 L384.85 85.00 L389.50 84.00 L394.15 85.00 L398.79 87.96 L403.44 92.76 L408.08 99.23 L412.73 107.11 L417.38 116.10 L422.02 125.86 L426.67 136.00 L431.31 146.14 L435.96 155.90 L440.60 164.89 L445.25 172.77 L449.90 179.24 L454.54 184.04 L459.19 187.00 L463.83 188.00 L468.48 187.00 L473.12 184.04 L477.77 179.24 L482.42 172.77 L487.06 164.89 L491.71 155.90 L496.35 146.14 L501.00 136.00 L505.65 125.86 L510.29 116.10 L514.94 107.11 L519.58 99.23 L524.23 92.76 L528.88 87.96 L533.52 85.00 L538.17 84.00 L542.81 85.00 L547.46 87.96 L552.10 92.76 L556.75 99.23 L561.40 107.11 L566.04 116.10 L570.69 125.86 L575.33 136.00 L579.98 146.14 L584.62 155.90 L589.27 164.89 L593.92 172.77 L598.56 179.24 L603.21 184.04 L607.85 187.00 L612.50 188.00 L617.15 187.00 L621.79 184.04 L626.44 179.24 L631.08 172.77 L635.73 164.89 L640.38 155.90 L645.02 146.14 L649.67 136.00 L654.31 125.86 L658.96 116.10 L663.60 107.11 L668.25 99.23 L672.90 92.76 L677.54 87.96 L682.19 85.00 L686.83 84.00 L691.48 85.00 L696.12 87.96 L700.77 92.76 L705.42 99.23 L710.06 107.11 L714.71 116.10 L719.35 125.86 L724.00 136.00 L728.65 146.14 L733.29 155.90 L737.94 164.89 L742.58 172.77 L747.23 179.24 L751.88 184.04 L756.52 187.00 L761.17 188.00 L765.81 187.00 L770.46 184.04 L775.10 179.24 L779.75 172.77 L784.40 164.89 L789.04 155.90 L793.69 146.14 L798.33 136.00 L802.98 125.86 L807.62 116.10 L812.27 107.11 L816.92 99.23 L821.56 92.76 L826.21 87.96 L830.85 85.00 L835.50 84.00 L840.15 85.00 L844.79 87.96 L849.44 92.76 L854.08 99.23 L858.73 107.11 L863.38 116.10 L868.02 125.86 L872.67 136.00 L877.31 146.14 L881.96 155.90 L886.60 164.89 L891.25 172.77 L895.90 179.24 L900.54 184.04 L905.19 187.00 L909.83 188.00 L914.48 187.00 L919.12 184.04 L923.77 179.24 L928.42 172.77 L933.06 164.89 L937.71 155.90 L942.35 146.14 L947.00 136.00" stroke="#096e5d" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<g data-lettering="1" aria-label="1" transform="translate(18.000 79) scale(1.80000)" fill="none" stroke="#466477" stroke-width=".8" stroke-linecap="round" stroke-linejoin="round">
+<use xlink:href="#g49" x="0"/>
+</g>
+<g data-lettering="0" aria-label="0" transform="translate(18.000 127) scale(1.80000)" fill="none" stroke="#466477" stroke-width=".8" stroke-linecap="round" stroke-linejoin="round">
+<use xlink:href="#g48" x="0"/>
+</g>
+<g data-lettering="-1" aria-label="-1" transform="translate(10.000 179) scale(1.80000)" fill="none" stroke="#466477" stroke-width=".8" stroke-linecap="round" stroke-linejoin="round">
+<use xlink:href="#g45" x="0"/>
+<use xlink:href="#g49" x="9"/>
+</g>
+<g data-lettering="0" aria-label="0" transform="translate(55.000 209) scale(1.80000)" fill="none" stroke="#466477" stroke-width=".8" stroke-linecap="round" stroke-linejoin="round">
+<use xlink:href="#g48" x="0"/>
+</g>
+<g data-lettering="1 SECOND" aria-label="1 SECOND" transform="translate(828.200 209) scale(1.80000)" fill="none" stroke="#466477" stroke-width=".8" stroke-linecap="round" stroke-linejoin="round">
+<use xlink:href="#g49" x="0"/>
+<use xlink:href="#g83" x="14"/>
+<use xlink:href="#g69" x="23"/>
+<use xlink:href="#g67" x="32"/>
+<use xlink:href="#g79" x="41"/>
+<use xlink:href="#g78" x="50"/>
+<use xlink:href="#g68" x="59"/>
+</g>
+<g data-lettering="NORMALIZED SCHEMATIC - NOT AN EEG RECORDING" aria-label="NORMALIZED SCHEMATIC - NOT AN EEG RECORDING" transform="translate(247.300 242) scale(1.40000)" fill="none" stroke="#466477" stroke-width=".8" stroke-linecap="round" stroke-linejoin="round">
+<use xlink:href="#g78" x="0"/>
+<use xlink:href="#g79" x="9"/>
+<use xlink:href="#g82" x="18"/>
+<use xlink:href="#g77" x="27"/>
+<use xlink:href="#g65" x="36"/>
+<use xlink:href="#g76" x="45"/>
+<use xlink:href="#g73" x="54"/>
+<use xlink:href="#g90" x="63"/>
+<use xlink:href="#g69" x="72"/>
+<use xlink:href="#g68" x="81"/>
+<use xlink:href="#g83" x="95"/>
+<use xlink:href="#g67" x="104"/>
+<use xlink:href="#g72" x="113"/>
+<use xlink:href="#g69" x="122"/>
+<use xlink:href="#g77" x="131"/>
+<use xlink:href="#g65" x="140"/>
+<use xlink:href="#g84" x="149"/>
+<use xlink:href="#g73" x="158"/>
+<use xlink:href="#g67" x="167"/>
+<use xlink:href="#g45" x="181"/>
+<use xlink:href="#g78" x="195"/>
+<use xlink:href="#g79" x="204"/>
+<use xlink:href="#g84" x="213"/>
+<use xlink:href="#g65" x="227"/>
+<use xlink:href="#g78" x="236"/>
+<use xlink:href="#g69" x="250"/>
+<use xlink:href="#g69" x="259"/>
+<use xlink:href="#g71" x="268"/>
+<use xlink:href="#g82" x="282"/>
+<use xlink:href="#g69" x="291"/>
+<use xlink:href="#g67" x="300"/>
+<use xlink:href="#g79" x="309"/>
+<use xlink:href="#g82" x="318"/>
+<use xlink:href="#g68" x="327"/>
+<use xlink:href="#g73" x="336"/>
+<use xlink:href="#g78" x="345"/>
+<use xlink:href="#g71" x="354"/>
+</g>
+</svg>

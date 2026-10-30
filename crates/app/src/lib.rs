@@ -13,6 +13,8 @@ pub mod discovery;
 pub mod document;
 pub mod identity;
 pub mod job;
+pub mod learning;
+pub mod onboarding;
 pub mod outcome;
 pub mod services;
 pub(crate) mod storage;

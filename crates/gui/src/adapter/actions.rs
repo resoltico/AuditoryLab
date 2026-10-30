@@ -20,6 +20,7 @@ macro_rules! on {
     }
 
 pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
+    install_learning_actions(adapter, ui);
     on!(adapter, ui, on_select, |a, address| {
         if let Some(entry) = library::entry_handle(&address) {
             a.command(|w| w.apply(Command::Library(LibraryCommand::Select(entry))));
@@ -57,19 +58,12 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
     ));
     install_library_actions(adapter, ui);
     on!(adapter, ui, on_tab_changed, |a, index| {
-        // The tab's change handler can run while a projection is writing
-        // properties, when commands are ignored; apply the choice after it.
-        let view = if index == 1 {
-            View::Workbench
-        } else {
-            View::Library
+        let view = match index {
+            0 => View::Library,
+            1 => View::Workbench,
+            _ => return,
         };
-        let weak = Rc::downgrade(&a);
-        slint::Timer::single_shot(Duration::ZERO, move || {
-            if let Some(a) = weak.upgrade() {
-                a.command(|w| w.apply(Command::SetView(view)));
-            }
-        });
+        a.command(|w| w.apply(Command::SetView(view)));
     });
     install_workbench_actions(adapter, ui);
     install_detail_actions(adapter, ui);
@@ -344,4 +338,58 @@ fn forward_shortcut(window: &slint::Window, key: &str) {
     ] {
         window.dispatch_event(event);
     }
+}
+
+fn install_learning_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
+    use auditorylab_app::learning::{Construction, Example, LearningCommand, Topic};
+    on!(adapter, ui, on_open_learning, |a, index| {
+        if let Ok(index) = usize::try_from(index)
+            && let Some(topic) = Topic::ALL.get(index)
+        {
+            let entering = a
+                .workspace
+                .borrow()
+                .as_ref()
+                .is_some_and(|w| w.learning().is_none());
+            a.command(|w| w.apply(Command::Learning(LearningCommand::Open(*topic))));
+            if entering && let Some(ui) = a.main.upgrade() {
+                ui.invoke_focus_learning();
+            }
+        }
+    });
+    on!(adapter, ui, on_select_learning_band, |a, index| {
+        if let Ok(index) = usize::try_from(index)
+            && let Some(example) = auditorylab_app::learning::band_examples().get(index)
+        {
+            a.command(|w| w.apply(Command::Learning(LearningCommand::SelectBand(example.band))));
+        }
+    });
+    on!(adapter, ui, on_select_learning_construction, |a, index| {
+        if let Ok(index) = usize::try_from(index)
+            && let Some(construction) = Construction::ALL.get(index)
+        {
+            a.command(|w| {
+                w.apply(Command::Learning(LearningCommand::SelectConstruction(
+                    *construction,
+                )))
+            });
+        }
+    });
+    on!(adapter, ui, on_browse_learning_library, |a| {
+        a.command(|w| w.apply(Command::Learning(LearningCommand::BrowseLibrary)));
+        if let Some(ui) = a.main.upgrade() {
+            ui.invoke_focus_workspace_navigation();
+        }
+    });
+    on!(adapter, ui, on_create_learning_example, |a| a.command(
+        |w| w.apply(Command::Learning(LearningCommand::CreateExample(
+            Example::PulsedTone
+        )))
+    ));
+    on!(adapter, ui, on_return_to_work, |a| {
+        a.command(|w| w.apply(Command::Learning(LearningCommand::ReturnToWork)));
+        if let Some(ui) = a.main.upgrade() {
+            ui.invoke_focus_workspace_navigation();
+        }
+    });
 }

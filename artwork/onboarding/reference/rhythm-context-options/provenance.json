@@ -1,0 +1,38 @@
+{
+  "prepared_date": "2026-10-30",
+  "purpose": "Original standalone concepts for user selection; not inserted into onboarding UI",
+  "original_artwork": "All compositions, paths and waveform geometry authored from scratch; no stock images or copied figures. Standard installed sans-serif glyph rendering; no fonts redistributed.",
+  "scientific_scope": "Selected observed electrophysiological associations. Not a diagnostic map, quantitative power table, alertness scale, sound-to-brain transfer function, or predicted effect of auditory stimulation.",
+  "limits": [
+    "Gamma is not a highest-alertness state.",
+    "Theta can occur in waking memory tasks.",
+    "Quiet eyes-closed alpha is wakefulness.",
+    "Examples are non-exhaustive and regional/task dependent.",
+    "Five app band boundaries are a stated convention, not universal cutoffs."
+  ],
+  "claim_sources": [
+    {
+      "claim": "Band naming; characteristic beta and gamma contexts; drowsiness examples; deep NREM/alpha context",
+      "source": "IFCN glossary, 2017, with app beta convention following its documented correction",
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC6123891/"
+    },
+    {
+      "claim": "Posterior alpha during eyes-closed relaxed wakefulness",
+      "source": "NCBI MeSH Alpha Rhythm",
+      "url": "https://www.ncbi.nlm.nih.gov/mesh/D000513"
+    },
+    {
+      "claim": "Theta and gamma during a particular healthy-human declarative-memory task (MEG)",
+      "source": "Osipova et al., 2006, Theta and Gamma Oscillations Predict Encoding and Retrieval of Declarative Memory",
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC6674196/",
+      "scope": "Original study ranges 4.5\u20138.5 and 60\u201390 Hz; diagrams use the app labels and disclose differing conventions."
+    },
+    {
+      "claim": "Sleep phases are not a monotonic low-to-high frequency or alertness ladder; REM can resemble waking activity",
+      "source": "NIH NHLBI, Sleep Phases and Stages",
+      "url": "https://www.nhlbi.nih.gov/health/sleep/stages-of-sleep"
+    }
+  ],
+  "copyright_note": "Original creation and absence of copied artwork do not guarantee copyrightability or exclusivity. Human creative contribution and applicable law govern protection. No ownership over scientific facts is asserted.",
+  "legal_context": "https://intellectual-property-helpdesk.ec.europa.eu/regional-ip-helpdesks/european-ip-helpdesk/europe-frequently-asked-questions_en"
+}

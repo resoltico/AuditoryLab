@@ -14,6 +14,9 @@ use auditorylab_core::ParameterId;
 use std::path::Path;
 pub(crate) fn refusal_text(refusal: &Refusal) -> String {
     match refusal {
+        Refusal::LearningVisible => {
+            "Return to Library or Workbench before using this action.".into()
+        }
         Refusal::LibraryUnavailable(problem) => {
             format!(
                 "User Library unavailable: {}",

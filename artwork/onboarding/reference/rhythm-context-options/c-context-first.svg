@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="695" viewBox="0 0 1120 695" role="img" aria-labelledby="title desc">
+<title id="title">Sleep and waking contexts with EEG examples</title><desc id="desc">Three contextual groups show sleep-related examples, quiet wakefulness, and selected waking activity. Theta appears in both drowsiness and a waking memory-task example. These groups are not exclusive sets and do not imply causal effects of sound.</desc>
+<rect width="1120" height="695" fill="#ffffff"/>
+<g font-family="Arial, Helvetica, sans-serif">
+<text x="48" y="52" font-size="32" font-weight="500" fill="#18333d" text-anchor="start">Start with the context, then name the rhythms</text>
+<text x="48" y="86" font-size="20" font-weight="400" fill="#50616a" text-anchor="start">Sleep, quiet wakefulness and task activity are not one frequency ladder.</text>
+<rect x="48" y="123" width="324" height="458" rx="10" fill="#f3f7f8" stroke="#d7e0e3"/>
+<rect x="398" y="123" width="324" height="458" rx="10" fill="#f3f7f8" stroke="#d7e0e3"/>
+<rect x="748" y="123" width="324" height="458" rx="10" fill="#f3f7f8" stroke="#d7e0e3"/>
+<text x="70" y="166" font-size="24" font-weight="500" fill="#18333d" text-anchor="start">Sleep-related examples</text>
+<text x="420" y="166" font-size="24" font-weight="500" fill="#18333d" text-anchor="start">Quiet wakefulness</text>
+<text x="770" y="166" font-size="24" font-weight="500" fill="#18333d" text-anchor="start">Waking examples</text>
+<text x="70" y="215" font-size="21" font-weight="500" fill="#18333d" text-anchor="start">Deep NREM sleep</text>
+<rect x="70" y="235" width="280" height="67" rx="7" fill="#ffffff" stroke="#d7e0e3"/>
+<text x="85" y="263" font-size="25" font-weight="500" fill="#18333d" text-anchor="start">Delta</text>
+<text x="85" y="290" font-size="19" font-weight="400" fill="#50616a" text-anchor="start">0.1–&lt;4 Hz</text>
+<path d="M70 326 L350 326" fill="none" stroke="#d7e0e3" stroke-width="1"/>
+<text x="70" y="365" font-size="21" font-weight="500" fill="#18333d" text-anchor="start">Drowsiness</text>
+<rect x="70" y="386" width="280" height="67" rx="7" fill="#ffffff" stroke="#d7e0e3"/>
+<text x="85" y="414" font-size="25" font-weight="500" fill="#18333d" text-anchor="start">Theta</text>
+<text x="85" y="441" font-size="19" font-weight="400" fill="#50616a" text-anchor="start">4–&lt;8 Hz</text>
+<text x="70" y="504" font-size="18" font-weight="400" fill="#50616a" text-anchor="start">Characteristic examples</text>
+<text x="70" y="531" font-size="18" font-weight="400" fill="#50616a" text-anchor="start">from sleep recordings.</text>
+<text x="420" y="215" font-size="21" font-weight="500" fill="#18333d" text-anchor="start">Eyes closed, relaxed</text>
+<rect x="420" y="235" width="280" height="67" rx="7" fill="#ffffff" stroke="#d7e0e3"/>
+<text x="435" y="263" font-size="25" font-weight="500" fill="#18333d" text-anchor="start">Alpha</text>
+<text x="435" y="290" font-size="19" font-weight="400" fill="#50616a" text-anchor="start">8–13 Hz</text>
+<text x="420" y="355" font-size="19" font-weight="400" fill="#50616a" text-anchor="start">Posterior alpha often weakens</text>
+<text x="420" y="382" font-size="19" font-weight="400" fill="#50616a" text-anchor="start">with eye opening or attention.</text>
+<text x="420" y="504" font-size="18" font-weight="400" fill="#50616a" text-anchor="start">Quiet wakefulness is still</text>
+<text x="420" y="531" font-size="18" font-weight="400" fill="#50616a" text-anchor="start">an awake condition.</text>
+<text x="770" y="215" font-size="21" font-weight="500" fill="#18333d" text-anchor="start">Frontocentral activity</text>
+<rect x="770" y="235" width="280" height="67" rx="7" fill="#ffffff" stroke="#d7e0e3"/>
+<text x="785" y="263" font-size="25" font-weight="500" fill="#18333d" text-anchor="start">Beta</text>
+<text x="785" y="290" font-size="19" font-weight="400" fill="#50616a" text-anchor="start">&gt;13–30 Hz</text>
+<path d="M770 326 L1050 326" fill="none" stroke="#d7e0e3" stroke-width="1"/>
+<text x="770" y="365" font-size="20" font-weight="500" fill="#18333d" text-anchor="start">Human MEG memory study</text>
+<rect x="770" y="385" width="280" height="86" rx="7" fill="#ffffff" stroke="#d7e0e3"/>
+<text x="785" y="419" font-size="25" font-weight="500" fill="#18333d" text-anchor="start">Theta + Gamma</text>
+<text x="785" y="450" font-size="18" font-weight="400" fill="#50616a" text-anchor="start">4–&lt;8 Hz   ·   &gt;30–80 Hz</text>
+<text x="770" y="504" font-size="18" font-weight="400" fill="#50616a" text-anchor="start">Two bands observed</text>
+<text x="770" y="531" font-size="18" font-weight="400" fill="#50616a" text-anchor="start">during the same task.</text>
+<path d="M48 607 L1072 607" fill="none" stroke="#d7e0e3" stroke-width="1"/>
+<text x="48" y="630" font-size="19" font-weight="400" fill="#18333d" text-anchor="start">Observed brain-rhythm associations; no listening effect is implied.</text>
+<text x="48" y="659" font-size="18" font-weight="400" fill="#50616a" text-anchor="start">Selected, non-exclusive examples. App bands shown; study boundaries can differ.</text>
+</g></svg>

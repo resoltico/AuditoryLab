@@ -1,0 +1,52 @@
+{
+  "assets": [
+    {
+      "file": "luminous-spectrum-dark.svg",
+      "bounds": "passed",
+      "all_five_bands": true,
+      "original_path_lettering": true,
+      "no_external_assets": true
+    },
+    {
+      "file": "luminous-spectrum-light.svg",
+      "bounds": "passed",
+      "all_five_bands": true,
+      "original_path_lettering": true,
+      "no_external_assets": true
+    },
+    {
+      "file": "spectral-ribbon-dark.svg",
+      "bounds": "passed",
+      "all_five_bands": true,
+      "original_path_lettering": true,
+      "no_external_assets": true
+    },
+    {
+      "file": "spectral-ribbon-light.svg",
+      "bounds": "passed",
+      "all_five_bands": true,
+      "original_path_lettering": true,
+      "no_external_assets": true
+    },
+    {
+      "file": "wave-medallions-dark.svg",
+      "bounds": "passed",
+      "all_five_bands": true,
+      "original_path_lettering": true,
+      "no_external_assets": true
+    },
+    {
+      "file": "wave-medallions-light.svg",
+      "bounds": "passed",
+      "all_five_bands": true,
+      "original_path_lettering": true,
+      "no_external_assets": true
+    }
+  ],
+  "review_controls": {
+    "three_variants": true,
+    "light_dark_switching": true,
+    "no_runtime_errors": true
+  },
+  "native_integration_performed": false
+}

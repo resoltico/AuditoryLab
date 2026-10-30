@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="735" viewBox="0 0 1120 735" role="img" aria-labelledby="title desc">
+<title id="title">EEG contexts overlap across frequency bands</title><desc id="desc">A qualitative matrix links deep NREM sleep with delta, drowsiness with theta, eyes-closed quiet wakefulness with alpha, waking frontocentral EEG with beta, and a human memory task example with both theta and gamma. Blank cells do not assert absence.</desc>
+<rect width="1120" height="735" fill="#ffffff"/>
+<g font-family="Arial, Helvetica, sans-serif">
+<text x="48" y="52" font-size="32" font-weight="500" fill="#18333d" text-anchor="start">A band can occur in more than one context</text>
+<text x="48" y="86" font-size="20" font-weight="400" fill="#50616a" text-anchor="start">Selected EEG / MEG observations—not a scale from sleepy to alert.</text>
+<text x="480" y="146" font-size="24" font-weight="500" fill="#18333d" text-anchor="middle">Delta</text>
+<text x="480" y="177" font-size="18" font-weight="400" fill="#50616a" text-anchor="middle">0.1–&lt;4 Hz</text>
+<text x="612" y="146" font-size="24" font-weight="500" fill="#18333d" text-anchor="middle">Theta</text>
+<text x="612" y="177" font-size="18" font-weight="400" fill="#50616a" text-anchor="middle">4–&lt;8 Hz</text>
+<text x="744" y="146" font-size="24" font-weight="500" fill="#18333d" text-anchor="middle">Alpha</text>
+<text x="744" y="177" font-size="18" font-weight="400" fill="#50616a" text-anchor="middle">8–13 Hz</text>
+<text x="876" y="146" font-size="24" font-weight="500" fill="#18333d" text-anchor="middle">Beta</text>
+<text x="876" y="177" font-size="18" font-weight="400" fill="#50616a" text-anchor="middle">&gt;13–30 Hz</text>
+<text x="1008" y="146" font-size="24" font-weight="500" fill="#18333d" text-anchor="middle">Gamma</text>
+<text x="1008" y="177" font-size="18" font-weight="400" fill="#50616a" text-anchor="middle">&gt;30–80 Hz</text>
+<text x="48" y="177" font-size="18" font-weight="400" fill="#50616a" text-anchor="start">CONTEXT</text>
+<text x="48" y="233" font-size="22" font-weight="500" fill="#18333d" text-anchor="start">Deep NREM sleep</text>
+<text x="48" y="261" font-size="18" font-weight="400" fill="#50616a" text-anchor="start">Slow-wave sleep</text>
+<circle cx="480" cy="237" r="11" fill="#147984"/>
+<text x="612" y="243" font-size="20" font-weight="400" fill="#d7e0e3" text-anchor="middle">—</text>
+<text x="744" y="243" font-size="20" font-weight="400" fill="#d7e0e3" text-anchor="middle">—</text>
+<text x="876" y="243" font-size="20" font-weight="400" fill="#d7e0e3" text-anchor="middle">—</text>
+<text x="1008" y="243" font-size="20" font-weight="400" fill="#d7e0e3" text-anchor="middle">—</text>
+<path d="M48 281 L1072 281" fill="none" stroke="#d7e0e3" stroke-width="1"/>
+<text x="48" y="306" font-size="22" font-weight="500" fill="#18333d" text-anchor="start">Drowsiness</text>
+<text x="48" y="334" font-size="18" font-weight="400" fill="#50616a" text-anchor="start">Transition toward sleep</text>
+<text x="480" y="316" font-size="20" font-weight="400" fill="#d7e0e3" text-anchor="middle">—</text>
+<circle cx="612" cy="310" r="11" fill="#147984"/>
+<text x="744" y="316" font-size="20" font-weight="400" fill="#d7e0e3" text-anchor="middle">—</text>
+<text x="876" y="316" font-size="20" font-weight="400" fill="#d7e0e3" text-anchor="middle">—</text>
+<text x="1008" y="316" font-size="20" font-weight="400" fill="#d7e0e3" text-anchor="middle">—</text>
+<path d="M48 354 L1072 354" fill="none" stroke="#d7e0e3" stroke-width="1"/>
+<text x="48" y="379" font-size="22" font-weight="500" fill="#18333d" text-anchor="start">Quiet wakefulness</text>
+<text x="48" y="407" font-size="18" font-weight="400" fill="#50616a" text-anchor="start">Eyes closed; posterior alpha</text>
+<text x="480" y="389" font-size="20" font-weight="400" fill="#d7e0e3" text-anchor="middle">—</text>
+<text x="612" y="389" font-size="20" font-weight="400" fill="#d7e0e3" text-anchor="middle">—</text>
+<circle cx="744" cy="383" r="11" fill="#147984"/>
+<text x="876" y="389" font-size="20" font-weight="400" fill="#d7e0e3" text-anchor="middle">—</text>
+<text x="1008" y="389" font-size="20" font-weight="400" fill="#d7e0e3" text-anchor="middle">—</text>
+<path d="M48 427 L1072 427" fill="none" stroke="#d7e0e3" stroke-width="1"/>
+<text x="48" y="452" font-size="22" font-weight="500" fill="#18333d" text-anchor="start">Waking frontocentral EEG</text>
+<text x="48" y="480" font-size="18" font-weight="400" fill="#50616a" text-anchor="start">A characteristic beta context</text>
+<text x="480" y="462" font-size="20" font-weight="400" fill="#d7e0e3" text-anchor="middle">—</text>
+<text x="612" y="462" font-size="20" font-weight="400" fill="#d7e0e3" text-anchor="middle">—</text>
+<text x="744" y="462" font-size="20" font-weight="400" fill="#d7e0e3" text-anchor="middle">—</text>
+<circle cx="876" cy="456" r="11" fill="#147984"/>
+<text x="1008" y="462" font-size="20" font-weight="400" fill="#d7e0e3" text-anchor="middle">—</text>
+<path d="M48 500 L1072 500" fill="none" stroke="#d7e0e3" stroke-width="1"/>
+<text x="48" y="525" font-size="22" font-weight="500" fill="#18333d" text-anchor="start">Memory task example</text>
+<text x="48" y="553" font-size="18" font-weight="400" fill="#50616a" text-anchor="start">Human MEG research</text>
+<text x="480" y="535" font-size="20" font-weight="400" fill="#d7e0e3" text-anchor="middle">—</text>
+<circle cx="612" cy="529" r="11" fill="#147984"/>
+<text x="744" y="535" font-size="20" font-weight="400" fill="#d7e0e3" text-anchor="middle">—</text>
+<text x="876" y="535" font-size="20" font-weight="400" fill="#d7e0e3" text-anchor="middle">—</text>
+<circle cx="1008" cy="529" r="11" fill="#147984"/>
+<path d="M48 573 L1072 573" fill="none" stroke="#d7e0e3" stroke-width="1"/>
+<circle cx="59" cy="623" r="8" fill="#147984"/>
+<text x="80" y="630" font-size="19" font-weight="400" fill="#18333d" text-anchor="start">Selected observed association</text>
+<text x="48" y="665" font-size="18" font-weight="400" fill="#50616a" text-anchor="start">Blank cells do not mean absence. Marks show neither strength nor likelihood.</text>
+<text x="48" y="704" font-size="18" font-weight="400" fill="#50616a" text-anchor="start">These associations do not predict what listening to a rhythm will do.</text>
+</g></svg>

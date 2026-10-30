@@ -168,6 +168,7 @@ pub(crate) struct SlintAdapter {
     controls_error: RefCell<String>,
     audio_controls_visible: Cell<bool>,
     preferences: RefCell<Option<Preferences>>,
+    onboarding_preference: RefCell<Option<auditorylab_app::onboarding::Preference>>,
     wake: Arc<wake::Wake>,
     timer: slint::Timer,
     deferred: slint::Timer,
@@ -234,6 +235,7 @@ impl SlintAdapter {
             controls_error: RefCell::new(String::new()),
             audio_controls_visible: Cell::new(false),
             preferences: RefCell::new(preferences),
+            onboarding_preference: RefCell::new(None),
             wake,
             timer: slint::Timer::default(),
             deferred: slint::Timer::default(),
@@ -339,6 +341,11 @@ impl SlintAdapter {
                 && !adapter.main_ready.replace(true)
             {
                 adapter.project();
+                if let Some(main) = adapter.main.upgrade()
+                    && main.get_learning_visible()
+                {
+                    main.invoke_focus_learning();
+                }
             }
         });
     }
@@ -437,8 +444,26 @@ impl SlintAdapter {
         self.project();
     }
 
+    pub(crate) fn set_onboarding_preference(
+        &self,
+        preference: Option<auditorylab_app::onboarding::Preference>,
+    ) {
+        *self.onboarding_preference.borrow_mut() = preference;
+    }
+
     fn perform(self: &Rc<Self>, effect: Effect) {
         match effect {
+            Effect::LearningDeparted => {
+                if let Some(preference) = self.onboarding_preference.borrow_mut().take()
+                    && let Err(error) = preference.mark_seen()
+                {
+                    let notice = auditorylab_presentation::Explain::explain(&error);
+                    eprintln!("{notice}");
+                    if let Some(ui) = self.main.upgrade() {
+                        ui.set_onboarding_notice(notice.into());
+                    }
+                }
+            }
             Effect::Run(job) => {
                 if let Some(executor) = self.executor.borrow_mut().as_mut() {
                     executor.start(job);

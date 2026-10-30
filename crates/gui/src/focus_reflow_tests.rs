@@ -112,7 +112,7 @@ fn pending_entry_survives_font_reflow_clipping_and_row_changes() {
     }
     let input = h.field(rate_label);
     inner.set_focus_item(&input, true, FocusReason::Programmatic);
-    ui.set_tab_index(0);
+    ui.invoke_tab_changed(0);
     h.settle();
     snapshot(&h, &input, "genuinely hidden tab negative control");
     assert!(

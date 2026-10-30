@@ -1,0 +1,18 @@
+{
+  "PROVENANCE.md": "bed445a6cf032591e6e1b668f2208cd6f7542cf66885d987a79de3291892b8c2",
+  "draw_spectra.py": "056104db1cf1fd571b29155ae40584fd829f0a6f90cfa807b3abde75baf98281",
+  "geometry.json": "844a8af542faf4ab92da5fb4262c653292094db920a9b167a93ef92103fa4d88",
+  "luminous-spectrum-dark.png": "f36922fa7179b2f9b262826f094bf9d3df35d35311d9423e1074cf6ba5121bdd",
+  "luminous-spectrum-dark.svg": "901975bae29b96dfcc69464f1d3fff9f566703dd2f65fe035a709a2bc4e41272",
+  "luminous-spectrum-light.png": "fc7b45e46e368d493a227b62b2b88fa2f9e72eb5762278f67e68b5270777d583",
+  "luminous-spectrum-light.svg": "cb8cf8125032790f263d7bc4206a5414ea9e2ee638e3cd7832217a456bc18cc7",
+  "spectral-ribbon-dark.png": "93657cef4aaa4cd893fad9d734194f6267e0d6f0287d3b4cd37dcfcb4df0bacb",
+  "spectral-ribbon-dark.svg": "20b4bee7ebe6187aec60efffbf731fb827f25fa6ef38a45b839d031792cb50bf",
+  "spectral-ribbon-light.png": "ffc1eba0e0d875f27c41062fcdec0cd3e79b82b63471d0e6a54215b588971e5e",
+  "spectral-ribbon-light.svg": "64bfd71aec2b4bf6692d207db04537869855956a955b3dd251bc943b3e3bd4b2",
+  "verification.json": "7073d8f358321c6f0af0001fa45342a3e60f537eb51c25e458378942ea9794c1",
+  "wave-medallions-dark.png": "a4504c2a9e21b9ecac2aac7b6ea58a6a39032a85742f6f5ed521f5824b2fdb0d",
+  "wave-medallions-dark.svg": "f848345d07a8b46d25c3997431632be18b33b46970d667b7ec1c07f4b22ddf8d",
+  "wave-medallions-light.png": "e55e19235627243af546d9e81ac6efb60180429d21dd629d1d3a5c19a260d9fd",
+  "wave-medallions-light.svg": "8a570736161f655bb9bc6bc6c9b9d410e79c32adc9aa5b407049f3121612966e"
+}

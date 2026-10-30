@@ -1,0 +1,156 @@
+<!-- Copyright (c) 2026 Ervins Strauhmanis. All rights reserved.
+SPDX-License-Identifier: LicenseRef-Proprietary-Artwork
+See the root Auditory Lab LICENSE for artwork permissions. -->
+
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1000" height="260" viewBox="0 0 1000 260" role="img" aria-labelledby="title desc">
+<title id="title">Delta illustrative rhythm, 2 cycles per second, light appearance</title>
+<desc id="desc">Normalized one-second sinusoidal frequency illustration. Not recorded EEG, a pulse envelope or rendered audio. It uses the same representative rhythm as the combined spectrum.</desc>
+<defs><path id="g65" d="M0 10L3.5 0L7 10M1.4 6H5.6"/>
+<path id="g66" d="M0 10V0H3.8Q7 0 7 2.5Q7 5 3.8 5H0M3.8 5Q7 5 7 7.5Q7 10 3.8 10H0"/>
+<path id="g67" d="M7 1.2Q5.9 0 3.5 0Q0 0 0 3.5V6.5Q0 10 3.5 10Q5.9 10 7 8.8"/>
+<path id="g68" d="M0 0V10H3Q7 10 7 5Q7 0 3 0Z"/>
+<path id="g69" d="M7 0H0V10H7M0 5H5.5"/>
+<path id="g70" d="M7 0H0V10M0 5H5.5"/>
+<path id="g71" d="M7 1.4Q5.8 0 3.5 0Q0 0 0 3.5V6.5Q0 10 3.5 10Q5.8 10 7 8.7V5.5H4.2"/>
+<path id="g72" d="M0 0V10M7 0V10M0 5H7"/>
+<path id="g73" d="M0 0H7M3.5 0V10M0 10H7"/>
+<path id="g74" d="M0 0H7V7Q7 10 3.5 10Q0 10 0 7"/>
+<path id="g75" d="M0 0V10M7 0L0 6M2.9 3.5L7 10"/>
+<path id="g76" d="M0 0V10H7"/>
+<path id="g77" d="M0 10V0L3.5 5.7L7 0V10"/>
+<path id="g78" d="M0 10V0L7 10V0"/>
+<path id="g79" d="M3.5 0Q0 0 0 3.5V6.5Q0 10 3.5 10Q7 10 7 6.5V3.5Q7 0 3.5 0Z"/>
+<path id="g80" d="M0 10V0H3.7Q7 0 7 2.6Q7 5.2 3.7 5.2H0"/>
+<path id="g81" d="M3.5 0Q0 0 0 3.5V6.5Q0 10 3.5 10Q7 10 7 6.5V3.5Q7 0 3.5 0M4.5 7L8 11"/>
+<path id="g82" d="M0 10V0H3.7Q7 0 7 2.6Q7 5.2 3.7 5.2H0M3.5 5.2L7 10"/>
+<path id="g83" d="M7 1Q5.8 0 3.5 0Q0 0 0 2.5Q0 4.3 3.5 5Q7 5.7 7 7.5Q7 10 3.5 10Q1.2 10 0 9"/>
+<path id="g84" d="M0 0H7M3.5 0V10"/>
+<path id="g85" d="M0 0V6.5Q0 10 3.5 10Q7 10 7 6.5V0"/>
+<path id="g86" d="M0 0L3.5 10L7 0"/>
+<path id="g87" d="M0 0L1.5 10L3.5 4.5L5.5 10L7 0"/>
+<path id="g88" d="M0 0L7 10M7 0L0 10"/>
+<path id="g89" d="M0 0L3.5 5L7 0M3.5 5V10"/>
+<path id="g90" d="M0 0H7L0 10H7"/>
+<path id="g48" d="M3.5 0Q0 0 0 3.5V6.5Q0 10 3.5 10Q7 10 7 6.5V3.5Q7 0 3.5 0ZM1.4 8.5L5.6 1.5"/>
+<path id="g49" d="M1 2L3.7 0V10M0.8 10H6.8"/>
+<path id="g50" d="M0 2.4Q0 0 3.5 0Q7 0 7 2.6Q7 4.3 4.7 6L0 10H7"/>
+<path id="g51" d="M0 1Q1.1 0 3.5 0Q7 0 7 2.5Q7 5 3.5 5M2.7 5Q7 5 7 7.5Q7 10 3.5 10Q1.1 10 0 9"/>
+<path id="g52" d="M5.5 10V0L0 6.7H7"/>
+<path id="g53" d="M7 0H0V4.8H3.5Q7 4.8 7 7.4Q7 10 3.5 10Q1.1 10 0 9"/>
+<path id="g54" d="M6.7 1Q5.8 0 3.5 0Q0 0 0 4V6.8Q0 10 3.5 10Q7 10 7 7Q7 4.5 3.5 4.5H0"/>
+<path id="g55" d="M0 0H7L2 10"/>
+<path id="g56" d="M3.5 0Q0 0 0 2.5Q0 5 3.5 5Q7 5 7 2.5Q7 0 3.5 0ZM3.5 5Q0 5 0 7.5Q0 10 3.5 10Q7 10 7 7.5Q7 5 3.5 5Z"/>
+<path id="g57" d="M7 5.5H3.5Q0 5.5 0 2.8Q0 0 3.5 0Q7 0 7 3.3V6Q7 10 3.5 10Q1.2 10 0.3 9"/>
+<path id="g45" d="M1 5H6"/>
+<path id="g46" d="M3.4 9.5L3.6 9.5"/>
+<path id="g44" d="M3.8 9L2.8 11"/>
+<path id="g58" d="M3.4 2.3L3.6 2.3M3.4 7.7L3.6 7.7"/>
+<path id="g47" d="M0 10L7 0"/>
+<path id="g60" d="M6.5 1L0.5 5L6.5 9"/>
+<path id="g62" d="M0.5 1L6.5 5L0.5 9"/>
+<path id="g40" d="M5.5 0Q1.5 5 5.5 10"/>
+<path id="g41" d="M1.5 0Q5.5 5 1.5 10"/>
+<path id="g43" d="M0 5H7M3.5 1.5V8.5"/><filter id="wave-glow" x="-20%" y="-100%" width="140%" height="300%"><feGaussianBlur stdDeviation="4"/></filter></defs>
+<rect width="1000" height="260" rx="10" fill="#f8fafc"/>
+<g data-lettering="DELTA - ILLUSTRATIVE RHYTHM" aria-label="DELTA - ILLUSTRATIVE RHYTHM" transform="translate(55.000 22) scale(2.20000)" fill="none" stroke="#18344b" stroke-width=".8" stroke-linecap="round" stroke-linejoin="round">
+<use xlink:href="#g68" x="0"/>
+<use xlink:href="#g69" x="9"/>
+<use xlink:href="#g76" x="18"/>
+<use xlink:href="#g84" x="27"/>
+<use xlink:href="#g65" x="36"/>
+<use xlink:href="#g45" x="50"/>
+<use xlink:href="#g73" x="64"/>
+<use xlink:href="#g76" x="73"/>
+<use xlink:href="#g76" x="82"/>
+<use xlink:href="#g85" x="91"/>
+<use xlink:href="#g83" x="100"/>
+<use xlink:href="#g84" x="109"/>
+<use xlink:href="#g82" x="118"/>
+<use xlink:href="#g65" x="127"/>
+<use xlink:href="#g84" x="136"/>
+<use xlink:href="#g73" x="145"/>
+<use xlink:href="#g86" x="154"/>
+<use xlink:href="#g69" x="163"/>
+<use xlink:href="#g82" x="177"/>
+<use xlink:href="#g72" x="186"/>
+<use xlink:href="#g89" x="195"/>
+<use xlink:href="#g84" x="204"/>
+<use xlink:href="#g72" x="213"/>
+<use xlink:href="#g77" x="222"/>
+</g>
+<g data-lettering="2 CYCLES/S" aria-label="2 CYCLES/S" transform="translate(779.000 24) scale(2.00000)" fill="none" stroke="#466477" stroke-width=".8" stroke-linecap="round" stroke-linejoin="round">
+<use xlink:href="#g50" x="0"/>
+<use xlink:href="#g67" x="14"/>
+<use xlink:href="#g89" x="23"/>
+<use xlink:href="#g67" x="32"/>
+<use xlink:href="#g76" x="41"/>
+<use xlink:href="#g69" x="50"/>
+<use xlink:href="#g83" x="59"/>
+<use xlink:href="#g47" x="68"/>
+<use xlink:href="#g83" x="77"/>
+</g>
+<path d="M55 78V194 M55 136H947" stroke="#d0dde6" fill="none"/>
+<path d="M55.00 136.00 L66.15 127.87 L77.30 119.93 L88.45 112.39 L99.60 105.44 L110.75 99.23 L121.90 93.93 L133.05 89.67 L144.20 86.55 L155.35 84.64 L166.50 84.00 L177.65 84.64 L188.80 86.55 L199.95 89.67 L211.10 93.93 L222.25 99.23 L233.40 105.44 L244.55 112.39 L255.70 119.93 L266.85 127.87 L278.00 136.00 L289.15 144.13 L300.30 152.07 L311.45 159.61 L322.60 166.56 L333.75 172.77 L344.90 178.07 L356.05 182.33 L367.20 185.45 L378.35 187.36 L389.50 188.00 L400.65 187.36 L411.80 185.45 L422.95 182.33 L434.10 178.07 L445.25 172.77 L456.40 166.56 L467.55 159.61 L478.70 152.07 L489.85 144.13 L501.00 136.00 L512.15 127.87 L523.30 119.93 L534.45 112.39 L545.60 105.44 L556.75 99.23 L567.90 93.93 L579.05 89.67 L590.20 86.55 L601.35 84.64 L612.50 84.00 L623.65 84.64 L634.80 86.55 L645.95 89.67 L657.10 93.93 L668.25 99.23 L679.40 105.44 L690.55 112.39 L701.70 119.93 L712.85 127.87 L724.00 136.00 L735.15 144.13 L746.30 152.07 L757.45 159.61 L768.60 166.56 L779.75 172.77 L790.90 178.07 L802.05 182.33 L813.20 185.45 L824.35 187.36 L835.50 188.00 L846.65 187.36 L857.80 185.45 L868.95 182.33 L880.10 178.07 L891.25 172.77 L902.40 166.56 L913.55 159.61 L924.70 152.07 L935.85 144.13 L947.00 136.00" stroke="#275f9f" stroke-width="8" opacity=".16" fill="none" filter="url(#wave-glow)"/>
+<path data-wave="delta" data-example-hz="2" d="M55.00 136.00 L66.15 127.87 L77.30 119.93 L88.45 112.39 L99.60 105.44 L110.75 99.23 L121.90 93.93 L133.05 89.67 L144.20 86.55 L155.35 84.64 L166.50 84.00 L177.65 84.64 L188.80 86.55 L199.95 89.67 L211.10 93.93 L222.25 99.23 L233.40 105.44 L244.55 112.39 L255.70 119.93 L266.85 127.87 L278.00 136.00 L289.15 144.13 L300.30 152.07 L311.45 159.61 L322.60 166.56 L333.75 172.77 L344.90 178.07 L356.05 182.33 L367.20 185.45 L378.35 187.36 L389.50 188.00 L400.65 187.36 L411.80 185.45 L422.95 182.33 L434.10 178.07 L445.25 172.77 L456.40 166.56 L467.55 159.61 L478.70 152.07 L489.85 144.13 L501.00 136.00 L512.15 127.87 L523.30 119.93 L534.45 112.39 L545.60 105.44 L556.75 99.23 L567.90 93.93 L579.05 89.67 L590.20 86.55 L601.35 84.64 L612.50 84.00 L623.65 84.64 L634.80 86.55 L645.95 89.67 L657.10 93.93 L668.25 99.23 L679.40 105.44 L690.55 112.39 L701.70 119.93 L712.85 127.87 L724.00 136.00 L735.15 144.13 L746.30 152.07 L757.45 159.61 L768.60 166.56 L779.75 172.77 L790.90 178.07 L802.05 182.33 L813.20 185.45 L824.35 187.36 L835.50 188.00 L846.65 187.36 L857.80 185.45 L868.95 182.33 L880.10 178.07 L891.25 172.77 L902.40 166.56 L913.55 159.61 L924.70 152.07 L935.85 144.13 L947.00 136.00" stroke="#275f9f" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<g data-lettering="1" aria-label="1" transform="translate(18.000 79) scale(1.80000)" fill="none" stroke="#466477" stroke-width=".8" stroke-linecap="round" stroke-linejoin="round">
+<use xlink:href="#g49" x="0"/>
+</g>
+<g data-lettering="0" aria-label="0" transform="translate(18.000 127) scale(1.80000)" fill="none" stroke="#466477" stroke-width=".8" stroke-linecap="round" stroke-linejoin="round">
+<use xlink:href="#g48" x="0"/>
+</g>
+<g data-lettering="-1" aria-label="-1" transform="translate(10.000 179) scale(1.80000)" fill="none" stroke="#466477" stroke-width=".8" stroke-linecap="round" stroke-linejoin="round">
+<use xlink:href="#g45" x="0"/>
+<use xlink:href="#g49" x="9"/>
+</g>
+<g data-lettering="0" aria-label="0" transform="translate(55.000 209) scale(1.80000)" fill="none" stroke="#466477" stroke-width=".8" stroke-linecap="round" stroke-linejoin="round">
+<use xlink:href="#g48" x="0"/>
+</g>
+<g data-lettering="1 SECOND" aria-label="1 SECOND" transform="translate(828.200 209) scale(1.80000)" fill="none" stroke="#466477" stroke-width=".8" stroke-linecap="round" stroke-linejoin="round">
+<use xlink:href="#g49" x="0"/>
+<use xlink:href="#g83" x="14"/>
+<use xlink:href="#g69" x="23"/>
+<use xlink:href="#g67" x="32"/>
+<use xlink:href="#g79" x="41"/>
+<use xlink:href="#g78" x="50"/>
+<use xlink:href="#g68" x="59"/>
+</g>
+<g data-lettering="NORMALIZED SCHEMATIC - NOT AN EEG RECORDING" aria-label="NORMALIZED SCHEMATIC - NOT AN EEG RECORDING" transform="translate(247.300 242) scale(1.40000)" fill="none" stroke="#466477" stroke-width=".8" stroke-linecap="round" stroke-linejoin="round">
+<use xlink:href="#g78" x="0"/>
+<use xlink:href="#g79" x="9"/>
+<use xlink:href="#g82" x="18"/>
+<use xlink:href="#g77" x="27"/>
+<use xlink:href="#g65" x="36"/>
+<use xlink:href="#g76" x="45"/>
+<use xlink:href="#g73" x="54"/>
+<use xlink:href="#g90" x="63"/>
+<use xlink:href="#g69" x="72"/>
+<use xlink:href="#g68" x="81"/>
+<use xlink:href="#g83" x="95"/>
+<use xlink:href="#g67" x="104"/>
+<use xlink:href="#g72" x="113"/>
+<use xlink:href="#g69" x="122"/>
+<use xlink:href="#g77" x="131"/>
+<use xlink:href="#g65" x="140"/>
+<use xlink:href="#g84" x="149"/>
+<use xlink:href="#g73" x="158"/>
+<use xlink:href="#g67" x="167"/>
+<use xlink:href="#g45" x="181"/>
+<use xlink:href="#g78" x="195"/>
+<use xlink:href="#g79" x="204"/>
+<use xlink:href="#g84" x="213"/>
+<use xlink:href="#g65" x="227"/>
+<use xlink:href="#g78" x="236"/>
+<use xlink:href="#g69" x="250"/>
+<use xlink:href="#g69" x="259"/>
+<use xlink:href="#g71" x="268"/>
+<use xlink:href="#g82" x="282"/>
+<use xlink:href="#g69" x="291"/>
+<use xlink:href="#g67" x="300"/>
+<use xlink:href="#g79" x="309"/>
+<use xlink:href="#g82" x="318"/>
+<use xlink:href="#g68" x="327"/>
+<use xlink:href="#g73" x="336"/>
+<use xlink:href="#g78" x="345"/>
+<use xlink:href="#g71" x="354"/>
+</g>
+</svg>

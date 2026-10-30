@@ -18,6 +18,7 @@
 
 mod audio;
 mod choices;
+mod learning;
 pub use choices::{
     ChoiceOption, ChoiceView, ControlChoices, ControlMenu, ControlValue, FilterInput, QueryFacet,
 };
@@ -157,6 +158,8 @@ pub enum Effect {
     ResetLibraryInputs,
     /// Show another view.
     ShowView(View),
+    /// A deliberate departure from learning may be remembered by the frontend.
+    LearningDeparted,
 }
 
 /// A frontend's answer to a prompt.
@@ -212,6 +215,8 @@ pub enum ResponseDisposition {
 /// Why a command was not carried out.
 #[derive(Debug, Clone)]
 pub enum Refusal {
+    /// Choose a working surface before acting on its hidden source.
+    LearningVisible,
     /// The configured persistent library cannot be used.
     LibraryUnavailable(crate::storage::library::LibraryDiagnostic),
     /// Device playback is disabled by this workspace’s runtime policy.
@@ -268,6 +273,7 @@ pub enum Refusal {
 #[derive(Debug, Clone)]
 enum DocumentAction {
     New,
+    LearningExample(Recipe),
     Copy(RecipeSnapshot),
     EditManaged(crate::storage::library::LoadedRecord),
     EditExternal(RecipeSnapshot),
@@ -323,6 +329,7 @@ struct Pending {
 pub struct Workspace {
     library: library::LibraryState,
     view: View,
+    learning: Option<crate::learning::LearningState>,
     editor: EditorState,
     audio: AudioState,
     files: FileState,
@@ -360,6 +367,7 @@ impl Workspace {
         let mut workspace = Self {
             library,
             view: View::Library,
+            learning: None,
             editor: EditorState::new()?,
             audio: AudioState::new(capabilities),
             files: FileState::default(),
@@ -417,6 +425,7 @@ impl Workspace {
 
     /// Switch between the library and the open document.
     fn set_view(&mut self, view: View) {
+        self.leave_learning();
         if self.view != view {
             self.view = view;
             self.changed();
@@ -717,6 +726,9 @@ impl Workspace {
                 }
                 Err(e) => self.files.record_status(FileStatus::Failed(e.into())),
             },
+            Action::Document(DocumentAction::LearningExample(recipe)) => {
+                self.replace_document(Draft::from_recipe(recipe));
+            }
             Action::Document(DocumentAction::Copy(snapshot)) => {
                 if let Err(refusal) = Self::copy_content_admission(&snapshot) {
                     self.files
@@ -802,6 +814,7 @@ impl Workspace {
     }
 
     fn install_document(&mut self, editor: EditorSession) {
+        self.leave_learning();
         self.editor.install(editor);
         self.view = View::Workbench;
         self.effects.push(Effect::ShowView(View::Workbench));
@@ -1054,6 +1067,7 @@ crate::core::diagnostic_codes! {
     pub(crate) const CODES;
     Refusal {
         codes {
+            Self::LearningVisible => "workspace.learning_visible",
             Self::DevicePlaybackUnavailable => "workspace.device_playback_unavailable",
             Self::PromptOpen => "workspace.prompt_open",
             Self::ActionPending => "workspace.action_pending",

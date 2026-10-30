@@ -1,0 +1,206 @@
+[
+  {
+    "original": "/Users/erst/.codex/visualizations/2026/10/29/01a18744-f3ff-7ee2-9369-2ea8d9f8e438/rhythm-context-options/SHA256SUMS.json",
+    "package": "implementation-materials/artwork/onboarding/reference/rhythm-context-options/SHA256SUMS.json",
+    "sha256": "b055ae0290242174362a5dd7bbc298d7cce09be3741ec017b87158551c557187",
+    "role": "historical unselected/selected art source and prior exports; not runtime authority"
+  },
+  {
+    "original": "/Users/erst/.codex/visualizations/2026/10/29/01a18744-f3ff-7ee2-9369-2ea8d9f8e438/rhythm-context-options/a-frequency-and-context.png",
+    "package": "implementation-materials/artwork/onboarding/reference/rhythm-context-options/a-frequency-and-context.png",
+    "sha256": "9cbe3f4fc736979b80b994c02dfe8821dc7ae8f07033d8c7d3cd0ccc25efe9bd",
+    "role": "historical unselected/selected art source and prior exports; not runtime authority"
+  },
+  {
+    "original": "/Users/erst/.codex/visualizations/2026/10/29/01a18744-f3ff-7ee2-9369-2ea8d9f8e438/rhythm-context-options/a-frequency-and-context.svg",
+    "package": "implementation-materials/artwork/onboarding/reference/rhythm-context-options/a-frequency-and-context.svg",
+    "sha256": "1da6571bfe20dbcbb58131d182f6dc41a2bbdd715c9b9ba2c972e6eb3e8b6649",
+    "role": "historical unselected/selected art source and prior exports; not runtime authority"
+  },
+  {
+    "original": "/Users/erst/.codex/visualizations/2026/10/29/01a18744-f3ff-7ee2-9369-2ea8d9f8e438/rhythm-context-options/b-overlapping-contexts.png",
+    "package": "implementation-materials/artwork/onboarding/reference/rhythm-context-options/b-overlapping-contexts.png",
+    "sha256": "a8d0fe1d644b8dcd8bb383cfc64a864b13cc123603a57a5fad5c8f69ed13d06f",
+    "role": "historical unselected/selected art source and prior exports; not runtime authority"
+  },
+  {
+    "original": "/Users/erst/.codex/visualizations/2026/10/29/01a18744-f3ff-7ee2-9369-2ea8d9f8e438/rhythm-context-options/b-overlapping-contexts.svg",
+    "package": "implementation-materials/artwork/onboarding/reference/rhythm-context-options/b-overlapping-contexts.svg",
+    "sha256": "339771e4326f7657b2b74f51c7598932afa519aef40fce986e2b27190d7f9d26",
+    "role": "historical unselected/selected art source and prior exports; not runtime authority"
+  },
+  {
+    "original": "/Users/erst/.codex/visualizations/2026/10/29/01a18744-f3ff-7ee2-9369-2ea8d9f8e438/rhythm-context-options/c-context-first.png",
+    "package": "implementation-materials/artwork/onboarding/reference/rhythm-context-options/c-context-first.png",
+    "sha256": "67c70fd8da56823db43925b68f4b1d86a9d46cf4350a6108672b20d874afb468",
+    "role": "historical unselected/selected art source and prior exports; not runtime authority"
+  },
+  {
+    "original": "/Users/erst/.codex/visualizations/2026/10/29/01a18744-f3ff-7ee2-9369-2ea8d9f8e438/rhythm-context-options/c-context-first.svg",
+    "package": "implementation-materials/artwork/onboarding/reference/rhythm-context-options/c-context-first.svg",
+    "sha256": "d9230eed572f18614ca9d0edef30917a1a7fc861677e063b89b4a8ce59285e55",
+    "role": "historical unselected/selected art source and prior exports; not runtime authority"
+  },
+  {
+    "original": "/Users/erst/.codex/visualizations/2026/10/29/01a18744-f3ff-7ee2-9369-2ea8d9f8e438/rhythm-context-options/make_graphics.py",
+    "package": "implementation-materials/artwork/onboarding/reference/rhythm-context-options/make_graphics.py",
+    "sha256": "007cc2326812fb47dc6201497f7ae2fc0907da753ec8b1a71e254c9f4b61038f",
+    "role": "historical unselected/selected art source and prior exports; not runtime authority"
+  },
+  {
+    "original": "/Users/erst/.codex/visualizations/2026/10/29/01a18744-f3ff-7ee2-9369-2ea8d9f8e438/rhythm-context-options/provenance.json",
+    "package": "implementation-materials/artwork/onboarding/reference/rhythm-context-options/provenance.json",
+    "sha256": "2c310f5fb14cf4d203ed8023848e582baf54d265ab976bd1bffce40153501f99",
+    "role": "historical unselected/selected art source and prior exports; not runtime authority"
+  },
+  {
+    "original": "/Users/erst/.codex/visualizations/2026/10/29/01a18744-f3ff-7ee2-9369-2ea8d9f8e438/rhythm-context-options/verification.json",
+    "package": "implementation-materials/artwork/onboarding/reference/rhythm-context-options/verification.json",
+    "sha256": "85691df496d352d4110e70e616648a2b5f808027644ab939e2160b6c00255c4f",
+    "role": "historical unselected/selected art source and prior exports; not runtime authority"
+  },
+  {
+    "original": "/Users/erst/.codex/visualizations/2026/10/29/01a18744-f3ff-7ee2-9369-2ea8d9f8e438/rhythm-spectrum-studies/PROVENANCE.md",
+    "package": "implementation-materials/artwork/onboarding/reference/rhythm-spectrum-studies/PROVENANCE.md",
+    "sha256": "bed445a6cf032591e6e1b668f2208cd6f7542cf66885d987a79de3291892b8c2",
+    "role": "historical unselected/selected art source and prior exports; not runtime authority"
+  },
+  {
+    "original": "/Users/erst/.codex/visualizations/2026/10/29/01a18744-f3ff-7ee2-9369-2ea8d9f8e438/rhythm-spectrum-studies/SHA256SUMS.json",
+    "package": "implementation-materials/artwork/onboarding/reference/rhythm-spectrum-studies/SHA256SUMS.json",
+    "sha256": "4ec9ba46860f2da888a27b67ac4cd19cfc3f6cedc0eec8291eab57e4333f2d8b",
+    "role": "historical unselected/selected art source and prior exports; not runtime authority"
+  },
+  {
+    "original": "/Users/erst/.codex/visualizations/2026/10/29/01a18744-f3ff-7ee2-9369-2ea8d9f8e438/rhythm-spectrum-studies/draw_spectra.py",
+    "package": "implementation-materials/artwork/onboarding/reference/rhythm-spectrum-studies/draw_spectra.py",
+    "sha256": "056104db1cf1fd571b29155ae40584fd829f0a6f90cfa807b3abde75baf98281",
+    "role": "historical unselected/selected art source and prior exports; not runtime authority"
+  },
+  {
+    "original": "/Users/erst/.codex/visualizations/2026/10/29/01a18744-f3ff-7ee2-9369-2ea8d9f8e438/rhythm-spectrum-studies/geometry.json",
+    "package": "implementation-materials/artwork/onboarding/reference/rhythm-spectrum-studies/geometry.json",
+    "sha256": "844a8af542faf4ab92da5fb4262c653292094db920a9b167a93ef92103fa4d88",
+    "role": "historical unselected/selected art source and prior exports; not runtime authority"
+  },
+  {
+    "original": "/Users/erst/.codex/visualizations/2026/10/29/01a18744-f3ff-7ee2-9369-2ea8d9f8e438/rhythm-spectrum-studies/luminous-spectrum-dark.png",
+    "package": "implementation-materials/artwork/onboarding/reference/rhythm-spectrum-studies/luminous-spectrum-dark.png",
+    "sha256": "f36922fa7179b2f9b262826f094bf9d3df35d35311d9423e1074cf6ba5121bdd",
+    "role": "historical unselected/selected art source and prior exports; not runtime authority"
+  },
+  {
+    "original": "/Users/erst/.codex/visualizations/2026/10/29/01a18744-f3ff-7ee2-9369-2ea8d9f8e438/rhythm-spectrum-studies/luminous-spectrum-dark.svg",
+    "package": "implementation-materials/artwork/onboarding/reference/rhythm-spectrum-studies/luminous-spectrum-dark.svg",
+    "sha256": "901975bae29b96dfcc69464f1d3fff9f566703dd2f65fe035a709a2bc4e41272",
+    "role": "historical unselected/selected art source and prior exports; not runtime authority"
+  },
+  {
+    "original": "/Users/erst/.codex/visualizations/2026/10/29/01a18744-f3ff-7ee2-9369-2ea8d9f8e438/rhythm-spectrum-studies/luminous-spectrum-light.png",
+    "package": "implementation-materials/artwork/onboarding/reference/rhythm-spectrum-studies/luminous-spectrum-light.png",
+    "sha256": "fc7b45e46e368d493a227b62b2b88fa2f9e72eb5762278f67e68b5270777d583",
+    "role": "historical unselected/selected art source and prior exports; not runtime authority"
+  },
+  {
+    "original": "/Users/erst/.codex/visualizations/2026/10/29/01a18744-f3ff-7ee2-9369-2ea8d9f8e438/rhythm-spectrum-studies/luminous-spectrum-light.svg",
+    "package": "implementation-materials/artwork/onboarding/reference/rhythm-spectrum-studies/luminous-spectrum-light.svg",
+    "sha256": "cb8cf8125032790f263d7bc4206a5414ea9e2ee638e3cd7832217a456bc18cc7",
+    "role": "historical unselected/selected art source and prior exports; not runtime authority"
+  },
+  {
+    "original": "/Users/erst/.codex/visualizations/2026/10/29/01a18744-f3ff-7ee2-9369-2ea8d9f8e438/rhythm-spectrum-studies/spectral-ribbon-dark.png",
+    "package": "implementation-materials/artwork/onboarding/reference/rhythm-spectrum-studies/spectral-ribbon-dark.png",
+    "sha256": "93657cef4aaa4cd893fad9d734194f6267e0d6f0287d3b4cd37dcfcb4df0bacb",
+    "role": "historical unselected/selected art source and prior exports; not runtime authority"
+  },
+  {
+    "original": "/Users/erst/.codex/visualizations/2026/10/29/01a18744-f3ff-7ee2-9369-2ea8d9f8e438/rhythm-spectrum-studies/spectral-ribbon-dark.svg",
+    "package": "implementation-materials/artwork/onboarding/reference/rhythm-spectrum-studies/spectral-ribbon-dark.svg",
+    "sha256": "20b4bee7ebe6187aec60efffbf731fb827f25fa6ef38a45b839d031792cb50bf",
+    "role": "historical unselected/selected art source and prior exports; not runtime authority"
+  },
+  {
+    "original": "/Users/erst/.codex/visualizations/2026/10/29/01a18744-f3ff-7ee2-9369-2ea8d9f8e438/rhythm-spectrum-studies/spectral-ribbon-light.png",
+    "package": "implementation-materials/artwork/onboarding/reference/rhythm-spectrum-studies/spectral-ribbon-light.png",
+    "sha256": "ffc1eba0e0d875f27c41062fcdec0cd3e79b82b63471d0e6a54215b588971e5e",
+    "role": "historical unselected/selected art source and prior exports; not runtime authority"
+  },
+  {
+    "original": "/Users/erst/.codex/visualizations/2026/10/29/01a18744-f3ff-7ee2-9369-2ea8d9f8e438/rhythm-spectrum-studies/spectral-ribbon-light.svg",
+    "package": "implementation-materials/artwork/onboarding/reference/rhythm-spectrum-studies/spectral-ribbon-light.svg",
+    "sha256": "64bfd71aec2b4bf6692d207db04537869855956a955b3dd251bc943b3e3bd4b2",
+    "role": "historical unselected/selected art source and prior exports; not runtime authority"
+  },
+  {
+    "original": "/Users/erst/.codex/visualizations/2026/10/29/01a18744-f3ff-7ee2-9369-2ea8d9f8e438/rhythm-spectrum-studies/verification.json",
+    "package": "implementation-materials/artwork/onboarding/reference/rhythm-spectrum-studies/verification.json",
+    "sha256": "7073d8f358321c6f0af0001fa45342a3e60f537eb51c25e458378942ea9794c1",
+    "role": "historical unselected/selected art source and prior exports; not runtime authority"
+  },
+  {
+    "original": "/Users/erst/.codex/visualizations/2026/10/29/01a18744-f3ff-7ee2-9369-2ea8d9f8e438/rhythm-spectrum-studies/wave-medallions-dark.png",
+    "package": "implementation-materials/artwork/onboarding/reference/rhythm-spectrum-studies/wave-medallions-dark.png",
+    "sha256": "a4504c2a9e21b9ecac2aac7b6ea58a6a39032a85742f6f5ed521f5824b2fdb0d",
+    "role": "historical unselected/selected art source and prior exports; not runtime authority"
+  },
+  {
+    "original": "/Users/erst/.codex/visualizations/2026/10/29/01a18744-f3ff-7ee2-9369-2ea8d9f8e438/rhythm-spectrum-studies/wave-medallions-dark.svg",
+    "package": "implementation-materials/artwork/onboarding/reference/rhythm-spectrum-studies/wave-medallions-dark.svg",
+    "sha256": "f848345d07a8b46d25c3997431632be18b33b46970d667b7ec1c07f4b22ddf8d",
+    "role": "historical unselected/selected art source and prior exports; not runtime authority"
+  },
+  {
+    "original": "/Users/erst/.codex/visualizations/2026/10/29/01a18744-f3ff-7ee2-9369-2ea8d9f8e438/rhythm-spectrum-studies/wave-medallions-light.png",
+    "package": "implementation-materials/artwork/onboarding/reference/rhythm-spectrum-studies/wave-medallions-light.png",
+    "sha256": "e55e19235627243af546d9e81ac6efb60180429d21dd629d1d3a5c19a260d9fd",
+    "role": "historical unselected/selected art source and prior exports; not runtime authority"
+  },
+  {
+    "original": "/Users/erst/.codex/visualizations/2026/10/29/01a18744-f3ff-7ee2-9369-2ea8d9f8e438/rhythm-spectrum-studies/wave-medallions-light.svg",
+    "package": "implementation-materials/artwork/onboarding/reference/rhythm-spectrum-studies/wave-medallions-light.svg",
+    "sha256": "8a570736161f655bb9bc6bc6c9b9d410e79c32adc9aa5b407049f3121612966e",
+    "role": "historical unselected/selected art source and prior exports; not runtime authority"
+  },
+  {
+    "original": "/Users/erst/.codex/visualizations/2026/10/29/01a18744-f3ff-7ee2-9369-2ea8d9f8e438/auditorylab-start-here.html",
+    "package": "reference/mockups/auditorylab-start-here.html",
+    "sha256": "6c188640d1357b38c0b709c50c5e7081971be14906f0db8af78f1ee10fa557e5",
+    "role": "mixed-content historical mockup or preview helper; not production source"
+  },
+  {
+    "original": "/Users/erst/.codex/visualizations/2026/10/29/01a18744-f3ff-7ee2-9369-2ea8d9f8e438/auditorylab-onboarding-spectrum.html",
+    "package": "reference/mockups/auditorylab-onboarding-spectrum.html",
+    "sha256": "dc139269c938ef81fa5e13234f91cde5bf8937470b6ca1fd2564a1a5cb1fe133",
+    "role": "mixed-content historical mockup or preview helper; not production source"
+  },
+  {
+    "original": "/Users/erst/.codex/visualizations/2026/10/29/01a18744-f3ff-7ee2-9369-2ea8d9f8e438/rhythm-spectrum-review.html",
+    "package": "reference/mockups/rhythm-spectrum-review.html",
+    "sha256": "6a3212cef488a8d9c03b4a261ae44c6a4cbc26fed07e16888bc1da80fd8aed15",
+    "role": "mixed-content historical mockup or preview helper; not production source"
+  },
+  {
+    "original": "/Users/erst/.codex/visualizations/2026/10/29/01a18744-f3ff-7ee2-9369-2ea8d9f8e438/incorporate-spectrum.py",
+    "package": "reference/mockups/incorporate-spectrum.py",
+    "sha256": "1cb180de12c3b6a95d696b3e4ea47baa004836d4718ca96be447a2c6980c05ce",
+    "role": "mixed-content historical mockup or preview helper; not production source"
+  },
+  {
+    "original": "/Users/erst/.codex/visualizations/2026/10/29/01a18744-f3ff-7ee2-9369-2ea8d9f8e438/auditorylab-onboarding-reviewed.html",
+    "package": "reference/mockups/auditorylab-onboarding-reviewed.html",
+    "sha256": "eb3915721ae6d0f86964bc0b9f5307678fb610855703633b20ef6bc9c594ff19",
+    "role": "current corrected mixed-content design reference; not production application code"
+  },
+  {
+    "original": "/Users/erst/Tools/auditorylab/target/handoffs/prepare-onboarding-preview.py",
+    "package": "reference/mockups/prepare-reviewed-preview.py",
+    "sha256": "fc1fb4710ae427b7257794662cbee6f815cda39e8fabbc24d6a9eb0f91e73b00",
+    "role": "retained preparation helper; environment-specific software reference, not an app build dependency"
+  },
+  {
+    "original": "/Users/erst/Tools/auditorylab/target/handoffs/prepare-onboarding-artwork.py",
+    "package": "implementation-materials/artwork/onboarding/reference/prepare-onboarding-artwork.py",
+    "sha256": "6e4c5c9dabebbf2d5a6afff298b7b2355c1f494ab9c48c6cd46edad1dc3dd398",
+    "role": "historical art-bearing preparation source for preferred masters; proprietary reference, not a production build command"
+  }
+]
