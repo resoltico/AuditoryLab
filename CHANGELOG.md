@@ -2,16 +2,19 @@
 
 ## [Unreleased]
 
-- Desktop Start here offers optional, revisitable Library, sound-construction and rhythm lessons, with matching light/dark sine illustrations and native text.
-- Learning compares real compiled carrier, stereo waveform and envelope traces for six sound constructions without opening a device or creating a document.
-- Create a pulsed tone opens a captured quiet Workbench example through Save/Discard/Cancel; New sound stays empty. Learning retains work and running tasks.
-- Fresh desktop profiles start with orientation; deliberate entry to work remembers one flag outside the library. Later launches start in Library.
 - Recipe schema 5 replaces schema 4. Recreate old recipes with `new KIND` or updated built-ins; unsupported files remain intact and reported.
 - Update method filters to `pulse_train`, `pulsed` and `sinusoidal`; JSON schema 3/classifier 3 reports source and shared modulation independently.
+- AM and mixtures containing pairs can have different sample bits under component sum-then-modulate order; see [waveforms](docs/recipes.md#waveforms).
+- Exported WAV and recipe files get ordinary permissions instead of owner-only; a replaced external recipe keeps its permissions.
+- Desktop Start here offers optional, revisitable Library, sound-construction and rhythm lessons, with matching light/dark sine illustrations and native text.
+- Learning compares real compiled carrier, stereo waveform and envelope traces for six sound constructions without opening a device or creating a document.
+- Create a pulsed tone opens a quiet, unsaved Workbench example through Save/Discard/Cancel; New sound stays empty.
+- Reading Start here preserves drafts and tasks; return to Library/Workbench to Play, Save or Export. Stop and Cancel still control running work.
+- Fresh desktop profiles start with orientation; deliberate entry to work remembers one flag outside the library. Later launches start in Library.
+- Onboarding artwork is proprietary under [LICENSE](LICENSE); editable sources are included. Exporter, verifier and preview software use MPL-2.0.
 - Create tone, pulse-train, pair or pulsed-tone (isochronic) templates in Desktop Add component or `auditorylab new KIND`; `--output` never overwrites.
 - Pairs support shared sinusoidal or shaped pulsed modulation, with atomic component transitions within one 16-generator-lane budget.
 - Pulse widths retain duration or duty intent; raised-cosine edges and calculated previews show requested and sample-quantized timing.
-- AM and mixtures containing pairs can have different sample bits under component sum-then-modulate order; see [waveforms](docs/recipes.md#waveforms).
 - Finite duration/overall fades govern Library playback and export independently of live audition and its 30 ms transitions.
 - Routing names digital channels; intended separate-ear delivery is not verified. Small pair differences survive rounded carrier displays.
 - Workbench patterns refresh after edits with the monitor closed; pulse sections stay open with accurate accessible headings.
@@ -19,7 +22,6 @@
 - `list` rows and desktop Library rows show what each sound's study was about; built-in CLI rows show dates only while sorting by a date.
 - CLI help describes every command and option in plain language; `export --output` and other options gained help.
 - `export` checks the destination before announcing the file and now states its size, such as 15.4 MB.
-- Exported WAV and recipe files get ordinary permissions instead of owner-only; a replaced external recipe keeps its permissions.
 - Desktop wording is plainer: **Waveform pattern**, **Active filters…**, **Not playing**, **Applied rhythm**, **Peak level**, named band definitions and silent-draft hints.
 - Desktop save confirmations name the saved sound; Filters label study role and rhythm analysis plainly and show the timezone once.
 - The desktop has an Edit menu for text fields and **Help › Auditory Lab desktop guide**; macOS no longer lists Quit twice.
