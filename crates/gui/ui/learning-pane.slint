@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import {
     Palette,
-    ComboBox,
     ScrollView,
     VerticalBox,
     HorizontalBox,
@@ -10,17 +9,6 @@ import {
 import { Button } from "button.slint";
 import { Section } from "editor.slint";
 import { LearningTrace, LearningBand, LearningSource } from "models.slint";
-
-component LearningChoice inherits ComboBox {
-    in property <int> selection;
-    public function sync-selection() {
-        root.current-index = root.selection;
-        root.current-value = root.model[root.selection];
-    }
-    changed selection => { root.sync-selection(); }
-    changed model => { root.sync-selection(); }
-    init => { root.sync-selection(); }
-}
 
 // A visible contents item. Text wraps and follows the native application font.
 component LessonTab inherits Rectangle {
@@ -59,9 +47,63 @@ component LessonTab inherits Rectangle {
     }
 }
 
+// One way into the application: what it offers and the action that starts it.
+component PathCard inherits Rectangle {
+    in property <string> title;
+    in property <string> text;
+    in property <string> action;
+    in property <bool> primary;
+    in property <length> ui-size;
+    callback activated();
+    horizontal-stretch: 1;
+    min-width: 0px;
+    min-height: content.preferred-height;
+    border-width: 1px;
+    border-color: Palette.border;
+    border-radius: 10px;
+    background: Palette.control-background;
+    content := VerticalBox {
+        padding: 16px;
+        spacing: 10px;
+        Text {
+            text: root.title;
+            font-size: root.ui-size * 1.2;
+            font-weight: 600;
+            color: Palette.foreground;
+            wrap: word-wrap;
+            min-width: 0px;
+        }
+
+        Text {
+            text: root.text;
+            color: Palette.foreground;
+            wrap: word-wrap;
+            min-width: 0px;
+            vertical-stretch: 1;
+        }
+
+        HorizontalBox {
+            padding: 0px;
+            vertical-stretch: 0;
+            Button {
+                text: root.action;
+                primary: root.primary;
+                horizontal-stretch: 0;
+                triggered => { root.activated(); }
+            }
+
+            Rectangle {
+                horizontal-stretch: 1;
+            }
+        }
+    }
+}
+
 component LessonPlot inherits Rectangle {
     in property <string> trace;
+    in property <string> overlay;
     in property <color> ink: Palette.accent-background;
+    in property <color> overlay-ink: Palette.color-scheme == ColorScheme.dark ? #ffab70 : #c2410c;
     in property <bool> unipolar;
     in property <string> label;
     in property <length> ui-size;
@@ -115,6 +157,19 @@ component LessonPlot inherits Rectangle {
         fit: fill;
         commands: root.trace;
         stroke: root.ink;
+        stroke-width: 2px;
+    }
+
+    if root.overlay != "": Path {
+        x: root.ui-size * 2.5;
+        y: 8px;
+        width: parent.width - self.x - 8px;
+        height: parent.height - 16px;
+        viewbox-width: 1024;
+        viewbox-height: 100;
+        fit: fill;
+        commands: root.overlay;
+        stroke: root.overlay-ink;
         stroke-width: 2px;
     }
 }
@@ -273,16 +328,6 @@ export component LearningPane inherits Rectangle {
                         accessible-role: text;
                     }
 
-                    if root.topic-key == "sound-types": LearningChoice {
-                        preferred-height: root.ui-size * 2.6;
-                        max-height: self.preferred-height;
-                        model: root.constructions;
-                        selection: root.construction;
-                        max-width: root.ui-size * 30;
-                        accessible-label: "Sound construction";
-                        selected(_) => { root.select-construction(self.current-index); }
-                    }
-
                     Text {
                         text: root.body;
                         font-size: root.ui-size * 1.08;
@@ -293,49 +338,52 @@ export component LearningPane inherits Rectangle {
                         accessible-role: text;
                     }
 
-                    if root.topic-key == "overview": VerticalBox {
+                    // Every construction is a visible choice; the selected one is checked.
+                    if root.topic-key == "sound-types": construction-grid := Rectangle {
+                        property <int> columns: root.compact ? 2 : 3;
+                        property <length> gap: 8px;
+                        property <length> cell-width: (self.width - (self.columns - 1) * self.gap) /
+                            self.columns;
+                        property <length> cell-height: max(32px, 2.5rem);
+                        height: ceil(root.constructions.length / self.columns) *
+                            (self.cell-height + self.gap) - self.gap;
+                        accessible-role: groupbox;
+                        accessible-label: "Sound construction";
+                        for title[index] in root.constructions: Button {
+                            x: mod(index, construction-grid.columns) *
+                                (construction-grid.cell-width + construction-grid.gap);
+                            y: floor(index / construction-grid.columns) *
+                                (construction-grid.cell-height + construction-grid.gap);
+                            width: construction-grid.cell-width;
+                            text: title;
+                            checked: root.construction == index;
+                            accessible-checkable: true;
+                            accessible-checked: root.construction == index;
+                            triggered => {
+                                if index != root.construction { root.select-construction(index); }
+                            }
+                        }
+                    }
+                    if root.topic-key == "overview": HorizontalBox {
                         padding: 0px;
                         spacing: 14px;
                         vertical-stretch: 0;
-                        Text {
-                            text: "Explore the Library";
-                            font-size: root.ui-size * 1.2;
-                            font-weight: 600;
-                            color: Palette.foreground;
-                        }
-
-                        Text {
+                        PathCard {
+                            title: "Explore the Library";
                             text: "Inspect a ready-made sound and the research behind it.";
-                            color: Palette.foreground;
-                            wrap: word-wrap;
-                            min-width: 0px;
+                            action: "Browse Library";
+                            primary: true;
+                            ui-size: root.ui-size;
+                            activated => { root.browse-library(); }
                         }
 
-                        Button {
-                            text: "Browse Library";
-                            max-width: self.preferred-width;
-                            triggered => { root.browse-library(); }
-                        }
-
-                        Text {
-                            text: "Build a sound";
-                            font-size: root.ui-size * 1.2;
-                            font-weight: 600;
-                            color: Palette.foreground;
-                        }
-
-                        Text {
+                        PathCard {
+                            title: "Build a sound";
                             text: "Start with a pulsed tone, then change it in Workbench. " +
                                 "Nothing plays automatically.";
-                            color: Palette.foreground;
-                            wrap: word-wrap;
-                            min-width: 0px;
-                        }
-
-                        Button {
-                            text: root.example-action;
-                            max-width: self.preferred-width;
-                            triggered => { root.create-example(); }
+                            action: root.example-action;
+                            ui-size: root.ui-size;
+                            activated => { root.create-example(); }
                         }
                     }
                     if root.topic-key == "library": Button {
@@ -384,6 +432,7 @@ export component LearningPane inherits Rectangle {
 
                             LessonPlot {
                                 trace: lane.trace;
+                                overlay: lane.overlay;
                                 unipolar: lane.unipolar;
                                 label: lane.label;
                                 ui-size: root.ui-size;
@@ -400,27 +449,29 @@ export component LearningPane inherits Rectangle {
                         vertical-stretch: 0;
                         padding: 0px;
                         spacing: 14px;
+                        // The band names are the selector: one checked button per
+                        // section of the strip below, with its range underneath.
                         HorizontalBox {
                             padding: 0px;
-                            spacing: 0px;
+                            spacing: 8px;
                             for item[index] in root.band-items: VerticalBox {
-                                padding: 3px;
-                                spacing: 6px;
+                                padding: 0px;
+                                spacing: 4px;
                                 min-width: 0px;
                                 horizontal-stretch: 1;
-                                Text {
+                                Button {
                                     text: item.name;
-                                    font-size: root.ui-size * 1.12;
-                                    font-weight: 600;
-                                    color: root.band-colors[index];
-                                    wrap: word-wrap;
+                                    checked: root.band == index;
                                     min-width: 0px;
-                                    horizontal-alignment: center;
+                                    accessible-checkable: true;
+                                    accessible-checked: root.band == index;
+                                    triggered => { root.select-band(index); }
                                 }
 
                                 Text {
                                     text: item.range;
-                                    color: Palette.foreground;
+                                    color: root.band-colors[index];
+                                    font-weight: 600;
                                     wrap: word-wrap;
                                     min-width: 0px;
                                     horizontal-alignment: center;
@@ -484,7 +535,7 @@ export component LearningPane inherits Rectangle {
                                 }
 
                                 Text {
-                                    text: item.name + ": " + item.context;
+                                    text: item.context;
                                     color: Palette.foreground;
                                     wrap: word-wrap;
                                     min-width: 0px;
@@ -510,18 +561,6 @@ export component LearningPane inherits Rectangle {
                             wrap: word-wrap;
                             min-width: 0px;
                             vertical-stretch: 0;
-                        }
-
-                        HorizontalBox {
-                            padding: 0px;
-                            spacing: 8px;
-                            for item[index] in root.band-items: Button {
-                                text: item.name;
-                                checked: root.band == index;
-                                min-width: 0px;
-                                horizontal-stretch: 1;
-                                triggered => { root.select-band(index); }
-                            }
                         }
 
                         Text {

@@ -4950,26 +4950,21 @@ fn learning_construction_picker_projects_real_sound_and_envelope_without_documen
     ]) {
         ui.invoke_select_learning_construction(i32::try_from(construction.index()).unwrap());
         h.settle();
-        assert_eq!(
-            construction_picker(ui)
-                .accessible_string_property(AccessibleStringProperty::Value)
-                .as_deref(),
-            Some(title)
-        );
+        assert_eq!(selected_construction(ui).as_deref(), Some(title));
         let traces = ui.get_learning_traces();
         assert!(traces.iter().all(|lane| !lane.trace.is_empty()));
         let waveforms = traces
             .iter()
             .filter(|lane| !lane.unipolar)
             .collect::<Vec<_>>();
+        assert_eq!(waveforms.len(), 1, "stereo is shown in one plot");
         if construction == Construction::BinauralPair {
-            assert_eq!(waveforms.len(), 2);
-            assert!(waveforms[0].label.contains("Left"));
-            assert!(waveforms[1].label.contains("Right"));
-            assert_ne!(waveforms[0].trace, waveforms[1].trace);
+            assert!(waveforms[0].label.contains("Left") && waveforms[0].label.contains("Right"));
+            assert!(!waveforms[0].overlay.is_empty(), "the right channel is drawn over the left");
+            assert_ne!(waveforms[0].trace, waveforms[0].overlay);
         } else {
-            assert_eq!(waveforms.len(), 1, "identical stereo traces are shown once");
             assert!(waveforms[0].label.contains("Both channels"));
+            assert!(waveforms[0].overlay.is_empty());
         }
         if matches!(
             construction,
@@ -4986,7 +4981,7 @@ fn learning_construction_picker_projects_real_sound_and_envelope_without_documen
             assert!(
                 traces
                     .iter()
-                    .any(|lane| lane.label.contains("Pulse source on/off timing"))
+                    .any(|lane| lane.label.contains("When each source pulse is on"))
             );
         }
         assert!(!ui.get_learning_example_summary().is_empty());
@@ -5001,12 +4996,7 @@ fn learning_construction_picker_projects_real_sound_and_envelope_without_documen
     ui.invoke_open_learning(i32::try_from(Topic::Overview.index()).unwrap());
     ui.invoke_open_learning(i32::try_from(Topic::SoundTypes.index()).unwrap());
     h.settle();
-    assert_eq!(
-        construction_picker(ui)
-            .accessible_string_property(AccessibleStringProperty::Value)
-            .as_deref(),
-        Some("Pulse train")
-    );
+    assert_eq!(selected_construction(ui).as_deref(), Some("Pulse train"));
 }
 
 #[test]
@@ -5800,18 +5790,31 @@ fn preference_popup_stop_targets_audio_and_a_late_stop_never_starts_the_workbenc
     );
 }
 
-fn construction_picker(ui: &MainWindow) -> ItemRc {
-    find_control(ui, |item| {
-        item.is_visible()
-            && item
-                .accessible_string_property(AccessibleStringProperty::Label)
-                .as_deref()
-                == Some("Sound construction")
-            && item
-                .accessible_string_property(AccessibleStringProperty::Value)
-                .is_some()
+/// The label of the checked choice in the visible construction group.
+fn selected_construction(ui: &MainWindow) -> Option<String> {
+    let group = find_control(ui, |item| {
+        item.accessible_string_property(AccessibleStringProperty::Label)
+            .as_deref()
+            == Some("Sound construction")
     })
-    .expect("the exact construction picker exposes its value")
+    .expect("the construction choices form one group");
+    let mut checked = Vec::new();
+    let _ = group.visit_descendants(|item| {
+        if item.is_visible()
+            && item
+                .accessible_string_property(AccessibleStringProperty::Checked)
+                .as_deref()
+                == Some("true")
+        {
+            checked.extend(
+                item.accessible_string_property(AccessibleStringProperty::Label)
+                    .map(|label| label.to_string()),
+            );
+        }
+        ControlFlow::<()>::Continue(())
+    });
+    assert!(checked.len() <= 1, "one construction is checked: {checked:?}");
+    checked.pop()
 }
 
 fn reveal_lesson_control(h: &Harness, label: &str) -> ItemRc {

@@ -80,7 +80,9 @@ export struct LearningTrace {
     label: string,
     trace: string,
     // Gain plots use zero at the bottom; signed traces use a central zero.
-    unipolar: bool
+    unipolar: bool,
+    // The right channel drawn over `trace` (the left) when the channels differ.
+    overlay: string
 }
 
 // User-facing source label; application-owned commands retain the destination URL.

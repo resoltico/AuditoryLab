@@ -901,6 +901,7 @@ impl SlintAdapter {
                 label: text::carrier_caption(visual).into(),
                 trace: trace[0].as_str().into(),
                 unipolar: false,
+                overlay: "".into(),
             });
         }
         let mut envelopes = Vec::new();
@@ -934,6 +935,7 @@ impl SlintAdapter {
                 label: text::timing_caption(visual, lane.kind).into(),
                 trace: trace.into(),
                 unipolar: true,
+                overlay: "".into(),
             });
         }
         if learning.topic == Topic::PitchAndRhythm {
@@ -949,15 +951,21 @@ impl SlintAdapter {
                 label: format!("{} · Both channels", text::waveform_caption(visual)).into(),
                 trace: trace[0].as_str().into(),
                 unipolar: false,
+                overlay: "".into(),
             });
         } else {
-            for (channel, path) in ["Left", "Right"].into_iter().zip(trace) {
-                rows.push(crate::generated::LearningTrace {
-                    label: format!("{} · {channel}", text::waveform_caption(visual)).into(),
-                    trace: path.into(),
-                    unipolar: false,
-                });
-            }
+            // One plot with both channels, so their difference is visible.
+            let [left, right] = trace;
+            rows.push(crate::generated::LearningTrace {
+                label: format!(
+                    "{} · Left (blue) and Right (orange) drawn together",
+                    text::waveform_caption(visual)
+                )
+                .into(),
+                trace: left.into(),
+                unipolar: false,
+                overlay: right.into(),
+            });
         }
         rows.append(&mut envelopes);
         ui.set_learning_traces(Rc::new(VecModel::from(rows)).into());
