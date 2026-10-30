@@ -1,8 +1,8 @@
 //! Independent signed-pair, owner/lane, strict shape and sample-preservation oracles.
 use crate as auditorylab_core;
 use auditorylab_core::{
-    Carrier, ChannelRouting, Component, ComponentForm, ComponentId, FiniteFixture, Lane, Pair,
-    PairError, PairIssue, SampleRate, SourceLane, StructureError, TargetCheck,
+    ChannelRouting, Component, ComponentForm, ComponentId, FiniteFixture, Lane, Pair, PairError,
+    PairIssue, SampleRate, StructureError, TargetCheck,
 };
 use serde::{Deserialize, Serialize};
 use std::{format, vec, vec::Vec};
@@ -25,11 +25,13 @@ fn form(id: u32, form: ComponentForm) -> Component {
         form,
     }
 }
-fn tone(hz: f64, level: f64, route: ChannelRouting) -> SourceLane {
-    SourceLane {
-        route,
-        peak_dbfs: level,
-        carrier: Carrier::Tone { frequency_hz: hz },
+fn tone(hz: f64, level: f64, route: ChannelRouting) -> ComponentForm {
+    crate::ComponentForm {
+        source: crate::SoundSource::Tone {
+            route,
+            peak_dbfs: crate::test_support::finite(level),
+            frequency_hz: crate::test_support::finite(hz),
+        },
         modulation: None,
     }
 }
@@ -110,7 +112,7 @@ fn pair_parameters_read_exact_values_and_write_only_the_requested_field() {
             assert_eq!(actual, make(original));
         }
     }
-    let mut primitive = crate::test_support::form(tone(437.0, -24.0, ChannelRouting::Left));
+    let mut primitive = tone(437.0, -24.0, ChannelRouting::Left);
     assert_eq!(
         primitive.get(P::ToneFrequency),
         Some(crate::test_support::finite(437.0))
@@ -120,16 +122,10 @@ fn pair_parameters_read_exact_values_and_write_only_the_requested_field() {
         Some(crate::test_support::finite(-24.0))
     );
     assert!(primitive.set(P::ToneFrequency, crate::test_support::finite(509.0)));
-    assert_eq!(
-        primitive,
-        crate::test_support::form(tone(509.0, -24.0, ChannelRouting::Left))
-    );
+    assert_eq!(primitive, tone(509.0, -24.0, ChannelRouting::Left));
     assert!(!primitive.set(P::PairOffset, crate::test_support::finite(6.0)));
     assert_eq!(primitive.get(P::PairOffset), None);
-    assert_eq!(
-        primitive,
-        crate::test_support::form(tone(509.0, -24.0, ChannelRouting::Left))
-    );
+    assert_eq!(primitive, tone(509.0, -24.0, ChannelRouting::Left));
 }
 
 #[test]
@@ -157,8 +153,8 @@ fn content_equality_preserves_signed_zero_and_nan_payloads_are_rejected() {
         }
         for (left, right) in [
             (
-                crate::test_support::form(tone(value, -20.0, ChannelRouting::Both)),
-                crate::test_support::form(tone(changed, -20.0, ChannelRouting::Both)),
+                tone(value, -20.0, ChannelRouting::Both),
+                tone(changed, -20.0, ChannelRouting::Both),
             ),
             (binaural_form(pair(value)), binaural_form(pair(changed))),
             (
@@ -279,40 +275,39 @@ fn node_choices_headings_routes_and_component_text_describe_authored_intent() {
     use crate::{CarrierKind as C, Modulation as M, ModulationKind as K};
     let plain = tone(437.0, -24.0, ChannelRouting::Left);
     for (value, carrier, modulation, heading, editable) in [
+        (plain, Some(C::Tone), None, "Steady tone", true),
         (
-            crate::test_support::form(plain),
-            Some(C::Tone),
-            None,
-            "Steady tone",
-            true,
-        ),
-        (
-            crate::test_support::form(SourceLane {
-                carrier: Carrier::PulseTrain {
-                    pulse: crate::test_support::rectangular_pulse(40.0, 0.002),
-                },
-                ..plain
-            }),
+            {
+                let base = plain;
+                crate::ComponentForm {
+                    source: crate::SoundSource::PulseTrain {
+                        route: base.route().unwrap(),
+                        peak_dbfs: base.get(crate::ParameterId::PeakLevel).unwrap(),
+                        pulse: crate::test_support::rectangular_pulse(40.0, 0.002),
+                    },
+                    ..base
+                }
+            },
             Some(C::PulseTrain),
             None,
             "Pulse train",
             true,
         ),
         (
-            crate::test_support::form(SourceLane {
+            crate::ComponentForm {
                 modulation: Some(M::Sinusoidal {
                     rate_hz: crate::test_support::finite(7.0),
                     depth: crate::test_support::finite(0.5),
                 }),
                 ..plain
-            }),
+            },
             Some(C::Tone),
             Some(K::Sinusoidal),
             "Tone with sinusoidal AM",
             true,
         ),
         (
-            crate::test_support::form(SourceLane {
+            crate::ComponentForm {
                 modulation: Some(M::Pulsed {
                     pulse: crate::PulseSpec {
                         rate_hz: crate::test_support::finite(7.0),
@@ -323,10 +318,10 @@ fn node_choices_headings_routes_and_component_text_describe_authored_intent() {
                     },
                 }),
                 ..plain
-            }),
+            },
             Some(C::Tone),
             Some(K::Pulsed),
-            "Pulsed tone",
+            "Pulsed tone (isochronic)",
             true,
         ),
         (
@@ -354,7 +349,7 @@ fn node_choices_headings_routes_and_component_text_describe_authored_intent() {
 #[test]
 fn component_deserialization_rejects_zero_and_preserves_positive_owners() {
     for value in [
-        crate::test_support::form(tone(437.0, -24.0, ChannelRouting::Both)),
+        tone(437.0, -24.0, ChannelRouting::Both),
         binaural_form(pair(-6.0)),
         monaural_form(pair(6.0), ChannelRouting::Right),
     ] {
@@ -368,7 +363,7 @@ fn component_deserialization_rejects_zero_and_preserves_positive_owners() {
     }
 }
 #[test]
-fn signed_pairs_lower_into_exact_ordered_raw_oracles_and_stable_lanes() {
+fn signed_pairs_compile_ordered_lanes_and_match_independent_tones() {
     for (offset, second) in [(2.0, 202.0), (-2.0, 198.0), (0.0, 200.0), (40.0, 240.0)] {
         for (node_kind, routes) in [
             (
@@ -380,23 +375,6 @@ fn signed_pairs_lower_into_exact_ordered_raw_oracles_and_stable_lanes() {
                 [ChannelRouting::Both, ChannelRouting::Both],
             ),
         ] {
-            let lowered = crate::test_support::lower(&[form(u32::MAX, node_kind)]).unwrap();
-            assert_eq!(
-                lowered,
-                [
-                    (
-                        ComponentId::new(u32::MAX).unwrap().into(),
-                        tone(200.0, -20.0, routes[0])
-                    ),
-                    (
-                        ComponentId::new(u32::MAX)
-                            .unwrap()
-                            .with_lane(Lane::Secondary),
-                        tone(second, -30.0, routes[1])
-                    )
-                ]
-            );
-            assert_ne!(lowered[0].0, lowered[1].0);
             for hz in [44_100, 48_000, 96_000] {
                 let rate = SampleRate::new(hz).unwrap();
                 let target = TargetCheck::authored(
@@ -405,6 +383,24 @@ fn signed_pairs_lower_into_exact_ordered_raw_oracles_and_stable_lanes() {
                 )
                 .into_result()
                 .unwrap();
+                let lanes = target.voices().collect::<Vec<_>>();
+                assert_eq!(
+                    lanes.iter().map(|(id, _)| *id).collect::<Vec<_>>(),
+                    [
+                        ComponentId::new(u32::MAX).unwrap().into(),
+                        ComponentId::new(u32::MAX)
+                            .unwrap()
+                            .with_lane(Lane::Secondary),
+                    ]
+                );
+                for (index, (_, facts)) in lanes.iter().enumerate() {
+                    assert_eq!(facts.route, routes[index]);
+                    assert_eq!(facts.peak_dbfs, [-20.0, -30.0][index]);
+                    let crate::CarrierFacts::Tone(rate) = facts.carrier else {
+                        panic!("pair tone")
+                    };
+                    assert_eq!(rate.requested_hz, [200.0, second][index]);
+                }
                 let actual = target.signal(1.0, 0.1).unwrap();
                 let expected = crate::test_support::FiniteFixture::new(
                     crate::test_support::finite(1.0),
@@ -417,7 +413,7 @@ fn signed_pairs_lower_into_exact_ordered_raw_oracles_and_stable_lanes() {
                     .enumerate()
                     .map(|(index, voice)| auditorylab_core::Component {
                         id: auditorylab_core::ComponentId::numbered(index).unwrap(),
-                        form: crate::test_support::form(voice),
+                        form: voice,
                     })
                     .collect(),
                 )
@@ -435,26 +431,35 @@ fn signed_pairs_lower_into_exact_ordered_raw_oracles_and_stable_lanes() {
     }
 }
 #[test]
-fn raw_order_is_never_regrouped_and_both_budgets_are_enforced() {
+fn authored_order_and_weighted_lane_capacity_are_enforced() {
     let raw = tone(401.0, -40.0, ChannelRouting::Both);
     let values = [
-        form(7, crate::test_support::form(raw)),
+        form(7, raw),
         form(2, binaural_form(pair(6.0))),
-        form(9, crate::test_support::form(raw)),
+        form(9, raw),
     ];
-    let lowered = crate::test_support::lower(&values).unwrap();
+    let target = crate::test_support::authored(&values)
+        .target(SampleRate::DEFAULT)
+        .unwrap();
+    let lanes = target.voices().collect::<Vec<_>>();
     assert_eq!(
-        lowered.iter().map(|c| c.0.get()).collect::<Vec<_>>(),
+        lanes.iter().map(|(id, _)| id.get()).collect::<Vec<_>>(),
         [7, 2, 2, 9]
     );
-    assert_eq!(lowered[0].1, raw);
-    assert_eq!(lowered[3].1, raw);
+    assert_eq!(lanes[0].1.carrier, lanes[3].1.carrier);
     let eight = (1..=8)
         .map(|id| form(id, binaural_form(pair(6.0))))
         .collect::<Vec<_>>();
-    assert_eq!(crate::test_support::lower(&eight).unwrap().len(), 16);
+    assert_eq!(
+        crate::test_support::authored(&eight)
+            .target(SampleRate::DEFAULT)
+            .unwrap()
+            .voices()
+            .count(),
+        16
+    );
     let mut nine = eight;
-    nine.push(form(9, crate::test_support::form(raw)));
+    nine.push(form(9, raw));
     assert_eq!(
         crate::test_support::FiniteFixture::new(
             crate::test_support::finite(1.0),
@@ -463,9 +468,7 @@ fn raw_order_is_never_regrouped_and_both_budgets_are_enforced() {
         ),
         Err(StructureError::VoiceBudget { count: 17 })
     );
-    let raw17 = (1..=17)
-        .map(|id| form(id, crate::test_support::form(raw)))
-        .collect::<Vec<_>>();
+    let raw17 = (1..=17).map(|id| form(id, raw)).collect::<Vec<_>>();
     assert_eq!(
         crate::test_support::FiniteFixture::new(
             crate::test_support::finite(1.0),
@@ -719,12 +722,17 @@ fn pair_timing_extends_only_the_bounded_model_not_the_audio_history() {
 #[test]
 fn raw_component_budget_and_duplicate_owners_are_checked_at_the_authored_boundary() {
     let raw = tone(440.0, -40.0, ChannelRouting::Both);
-    let sixteen = (1..=16)
-        .map(|id| form(id, crate::test_support::form(raw)))
-        .collect::<Vec<_>>();
-    assert_eq!(crate::test_support::lower(&sixteen).unwrap().len(), 16);
+    let sixteen = (1..=16).map(|id| form(id, raw)).collect::<Vec<_>>();
+    assert_eq!(
+        crate::test_support::authored(&sixteen)
+            .target(SampleRate::DEFAULT)
+            .unwrap()
+            .voices()
+            .count(),
+        16
+    );
     let mut seventeen = sixteen;
-    seventeen.push(form(17, crate::test_support::form(raw)));
+    seventeen.push(form(17, raw));
     assert_eq!(
         crate::test_support::FiniteFixture::new(
             crate::test_support::finite(1.0),
@@ -734,7 +742,7 @@ fn raw_component_budget_and_duplicate_owners_are_checked_at_the_authored_boundar
         Err(StructureError::VoiceBudget { count: 17 })
     );
     assert!(ComponentId::new(0).is_none());
-    let duplicate = [form(1, crate::test_support::form(raw)); 2];
+    let duplicate = [form(1, raw); 2];
     assert_eq!(
         crate::test_support::FiniteFixture::new(
             crate::test_support::finite(1.0),
@@ -751,10 +759,7 @@ fn raw_component_budget_and_duplicate_owners_are_checked_at_the_authored_boundar
 fn mixed_explicit_pairs_retain_independent_requested_facts_on_every_lane() {
     use auditorylab_core::{PairFacts, PairKind, TargetCheck};
     let authored = [
-        form(
-            7,
-            crate::test_support::form(tone(400.0, -60.0, ChannelRouting::Both)),
-        ),
+        form(7, tone(400.0, -60.0, ChannelRouting::Both)),
         form(
             11,
             ComponentForm {
@@ -847,24 +852,26 @@ fn authored_callback_workloads_preserve_distinct_owner_lanes() {
         for clicks in [false, true] {
             let voices: Vec<_> = (0_u32..16)
                 .map(|n| {
-                    let carrier = if clicks {
-                        Carrier::PulseTrain {
+                    let source = if clicks {
+                        crate::SoundSource::PulseTrain {
+                            route: ChannelRouting::Both,
+                            peak_dbfs: crate::test_support::finite(-30.0),
                             pulse: crate::test_support::rectangular_pulse(
                                 40.0 + f64::from(n),
                                 0.001,
                             ),
                         }
                     } else {
-                        Carrier::Tone {
-                            frequency_hz: 200.0 + f64::from(n) * 20.0,
+                        crate::SoundSource::Tone {
+                            route: ChannelRouting::Both,
+                            peak_dbfs: crate::test_support::finite(-30.0),
+                            frequency_hz: crate::test_support::finite(200.0 + f64::from(n) * 20.0),
                         }
                     };
                     (
                         ComponentId::new(n + 1).unwrap(),
-                        SourceLane {
-                            route: ChannelRouting::Both,
-                            peak_dbfs: -30.0,
-                            carrier,
+                        crate::ComponentForm {
+                            source,
                             modulation: Some(crate::Modulation::Sinusoidal {
                                 rate_hz: crate::test_support::finite(23.0 + f64::from(n) * 0.75),
                                 depth: crate::test_support::finite(1.0),
@@ -880,7 +887,7 @@ fn authored_callback_workloads_preserve_distinct_owner_lanes() {
                     .iter()
                     .map(|(id, voice)| Component {
                         id: *id,
-                        form: crate::test_support::form(*voice),
+                        form: *voice,
                     })
                     .collect(),
             )
@@ -904,15 +911,13 @@ fn structural_failures_are_single_and_distinguish_both_budgets() {
     let raw = tone(440.0, -40.0, ChannelRouting::Both);
     for (components, expected) in [
         (
-            vec![form(7, crate::test_support::form(raw)); 2],
+            vec![form(7, raw); 2],
             StructureError::Identity {
                 id: ComponentId::new(7).unwrap(),
             },
         ),
         (
-            (1..=17)
-                .map(|id| form(id, crate::test_support::form(raw)))
-                .collect(),
+            (1..=17).map(|id| form(id, raw)).collect(),
             StructureError::VoiceBudget { count: 17 },
         ),
         (
@@ -1077,20 +1082,25 @@ struct ComponentComparisonCases {
 fn component_comparison_cases() -> ComponentComparisonCases {
     use crate::Modulation as M;
     let plain = tone(437.0, -24.0, ChannelRouting::Left);
-    let click = SourceLane {
-        carrier: Carrier::PulseTrain {
-            pulse: crate::test_support::rectangular_pulse(40.0, 0.002),
-        },
-        ..plain
+    let click = {
+        let base = plain;
+        crate::ComponentForm {
+            source: crate::SoundSource::PulseTrain {
+                route: base.route().unwrap(),
+                peak_dbfs: base.get(crate::ParameterId::PeakLevel).unwrap(),
+                pulse: crate::test_support::rectangular_pulse(40.0, 0.002),
+            },
+            ..base
+        }
     };
-    let am = SourceLane {
+    let am = crate::ComponentForm {
         modulation: Some(M::Sinusoidal {
             rate_hz: crate::test_support::finite(7.0),
             depth: crate::test_support::finite(0.5),
         }),
         ..plain
     };
-    let gate = SourceLane {
+    let gate = crate::ComponentForm {
         modulation: Some(M::Pulsed {
             pulse: crate::PulseSpec {
                 rate_hz: crate::test_support::finite(7.0),
@@ -1105,77 +1115,71 @@ fn component_comparison_cases() -> ComponentComparisonCases {
     let p = pair(-6.0);
     // Each unequal pair changes one authored fact; audio equivalence is irrelevant.
     let mut unequal = vec![
-        (
-            crate::test_support::form(plain),
-            crate::test_support::form(SourceLane {
-                route: ChannelRouting::Right,
-                ..plain
-            }),
-        ),
-        (
-            crate::test_support::form(plain),
-            crate::test_support::form(click),
-        ),
-        (
-            crate::test_support::form(plain),
-            crate::test_support::form(am),
-        ),
-        (
-            crate::test_support::form(am),
-            crate::test_support::form(gate),
-        ),
-        (
-            crate::test_support::form(plain),
-            crate::test_support::form(tone(438.0, -24.0, ChannelRouting::Left)),
-        ),
-        (
-            crate::test_support::form(plain),
-            crate::test_support::form(SourceLane {
-                peak_dbfs: -25.0,
-                ..plain
-            }),
-        ),
-        (
-            crate::test_support::form(click),
-            crate::test_support::form(SourceLane {
-                carrier: Carrier::PulseTrain {
+        (plain, {
+            let mut value = plain;
+            let crate::SoundSource::Tone { route, .. } = &mut value.source else {
+                panic!("tone fixture")
+            };
+            *route = ChannelRouting::Right;
+            value
+        }),
+        (plain, click),
+        (plain, am),
+        (am, gate),
+        (plain, tone(438.0, -24.0, ChannelRouting::Left)),
+        (plain, {
+            let mut value = plain;
+            assert!(value.set(
+                crate::ParameterId::PeakLevel,
+                crate::test_support::finite(-25.0)
+            ));
+            value
+        }),
+        (click, {
+            let base = click;
+            crate::ComponentForm {
+                source: crate::SoundSource::PulseTrain {
+                    route: base.route().unwrap(),
+                    peak_dbfs: base.get(crate::ParameterId::PeakLevel).unwrap(),
                     pulse: crate::test_support::rectangular_pulse(41.0, 0.002),
                 },
-                ..click
-            }),
-        ),
-        (
-            crate::test_support::form(click),
-            crate::test_support::form(SourceLane {
-                carrier: Carrier::PulseTrain {
+                ..base
+            }
+        }),
+        (click, {
+            let base = click;
+            crate::ComponentForm {
+                source: crate::SoundSource::PulseTrain {
+                    route: base.route().unwrap(),
+                    peak_dbfs: base.get(crate::ParameterId::PeakLevel).unwrap(),
                     pulse: crate::test_support::rectangular_pulse(40.0, 0.003),
                 },
-                ..click
-            }),
-        ),
+                ..base
+            }
+        }),
         (
-            crate::test_support::form(am),
-            crate::test_support::form(SourceLane {
+            am,
+            crate::ComponentForm {
                 modulation: Some(M::Sinusoidal {
                     rate_hz: crate::test_support::finite(8.0),
                     depth: crate::test_support::finite(0.5),
                 }),
                 ..am
-            }),
+            },
         ),
         (
-            crate::test_support::form(am),
-            crate::test_support::form(SourceLane {
+            am,
+            crate::ComponentForm {
                 modulation: Some(M::Sinusoidal {
                     rate_hz: crate::test_support::finite(7.0),
                     depth: crate::test_support::finite(0.6),
                 }),
                 ..am
-            }),
+            },
         ),
         (
-            crate::test_support::form(gate),
-            crate::test_support::form(SourceLane {
+            gate,
+            crate::ComponentForm {
                 modulation: Some(M::Pulsed {
                     pulse: crate::PulseSpec {
                         rate_hz: crate::test_support::finite(8.0),
@@ -1186,11 +1190,11 @@ fn component_comparison_cases() -> ComponentComparisonCases {
                     },
                 }),
                 ..gate
-            }),
+            },
         ),
         (
-            crate::test_support::form(gate),
-            crate::test_support::form(SourceLane {
+            gate,
+            crate::ComponentForm {
                 modulation: Some(M::Pulsed {
                     pulse: crate::PulseSpec {
                         rate_hz: crate::test_support::finite(7.0),
@@ -1201,10 +1205,10 @@ fn component_comparison_cases() -> ComponentComparisonCases {
                     },
                 }),
                 ..gate
-            }),
+            },
         ),
         (binaural_form(p), monaural_form(p, ChannelRouting::Left)),
-        (crate::test_support::form(plain), binaural_form(p)),
+        (plain, binaural_form(p)),
         (
             monaural_form(p, ChannelRouting::Left),
             monaural_form(p, ChannelRouting::Right),
@@ -1238,10 +1242,10 @@ fn component_comparison_cases() -> ComponentComparisonCases {
     ComponentComparisonCases {
         different: unequal,
         reflexive: [
-            crate::test_support::form(plain),
-            crate::test_support::form(click),
-            crate::test_support::form(am),
-            crate::test_support::form(gate),
+            plain,
+            click,
+            am,
+            gate,
             binaural_form(p),
             monaural_form(p, ChannelRouting::Both),
         ],
@@ -1253,10 +1257,7 @@ fn content_comparison_sound() -> FiniteFixture {
         crate::test_support::finite(2.0),
         crate::test_support::finite(0.125),
         vec![
-            form(
-                7,
-                crate::test_support::form(tone(437.0, -24.0, ChannelRouting::Left)),
-            ),
+            form(7, tone(437.0, -24.0, ChannelRouting::Left)),
             form(19, binaural_form(pair(-6.0))),
         ],
     )

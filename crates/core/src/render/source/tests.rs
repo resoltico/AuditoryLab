@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use super::*;
-use crate::{ComponentId, FiniteFixture};
+use crate::{ComponentForm, ComponentId, FiniteFixture};
 use crate::{Signal, SoundError};
 use alloc::{vec, vec::Vec};
 use core::f64::consts::TAU;
@@ -11,16 +11,18 @@ fn rate(hz: u32) -> SampleRate {
     SampleRate::new(hz).unwrap()
 }
 
-fn tone(route: ChannelRouting, frequency_hz: f64, peak_dbfs: f64) -> SourceLane {
-    SourceLane {
-        route,
-        peak_dbfs,
+fn tone(route: ChannelRouting, frequency_hz: f64, peak_dbfs: f64) -> ComponentForm {
+    crate::ComponentForm {
+        source: crate::SoundSource::Tone {
+            route,
+            peak_dbfs: crate::test_support::finite(peak_dbfs),
+            frequency_hz: crate::test_support::finite(frequency_hz),
+        },
         modulation: None,
-        carrier: crate::Carrier::Tone { frequency_hz },
     }
 }
 
-fn sound(components: Vec<SourceLane>) -> FiniteFixture {
+fn sound(components: Vec<ComponentForm>) -> FiniteFixture {
     crate::test_support::FiniteFixture::new(
         crate::test_support::finite(1.0),
         crate::test_support::finite(0.0),
@@ -29,7 +31,7 @@ fn sound(components: Vec<SourceLane>) -> FiniteFixture {
             .enumerate()
             .map(|(index, voice)| crate::Component {
                 id: crate::ComponentId::numbered(index).unwrap(),
-                form: crate::test_support::form(voice),
+                form: voice,
             })
             .collect(),
     )
@@ -194,408 +196,207 @@ fn durations_and_fades_must_give_whole_frames_that_fit() {
     assert!(s.signal(rate(48_000)).is_ok());
 }
 
+// All shared-modulation guards are exercised at the actual component compiler,
+// not through an artificial lane carrying its own modulation.
 #[test]
-fn guards_accept_and_reject_neighbours() {
-    let mut s = sound(vec![tone(ChannelRouting::Both, 1000.0, -20.0)]);
-    assert_carrier_neighbours(&mut s);
-    for depth in [0.0, 1.0] {
-        edit_first(&mut s, |voice| {
-            voice.modulation = Some(Modulation::Sinusoidal {
-                rate_hz: crate::test_support::finite(40.0),
-                depth: crate::test_support::finite(depth),
-            });
-        });
-        assert!(s.signal(rate(48_000)).is_ok());
+fn scalar_component_guards_preserve_the_finite_boundary_cause() {
+    let base = tone(ChannelRouting::Both, 1000.0, -30.0);
+    let am = |hz, depth| ComponentForm {
+        modulation: Some(Modulation::Sinusoidal {
+            rate_hz: crate::test_support::finite(hz),
+            depth: crate::test_support::finite(depth),
+        }),
+        ..base
+    };
+    let mut cases = vec![(base, None), (am(40.0, 0.0), None), (am(40.0, 1.0), None)];
+    for depth in [-f64::EPSILON, 1.0_f64.next_up()] {
+        cases.push((am(40.0, depth), Some(VoiceError::Depth { depth })));
     }
-    for depth in [-f64::EPSILON, 1.0_f64.next_up(), f64::NAN] {
-        if !depth.is_finite() {
-            assert!(crate::Finite::new(depth).is_none());
-            continue;
-        }
-        edit_first(&mut s, |voice| {
-            voice.modulation = Some(Modulation::Sinusoidal {
-                rate_hz: crate::test_support::finite(40.0),
-                depth: crate::test_support::finite(depth),
-            });
-        });
-        assert!(s.signal(rate(48_000)).is_err());
-    }
-    for depth in [0.0, f64::from_bits(1), 1.0] {
-        for (frequency, active_valid) in [
-            (23_960.0_f64.next_down(), true),
-            (23_960.0, false),
-            (23_999.0, false),
-        ] {
-            edit_first(&mut s, |voice| {
-                voice.carrier = Carrier::Tone {
-                    frequency_hz: frequency,
-                }
-            });
-            edit_first(&mut s, |voice| {
-                voice.modulation = Some(Modulation::Sinusoidal {
-                    rate_hz: crate::test_support::finite(40.0),
-                    depth: crate::test_support::finite(depth),
-                });
-            });
-            assert_eq!(s.signal(rate(48_000)).is_ok(), depth == 0.0 || active_valid);
-        }
-    }
-    // Inactivity does not excuse an invalid stored rate.
-    for rate_hz in [0.0, -1.0, 24_000.0, f64::INFINITY, f64::NAN] {
-        if !rate_hz.is_finite() {
-            assert!(crate::Finite::new(rate_hz).is_none());
-            assert!(frequency_step(ParameterId::ModulationRate, rate_hz, rate(48_000)).is_err());
-            continue;
-        }
-        edit_first(&mut s, |voice| {
-            voice.modulation = Some(Modulation::Sinusoidal {
-                rate_hz: crate::test_support::finite(rate_hz),
-                depth: crate::test_support::finite(0.0),
-            });
-        });
-        assert!(s.signal(rate(48_000)).is_err());
-    }
-    s = sound(vec![tone(ChannelRouting::Both, 1000.0, 0.0)]);
-    assert!(s.signal(rate(48_000)).is_ok());
-    s.push(crate::Component {
-        id: ComponentId::new(2).unwrap(),
-        form: crate::test_support::form(tone(ChannelRouting::Both, 1000.0, -20.0)),
-    })
-    .unwrap();
-    assert!(matches!(
-        s.signal(rate(48_000)),
-        Err(SoundError::Peak { .. })
-    ));
-    s = sound(vec![tone(ChannelRouting::Both, 1000.0, -60.0); 16]);
-    assert!(s.signal(rate(48_000)).is_ok());
-    assert_eq!(
-        {
-            let duplicate = s.components()[0];
-            s.push(duplicate)
-        },
-        Err(crate::StructureError::VoiceBudget { count: 17 })
-    );
-    s = sound(vec![]);
-    s.set_duration(crate::test_support::finite(
-        rate(48_000).seconds_in(Signal::MAX_FRAMES),
-    ));
-    assert!(s.signal(rate(48_000)).is_ok());
-    s.set_duration(crate::test_support::finite(
-        rate(48_000).seconds_in(Signal::MAX_FRAMES + 1),
-    ));
-    assert!(s.signal(rate(48_000)).is_err());
-}
-#[test]
-fn peak_and_pulse_width_guards_reject_invalid_values() {
-    let mut s = sound(vec![tone(ChannelRouting::Both, 1000.0, 0.0)]);
-    assert!(s.signal(rate(48000)).is_ok());
-    for peak in [
-        f64::NAN,
-        f64::INFINITY,
-        f64::NEG_INFINITY,
-        f64::MIN_POSITIVE,
-    ] {
-        if !peak.is_finite() {
-            assert!(crate::Finite::new(peak).is_none());
-            assert!(matches!(
-                tone(ChannelRouting::Both, 1000.0, peak).compile(rate(48000)),
-                Err(VoiceError::PeakDbfs { .. })
-            ));
-            continue;
-        }
-        edit_first(&mut s, |voice| voice.peak_dbfs = peak);
-        assert!(matches!(
-            s.signal(rate(48000)),
-            Err(SoundError::Voice {
-                error: VoiceError::PeakDbfs { .. },
-                ..
-            })
+    for hz in [0.0, -1.0, 24000.0] {
+        cases.push((
+            am(hz, 0.0),
+            Some(VoiceError::Frequency {
+                parameter: ParameterId::ModulationRate,
+                hz,
+                sample_rate_hz: 48000,
+            }),
         ));
     }
-    edit_first(&mut s, |voice| voice.peak_dbfs = -20.0);
-    for width in [f64::NAN, f64::INFINITY, -1.0, 0.0, 0.4 / 48000.0] {
-        if !width.is_finite() {
-            assert!(crate::Finite::new(width).is_none());
-            continue;
-        }
-        edit_first(&mut s, |voice| {
-            voice.carrier = Carrier::PulseTrain {
-                pulse: crate::test_support::rectangular_pulse(40.0, width),
-            }
-        });
-        assert!(matches!(
-            s.signal(rate(48000)),
-            Err(SoundError::Voice {
-                error: VoiceError::Pulse {
-                    error: crate::PulseError::Width,
-                    ..
-                },
-                ..
-            })
+    for hz in [0.0, -1.0, 24000.0] {
+        cases.push((
+            tone(ChannelRouting::Both, hz, -30.0),
+            Some(VoiceError::Frequency {
+                parameter: ParameterId::ToneFrequency,
+                hz,
+                sample_rate_hz: 48000,
+            }),
         ));
     }
-    edit_first(&mut s, |voice| {
-        voice.carrier = Carrier::PulseTrain {
-            pulse: crate::test_support::rectangular_pulse(40.0, 0.5 / 48000.0),
-        }
-    });
-    assert!(s.signal(rate(48000)).is_ok());
+    cases.push((tone(ChannelRouting::Both, f64::from_bits(1), -30.0), None));
+    cases.push((
+        tone(ChannelRouting::Both, 24000.0_f64.next_down(), -30.0),
+        None,
+    ));
+    cases.push((
+        tone(ChannelRouting::Both, 1000.0, f64::MIN_POSITIVE),
+        Some(VoiceError::PeakDbfs {
+            peak_dbfs: f64::MIN_POSITIVE,
+        }),
+    ));
+    for (form, expected) in cases {
+        assert_component_cause(form, expected);
+    }
 }
-
 #[test]
-fn click_nyquist_rejection_is_not_masked_by_the_closed_frame_rule() {
-    let mut s = sound(vec![SourceLane {
-        route: ChannelRouting::Both,
-        peak_dbfs: -20.0,
-        carrier: Carrier::PulseTrain {
-            pulse: crate::test_support::rectangular_pulse(24000.0, 1.0 / 48000.0),
+fn pulse_guards_preserve_source_and_shared_modulation_attribution() {
+    use crate::PulseError;
+    let base = tone(ChannelRouting::Both, 1000.0, -30.0);
+    let pulse = |seconds| ComponentForm {
+        modulation: Some(Modulation::Pulsed {
+            pulse: crate::test_support::rectangular_pulse(40.0, seconds),
+        }),
+        ..base
+    };
+    let source_pulse = |hz, seconds| ComponentForm {
+        source: crate::SoundSource::PulseTrain {
+            route: ChannelRouting::Both,
+            peak_dbfs: crate::test_support::finite(-30.0),
+            pulse: crate::test_support::rectangular_pulse(hz, seconds),
         },
         modulation: None,
-    }]);
-    assert!(matches!(
-        s.signal(rate(48000)),
-        Err(SoundError::Voice {
-            error: VoiceError::Pulse {
-                error: crate::PulseError::Rate,
-                ..
+    };
+    let mut cases = vec![
+        (pulse(1199.0 / 48000.0), None),
+        (source_pulse(40.0, 0.5 / 48000.0), None),
+        (source_pulse(24000.0_f64.next_down(), 1.0 / 48000.0), None),
+    ];
+    cases.push((
+        source_pulse(40.0, 0.4 / 48000.0),
+        Some(VoiceError::Pulse {
+            modulation: false,
+            width: crate::PulseWidth::Duration {
+                seconds: crate::test_support::finite(0.4 / 48000.0),
             },
-            ..
-        })
+            rate_hz: 40.0,
+            sample_rate_hz: 48000,
+            error: PulseError::Width,
+        }),
     ));
-    edit_first(&mut s, |voice| {
-        voice.carrier = Carrier::PulseTrain {
-            pulse: crate::test_support::rectangular_pulse(24000.0_f64.next_down(), 1.0 / 48000.0),
-        }
-    });
-    assert!(s.signal(rate(48000)).is_ok());
-}
-
-mod validate {
-    use crate::{Carrier, ChannelRouting, Modulation, SampleRate, SourceLane, VoiceError};
-    use alloc::vec;
-
-    pub(super) fn own(component: SourceLane, rate: SampleRate) -> Result<(), VoiceError> {
-        component.compile(rate).map(|_| ())
+    cases.push((
+        source_pulse(24000.0, 1.0 / 48000.0),
+        Some(VoiceError::Pulse {
+            modulation: false,
+            width: crate::PulseWidth::Duration {
+                seconds: crate::test_support::finite(1.0 / 48000.0),
+            },
+            rate_hz: 24000.0,
+            sample_rate_hz: 48000,
+            error: PulseError::Rate,
+        }),
+    ));
+    cases.push((
+        pulse(1200.0 / 48000.0),
+        Some(VoiceError::Pulse {
+            modulation: true,
+            width: crate::PulseWidth::Duration {
+                seconds: crate::test_support::finite(1200.0 / 48000.0),
+            },
+            rate_hz: 40.0,
+            sample_rate_hz: 48000,
+            error: PulseError::ClosedFrame,
+        }),
+    ));
+    for (form, expected) in cases {
+        assert_component_cause(form, expected);
     }
-
-    #[test]
-    fn each_guard_accepts_and_rejects_like_signal() {
-        let rate = SampleRate::new(48_000).unwrap();
-        let base = SourceLane {
+}
+fn assert_component_cause(form: ComponentForm, expected: Option<VoiceError>) {
+    let input = sound(vec![form]);
+    let check = input.check(rate(48000));
+    assert_eq!(check.voices()[0].0, ComponentId::new(1).unwrap().into());
+    assert_eq!(
+        check.voices()[0].1.as_ref().err(),
+        expected.as_ref(),
+        "{form:?}"
+    );
+    match (expected, input.signal(rate(48000))) {
+        (None, Ok(_)) => {}
+        (Some(expected), Err(SoundError::Voice { id, error })) => {
+            assert_eq!(id, ComponentId::new(1).unwrap().into());
+            assert_eq!(error, expected);
+        }
+        (expected, actual) => panic!("{expected:?}: {actual:?}"),
+    }
+}
+#[test]
+fn shared_am_sideband_guard_is_inactive_only_at_zero_depth() {
+    for depth in [0.0, f64::from_bits(1), 1.0] {
+        for (hz, active_valid) in [
+            (23960.0_f64.next_down(), true),
+            (23960.0, false),
+            (23999.0, false),
+        ] {
+            let mut form = tone(ChannelRouting::Both, hz, -30.0);
+            form.modulation = Some(Modulation::Sinusoidal {
+                rate_hz: crate::test_support::finite(40.0),
+                depth: crate::test_support::finite(depth),
+            });
+            assert_eq!(
+                sound(vec![form]).signal(rate(48000)).is_ok(),
+                depth == 0.0 || active_valid
+            );
+        }
+    }
+}
+#[test]
+fn mix_guards_cover_peak_capacity_and_terminal_frame_neighbours() {
+    let mut input = sound(vec![tone(ChannelRouting::Both, 1000.0, 0.0)]);
+    assert!(input.signal(rate(48000)).is_ok());
+    input
+        .push(crate::Component {
+            id: ComponentId::new(2).unwrap(),
+            form: tone(ChannelRouting::Both, 1000.0, -30.0),
+        })
+        .unwrap();
+    assert!(matches!(
+        input.signal(rate(48000)),
+        Err(SoundError::Peak { .. })
+    ));
+    let mut full = sound(vec![tone(ChannelRouting::Both, 1000.0, -60.0); 16]);
+    assert!(full.signal(rate(48000)).is_ok());
+    let duplicate = full.components()[0];
+    assert_eq!(
+        full.push(duplicate),
+        Err(crate::StructureError::VoiceBudget { count: 17 })
+    );
+    let mut silent = sound(vec![]);
+    silent.set_duration(crate::test_support::finite(
+        rate(48000).seconds_in(Signal::MAX_FRAMES),
+    ));
+    assert!(silent.signal(rate(48000)).is_ok());
+    silent.set_duration(crate::test_support::finite(
+        rate(48000).seconds_in(Signal::MAX_FRAMES + 1),
+    ));
+    assert!(silent.signal(rate(48000)).is_err());
+}
+#[test]
+fn raw_source_boundary_keeps_its_nonfinite_safeguards() {
+    // These values cannot inhabit an authored Finite; this tests the remaining
+    // private f64 compilation boundary directly, without any lane modulator.
+    for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        assert!(crate::Finite::new(bad).is_none());
+        let bad_level = SourceLane {
             route: ChannelRouting::Both,
-            peak_dbfs: -20.0,
+            peak_dbfs: bad,
             carrier: Carrier::Tone {
                 frequency_hz: 440.0,
             },
-            modulation: None,
         };
-        let cases = guard_cases(base);
-        for (component, valid) in cases {
-            let own = own(component, rate);
-            assert_eq!(own.is_ok(), valid, "{component:?}");
-            let whole = crate::test_support::FiniteFixture::new(
-                crate::test_support::finite(1.0),
-                crate::test_support::finite(0.0),
-                (vec![component])
-                    .into_iter()
-                    .enumerate()
-                    .map(|(index, voice)| crate::Component {
-                        id: crate::ComponentId::numbered(index).unwrap(),
-                        form: crate::test_support::form(voice),
-                    })
-                    .collect(),
-            )
-            .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
-            .signal(rate);
-            match (own, whole) {
-                (Ok(()), Ok(_)) => {}
-                (Err(error), Err(crate::SoundError::Voice { id, error: same })) => {
-                    assert_eq!(id, crate::ComponentId::new(1).unwrap().into());
-                    assert_eq!(error, same);
-                }
-                (own, whole) => panic!("{own:?} vs {whole:?}"),
-            }
-        }
         assert!(matches!(
-            own(
-                SourceLane {
-                    peak_dbfs: f64::NAN,
-                    ..base
-                },
-                rate
-            ),
+            bad_level.compile(rate(48000)),
             Err(VoiceError::PeakDbfs { .. })
         ));
+        assert!(frequency_step(ParameterId::ToneFrequency, bad, rate(48000)).is_err());
+        assert!(frequency_step(ParameterId::ModulationRate, bad, rate(48000)).is_err());
     }
-    #[expect(
-        clippy::too_many_lines,
-        reason = "Independent literal table enumerates each voice guard and its boundary neighbours"
-    )]
-    fn guard_cases(base: SourceLane) -> alloc::vec::Vec<(SourceLane, bool)> {
-        alloc::vec![
-            (base, true),
-            (
-                SourceLane {
-                    peak_dbfs: 0.0,
-                    ..base
-                },
-                true,
-            ),
-            (
-                SourceLane {
-                    peak_dbfs: 0.1,
-                    ..base
-                },
-                false,
-            ),
-            (
-                SourceLane {
-                    carrier: Carrier::Tone {
-                        frequency_hz: 23_999.0,
-                    },
-                    ..base
-                },
-                true,
-            ),
-            (
-                SourceLane {
-                    carrier: Carrier::Tone {
-                        frequency_hz: 24_000.0,
-                    },
-                    ..base
-                },
-                false,
-            ),
-            (
-                SourceLane {
-                    modulation: Some(Modulation::Sinusoidal {
-                        rate_hz: crate::test_support::finite(40.0),
-                        depth: crate::test_support::finite(1.0),
-                    }),
-                    ..base
-                },
-                true,
-            ),
-            (
-                SourceLane {
-                    modulation: Some(Modulation::Sinusoidal {
-                        rate_hz: crate::test_support::finite(40.0),
-                        depth: crate::test_support::finite(1.01),
-                    }),
-                    ..base
-                },
-                false,
-            ),
-            (
-                SourceLane {
-                    carrier: Carrier::Tone {
-                        frequency_hz: 23_959.0,
-                    },
-                    modulation: Some(Modulation::Sinusoidal {
-                        rate_hz: crate::test_support::finite(40.0),
-                        depth: crate::test_support::finite(1.0),
-                    }),
-                    ..base
-                },
-                true,
-            ),
-            (
-                SourceLane {
-                    carrier: Carrier::Tone {
-                        frequency_hz: 23_960.0,
-                    },
-                    modulation: Some(Modulation::Sinusoidal {
-                        rate_hz: crate::test_support::finite(40.0),
-                        depth: crate::test_support::finite(1.0),
-                    }),
-                    ..base
-                },
-                false,
-            ),
-            (
-                SourceLane {
-                    carrier: Carrier::PulseTrain {
-                        pulse: crate::test_support::rectangular_pulse(40.0, 0.001)
-                    },
-                    ..base
-                },
-                true,
-            ),
-            (
-                SourceLane {
-                    carrier: Carrier::PulseTrain {
-                        pulse: crate::test_support::rectangular_pulse(40.0, 0.000_001)
-                    },
-                    ..base
-                },
-                false,
-            ),
-            (
-                SourceLane {
-                    modulation: Some(Modulation::Pulsed {
-                        pulse: crate::PulseSpec {
-                            rate_hz: crate::test_support::finite(40.0),
-                            width: crate::PulseWidth::Duration {
-                                seconds: crate::test_support::finite(1_199.0 / 48_000.0)
-                            },
-                            shape: crate::PulseShape::Rectangular {}
-                        }
-                    }),
-                    ..base
-                },
-                true,
-            ),
-            (
-                SourceLane {
-                    modulation: Some(Modulation::Pulsed {
-                        pulse: crate::PulseSpec {
-                            rate_hz: crate::test_support::finite(40.0),
-                            width: crate::PulseWidth::Duration {
-                                seconds: crate::test_support::finite(1_200.0 / 48_000.0)
-                            },
-                            shape: crate::PulseShape::Rectangular {}
-                        }
-                    }),
-                    ..base
-                },
-                false,
-            ),
-        ]
-    }
-}
-
-fn edit_first(sound: &mut FiniteFixture, edit: impl FnOnce(&mut SourceLane)) {
-    let mut voice = crate::test_support::primitive(sound.components()[0].form).unwrap();
-    edit(&mut voice);
-    let id = sound.components()[0].id;
-    sound.replace(id, crate::test_support::form(voice)).unwrap();
-}
-
-fn assert_carrier_neighbours(s: &mut FiniteFixture) {
-    for hz in [0.0, -1.0, f64::NAN, f64::INFINITY, 24_000.0] {
-        if !hz.is_finite() {
-            assert!(crate::Finite::new(hz).is_none());
-            assert!(
-                tone(ChannelRouting::Both, hz, -20.0)
-                    .compile(rate(48_000))
-                    .is_err()
-            );
-            continue;
-        }
-        edit_first(s, |voice| {
-            voice.carrier = Carrier::Tone { frequency_hz: hz }
-        });
-        assert!(s.signal(rate(48_000)).is_err());
-    }
-    for hz in [f64::from_bits(1), 24_000.0_f64.next_down()] {
-        edit_first(s, |voice| {
-            voice.carrier = Carrier::Tone { frequency_hz: hz }
-        });
-        assert!(s.signal(rate(48_000)).is_ok());
-    }
-    edit_first(s, |voice| {
-        voice.carrier = Carrier::Tone {
-            frequency_hz: 1000.0,
-        }
-    });
 }

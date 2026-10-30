@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use super::*;
-use crate::{CarrierFacts, ChannelRouting, Modulation, ModulationFacts, ParameterId, SourceLane};
+use crate::{
+    CarrierFacts, ChannelRouting, ComponentForm, Modulation, ModulationFacts, ParameterId,
+};
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -14,28 +16,30 @@ fn id(n: u32) -> crate::ComponentId {
     crate::ComponentId::new(n).unwrap()
 }
 
-fn tone(frequency_hz: f64, peak_dbfs: f64) -> SourceLane {
-    SourceLane {
-        route: ChannelRouting::Both,
-        peak_dbfs,
-        carrier: crate::Carrier::Tone { frequency_hz },
+fn tone(frequency_hz: f64, peak_dbfs: f64) -> ComponentForm {
+    crate::ComponentForm {
+        source: crate::SoundSource::Tone {
+            route: ChannelRouting::Both,
+            peak_dbfs: crate::test_support::finite(peak_dbfs),
+            frequency_hz: crate::test_support::finite(frequency_hz),
+        },
         modulation: None,
     }
 }
 
-fn clicks(rate_hz: f64, width_seconds: f64) -> SourceLane {
-    SourceLane {
-        route: ChannelRouting::Both,
-        peak_dbfs: -30.0,
-        carrier: crate::Carrier::PulseTrain {
+fn clicks(rate_hz: f64, width_seconds: f64) -> ComponentForm {
+    crate::ComponentForm {
+        source: crate::SoundSource::PulseTrain {
+            route: ChannelRouting::Both,
+            peak_dbfs: crate::test_support::finite(-30.0),
             pulse: crate::test_support::rectangular_pulse(rate_hz, width_seconds),
         },
         modulation: None,
     }
 }
 
-fn gate(width_seconds: f64) -> SourceLane {
-    SourceLane {
+fn gate(width_seconds: f64) -> ComponentForm {
+    crate::ComponentForm {
         modulation: Some(Modulation::Pulsed {
             pulse: crate::PulseSpec {
                 rate_hz: crate::test_support::finite(40.0),
@@ -120,14 +124,14 @@ fn one_pass_reports_every_row_and_keeps_the_first_whole_target_error() {
         }) if *voice_id == id(1).into()
     ));
     // Coupled and modulation constraints name every participating quantity.
-    let sideband = SourceLane {
+    let sideband = crate::ComponentForm {
         modulation: Some(Modulation::Sinusoidal {
             rate_hz: crate::test_support::finite(10_000.0),
             depth: crate::test_support::finite(0.5),
         }),
         ..tone(16_000.0, -30.0)
     };
-    let depth = SourceLane {
+    let depth = crate::ComponentForm {
         modulation: Some(Modulation::Sinusoidal {
             rate_hz: crate::test_support::finite(40.0),
             depth: crate::test_support::finite(1.5),
@@ -165,34 +169,38 @@ fn identity_count_and_mix_errors_stay_global_with_their_established_precedence()
     );
     // Left precedes right; neither is attributed to a field.
     let loud = [
-        (
-            id(1),
-            SourceLane {
-                route: ChannelRouting::Right,
-                ..tone(440.0, -3.0)
-            },
-        ),
-        (
-            id(2),
-            SourceLane {
-                route: ChannelRouting::Right,
-                ..tone(441.0, -3.0)
-            },
-        ),
-        (
-            id(3),
-            SourceLane {
-                route: ChannelRouting::Left,
-                ..tone(442.0, -3.0)
-            },
-        ),
-        (
-            id(4),
-            SourceLane {
-                route: ChannelRouting::Left,
-                ..tone(443.0, -3.0)
-            },
-        ),
+        (id(1), {
+            let mut value = tone(440.0, -3.0);
+            let crate::SoundSource::Tone { route, .. } = &mut value.source else {
+                panic!("tone fixture")
+            };
+            *route = ChannelRouting::Right;
+            value
+        }),
+        (id(2), {
+            let mut value = tone(441.0, -3.0);
+            let crate::SoundSource::Tone { route, .. } = &mut value.source else {
+                panic!("tone fixture")
+            };
+            *route = ChannelRouting::Right;
+            value
+        }),
+        (id(3), {
+            let mut value = tone(442.0, -3.0);
+            let crate::SoundSource::Tone { route, .. } = &mut value.source else {
+                panic!("tone fixture")
+            };
+            *route = ChannelRouting::Left;
+            value
+        }),
+        (id(4), {
+            let mut value = tone(443.0, -3.0);
+            let crate::SoundSource::Tone { route, .. } = &mut value.source else {
+                panic!("tone fixture")
+            };
+            *route = ChannelRouting::Left;
+            value
+        }),
     ];
     let check = crate::test_support::check(rate(48_000), &loud);
     assert!(matches!(
@@ -235,7 +243,7 @@ fn finite_entry_points_select_envelope_errors_before_voice_errors() {
             .enumerate()
             .map(|(index, voice)| crate::Component {
                 id: crate::ComponentId::numbered(index).unwrap(),
-                form: crate::test_support::form(voice),
+                form: voice,
             })
             .collect(),
     )
@@ -259,7 +267,7 @@ fn finite_entry_points_select_envelope_errors_before_voice_errors() {
                 .enumerate()
                 .map(|(index, voice)| crate::Component {
                     id: crate::ComponentId::numbered(index).unwrap(),
-                    form: crate::test_support::form(voice),
+                    form: voice,
                 })
                 .collect(),
         )
@@ -300,7 +308,7 @@ fn a_valid_mix_with_zero_duration_is_a_target_but_not_a_finite_signal() {
             .enumerate()
             .map(|(index, voice)| crate::Component {
                 id: crate::ComponentId::numbered(index).unwrap(),
-                form: crate::test_support::form(voice),
+                form: voice,
             })
             .collect(),
     )
@@ -389,7 +397,7 @@ fn voice_error_retains_the_owner_after_pair_expansion_and_without_a_pair() {
     use crate::{Component, ComponentForm, Lane};
     let bad = Component {
         id: id(9),
-        form: crate::test_support::form(tone(30_000.0, -20.0)),
+        form: tone(30_000.0, -20.0),
     };
     let pair = Component {
         id: id(7),

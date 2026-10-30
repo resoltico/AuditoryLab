@@ -1,84 +1,34 @@
 //! Checked recipe builders for behavioral tests, enabled by `test-support`.
 #[cfg(test)]
-use crate::{SampleRate, SoundError, SourceLane, Target, TargetCheck};
-#[cfg(test)]
-use alloc::vec::Vec;
+use crate::{SampleRate, SoundError, Target, TargetCheck};
 #[cfg(test)]
 pub(crate) fn sound(
-    voices: &[(ComponentId, SourceLane)],
+    components: &[(ComponentId, ComponentForm)],
 ) -> Result<FiniteFixture, crate::StructureError> {
     FiniteFixture::new(
         finite(1.0),
         finite(0.0),
-        voices
+        components
             .iter()
-            .map(|(id, voice)| Component {
+            .map(|(id, form)| Component {
                 id: *id,
-                form: form(*voice),
+                form: *form,
             })
             .collect(),
     )
 }
 #[cfg(test)]
-pub(crate) fn check(rate: SampleRate, voices: &[(ComponentId, SourceLane)]) -> TargetCheck {
-    sound(voices)
+pub(crate) fn check(rate: SampleRate, components: &[(ComponentId, ComponentForm)]) -> TargetCheck {
+    sound(components)
         .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
         .check(rate)
 }
 #[cfg(test)]
 pub(crate) fn target(
     rate: SampleRate,
-    voices: &[(ComponentId, SourceLane)],
+    components: &[(ComponentId, ComponentForm)],
 ) -> Result<Target, SoundError> {
-    check(rate, voices).into_result()
-}
-
-#[cfg(test)]
-pub(crate) fn lower(
-    components: &[Component],
-) -> Result<Vec<(crate::VoiceId, SourceLane)>, crate::SoundError> {
-    let mut voices = Vec::new();
-    for component in components {
-        voices.extend(
-            crate::compiled::source_lanes(component)
-                .map_err(SoundError::Pair)?
-                .into_iter()
-                .flatten()
-                .map(|(id, mut voice)| {
-                    voice.modulation = component.form.modulation;
-                    (id, voice)
-                }),
-        );
-    }
-    Ok(voices)
-}
-
-#[cfg(test)]
-pub(crate) fn form(voice: SourceLane) -> ComponentForm {
-    let SourceLane {
-        route,
-        peak_dbfs,
-        carrier,
-        modulation,
-    } = voice;
-    match carrier {
-        crate::Carrier::PulseTrain { pulse } => ComponentForm {
-            source: crate::SoundSource::PulseTrain {
-                route,
-                peak_dbfs: finite(peak_dbfs),
-                pulse,
-            },
-            modulation,
-        },
-        crate::Carrier::Tone { frequency_hz } => ComponentForm {
-            source: crate::SoundSource::Tone {
-                route,
-                frequency_hz: crate::test_support::finite(frequency_hz),
-                peak_dbfs: crate::test_support::finite(peak_dbfs),
-            },
-            modulation,
-        },
-    }
+    check(rate, components).into_result()
 }
 
 /// A finite fixture value; panics on nonfinite input.
@@ -213,18 +163,4 @@ pub fn rectangular_pulse(rate_hz: f64, seconds: f64) -> crate::PulseSpec {
         },
         shape: crate::PulseShape::Rectangular {},
     }
-}
-
-#[cfg(test)]
-pub(crate) fn primitive(form: ComponentForm) -> Option<SourceLane> {
-    if form.voices() != 1 {
-        return None;
-    }
-    let component = Component {
-        id: ComponentId::new(1)?,
-        form,
-    };
-    let (_, mut voice) = crate::compiled::source_lanes(&component).ok()?[0]?;
-    voice.modulation = form.modulation;
-    Some(voice)
 }

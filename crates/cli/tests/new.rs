@@ -54,6 +54,7 @@ fn help_and_invalid_kind_have_independent_usage_outputs() {
     let result = cli().args(["new", "--help"]).output().unwrap();
     assert!(result.status.success());
     assert!(String::from_utf8_lossy(&result.stdout).contains("--output"));
+    assert!(String::from_utf8_lossy(&result.stdout).contains("isochronic"));
     for args in [
         vec!["new"],
         vec!["new", "isochronic"],

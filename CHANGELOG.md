@@ -4,7 +4,7 @@
 
 - Recipe schema 5 replaces schema 4. Recreate old recipes with `new KIND` or updated built-ins; unsupported files remain intact and reported.
 - Update method filters to `pulse_train`, `pulsed` and `sinusoidal`; JSON schema 3/classifier 3 reports source and shared modulation independently.
-- Create tone, pulse-train, pair or pulsed-tone templates in Desktop Add component or `auditorylab new KIND`; `--output` never overwrites.
+- Create tone, pulse-train, pair or pulsed-tone (isochronic) templates in Desktop Add component or `auditorylab new KIND`; `--output` never overwrites.
 - Pairs support shared sinusoidal or shaped pulsed modulation, with atomic component transitions within one 16-generator-lane budget.
 - Pulse widths retain duration or duty intent; raised-cosine edges and calculated previews show requested and sample-quantized timing.
 - AM and mixtures containing pairs can have different sample bits under component sum-then-modulate order; see [waveforms](docs/recipes.md#waveforms).

@@ -6,6 +6,8 @@ Run `auditorylab` for help, `auditorylab COMMAND --help` for command options, or
 
 `auditorylab new KIND` prints a complete editable recipe with a fresh UUID. Kinds are `tone`, `pulse-train`, `binaural-pair`, `monaural-pair` and `pulsed-tone`, shared with Desktop Add component. Generic templates contain no research or benefit claims.
 
+**Pulsed tone (isochronic)** means a single sine carrier under periodic gain pulses, with continuous carrier phase through the silent windows. It uses a `tone` source plus shared `pulsed` modulation, as defined in [waveforms](recipes.md#waveforms). `pulsed-tone` remains the CLI construction key; there is no persisted or CLI `isochronic` kind. A unipolar pulse-train source and a pulsed pair keep their own names.
+
 ```text
 auditorylab new pulsed-tone --output pulse.toml
 auditorylab inspect --file pulse.toml --sample-rate 48000

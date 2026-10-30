@@ -119,6 +119,17 @@ impl CreationKind {
         Self::MonauralPair,
         Self::PulsedTone,
     ];
+    /// Domain-owned construction wording; imperative menu text belongs to presentation.
+    pub const fn term(self) -> auditorylab_core::vocabulary::Term {
+        use auditorylab_core::PairKind;
+        match self {
+            Self::Tone => auditorylab_core::vocabulary::STEADY_TONE,
+            Self::PulseTrain => CarrierKind::PulseTrain.term(),
+            Self::BinauralPair => PairKind::Binaural.term(),
+            Self::MonauralPair => PairKind::Monaural.term(),
+            Self::PulsedTone => auditorylab_core::vocabulary::PULSED_TONE,
+        }
+    }
     /// Stable command-line key.
     pub const fn key(self) -> &'static str {
         match self {
@@ -216,4 +227,33 @@ pub fn set_pulse_shape(
         _ => return Some(pulse),
     };
     Some(auditorylab_core::PulseSpec { shape, ..pulse })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CreationKind;
+    #[test]
+    fn construction_terms_match_the_domain_and_keep_the_canonical_keys() {
+        let labels = CreationKind::ALL.map(|kind| kind.term().label);
+        assert_eq!(
+            labels,
+            [
+                "Steady tone",
+                "Pulse train",
+                "Binaural pair",
+                "Monaural pair",
+                "Pulsed tone (isochronic)"
+            ]
+        );
+        for kind in CreationKind::ALL {
+            assert_eq!(kind.term().label, kind.component().heading());
+        }
+        assert_eq!(CreationKind::PulsedTone.key(), "pulsed-tone");
+        assert!(
+            !CreationKind::PulseTrain
+                .term()
+                .phrase
+                .contains("isochronic")
+        );
+    }
 }

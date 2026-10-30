@@ -507,9 +507,7 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        Carrier as Source, Channel, ChannelRouting, Modulation, Recipe, SoundError, SourceLane,
-    };
+    use crate::{Channel, ChannelRouting, ComponentForm, Modulation, Recipe, SoundError};
     use alloc::vec;
     use alloc::vec::Vec;
     use proptest::{prelude::*, test_runner::Config, test_runner::TestRunner};
@@ -530,20 +528,22 @@ mod tests {
         SampleRate::new(48_000).unwrap()
     }
 
-    fn tone(hz: f64, peak_dbfs: f64, route: ChannelRouting) -> SourceLane {
-        SourceLane {
-            route,
-            peak_dbfs,
-            carrier: Source::Tone { frequency_hz: hz },
+    fn tone(hz: f64, peak_dbfs: f64, route: ChannelRouting) -> ComponentForm {
+        crate::ComponentForm {
+            source: crate::SoundSource::Tone {
+                route,
+                peak_dbfs: crate::test_support::finite(peak_dbfs),
+                frequency_hz: crate::test_support::finite(hz),
+            },
             modulation: None,
         }
     }
 
-    fn clicks(hz: f64, peak_dbfs: f64) -> SourceLane {
-        SourceLane {
-            route: ChannelRouting::Both,
-            peak_dbfs,
-            carrier: Source::PulseTrain {
+    fn clicks(hz: f64, peak_dbfs: f64) -> ComponentForm {
+        crate::ComponentForm {
+            source: crate::SoundSource::PulseTrain {
+                route: ChannelRouting::Both,
+                peak_dbfs: crate::test_support::finite(peak_dbfs),
                 pulse: crate::test_support::rectangular_pulse(hz, 0.001),
             },
             modulation: None,
@@ -554,7 +554,7 @@ mod tests {
         crate::ComponentId::new(n + 1).unwrap()
     }
 
-    fn numbered(components: &[SourceLane]) -> Vec<(crate::ComponentId, SourceLane)> {
+    fn numbered(components: &[ComponentForm]) -> Vec<(crate::ComponentId, ComponentForm)> {
         components
             .iter()
             .enumerate()
@@ -580,7 +580,7 @@ mod tests {
     fn closed_pulses_keep_modulation_phase_and_exact_reopening_samples() {
         for hz in [8_000, 44_100, 48_000, 768_000] {
             for depth in [0.0, 0.3, 1.0] {
-                let voice = SourceLane {
+                let voice = crate::ComponentForm {
                     modulation: Some(Modulation::Sinusoidal {
                         rate_hz: crate::test_support::finite(39.0625),
                         depth: crate::test_support::finite(depth),
@@ -619,7 +619,7 @@ mod tests {
         for shared_depth in [true, false] {
             for hz in [8_000, 44_100, 48_000, 96_000, 768_000] {
                 let components: Vec<_> = (0..16)
-                    .map(|n| SourceLane {
+                    .map(|n| crate::ComponentForm {
                         modulation: Some(Modulation::Sinusoidal {
                             rate_hz: crate::test_support::finite(39.0625),
                             depth: if shared_depth {
@@ -706,7 +706,7 @@ mod tests {
                 .enumerate()
                 .map(|(index, voice)| crate::Component {
                     id: crate::ComponentId::numbered(index).unwrap(),
-                    form: crate::test_support::form(voice),
+                    form: voice,
                 })
                 .collect(),
             )
@@ -747,7 +747,7 @@ mod tests {
                 .enumerate()
                 .map(|(index, voice)| crate::Component {
                     id: crate::ComponentId::numbered(index).unwrap(),
-                    form: crate::test_support::form(voice),
+                    form: voice,
                 })
                 .collect(),
         )
@@ -833,10 +833,10 @@ mod tests {
     )]
     fn a_level_change_moves_linearly_over_one_ramp() {
         // A pulse wider than the session holds the carrier at one.
-        let held = SourceLane {
-            route: ChannelRouting::Both,
-            peak_dbfs: -20.0,
-            carrier: Source::PulseTrain {
+        let held = crate::ComponentForm {
+            source: crate::SoundSource::PulseTrain {
+                route: ChannelRouting::Both,
+                peak_dbfs: crate::test_support::finite(-20.0),
                 pulse: crate::test_support::rectangular_pulse(0.1, 5.0),
             },
             modulation: None,
@@ -844,9 +844,13 @@ mod tests {
         let mut engine = Engine::new(rate());
         engine.set(&crate::test_support::target(rate(), &[(id(1), held)]).unwrap());
         render(&mut engine, 2_000);
-        let louder = SourceLane {
-            peak_dbfs: -6.0,
-            ..held
+        let louder = {
+            let mut value = held;
+            assert!(value.set(
+                crate::ParameterId::PeakLevel,
+                crate::test_support::finite(-6.0)
+            ));
+            value
         };
         engine.set(&crate::test_support::target(rate(), &[(id(1), louder)]).unwrap());
         let ramp = engine.ramp_frames() as usize;
@@ -974,10 +978,10 @@ mod tests {
 
     #[test]
     fn sixteen_voices_changing_kind_use_every_slot_within_full_scale() {
-        let tones: Vec<SourceLane> = (0..16)
+        let tones: Vec<ComponentForm> = (0..16)
             .map(|i| tone(200.0 + 50.0 * f64::from(i), -24.1, ChannelRouting::Both))
             .collect();
-        let pulses: Vec<SourceLane> = (0..16).map(|_| clicks(40.0, -24.1)).collect();
+        let pulses: Vec<ComponentForm> = (0..16).map(|_| clicks(40.0, -24.1)).collect();
         let mut engine = Engine::new(rate());
         engine.set(&crate::test_support::target(rate(), &numbered(&tones)).unwrap());
         render(&mut engine, 2_000);
@@ -1004,12 +1008,18 @@ mod tests {
                     ChannelRouting::Right,
                     ChannelRouting::Both,
                 ][usize::from(route)];
-                let carrier = if kind == 3 {
-                    Source::PulseTrain {
+                let source = if kind == 3 {
+                    crate::SoundSource::PulseTrain {
+                        route,
+                        peak_dbfs: crate::test_support::finite(0.0),
                         pulse: crate::test_support::rectangular_pulse(hz.min(1_000.0), 0.0005),
                     }
                 } else {
-                    Source::Tone { frequency_hz: hz }
+                    crate::SoundSource::Tone {
+                        route,
+                        peak_dbfs: crate::test_support::finite(0.0),
+                        frequency_hz: crate::test_support::finite(hz),
+                    }
                 };
                 let modulation = match kind {
                     1 => Some(Modulation::Sinusoidal {
@@ -1027,7 +1037,7 @@ mod tests {
                     }),
                     _ => None,
                 };
-                (id, route, carrier, modulation, level)
+                (id, crate::ComponentForm { source, modulation }, level)
             },
         );
         let strategy = prop::collection::vec(
@@ -1046,19 +1056,21 @@ mod tests {
                 for (parts, frames) in edits {
                     // Scale levels so that each ear's sum is exactly at most one.
                     let n = parts.len().max(1) as f64;
-                    let components: Vec<(crate::ComponentId, SourceLane)> = parts
+                    let components: Vec<(crate::ComponentId, ComponentForm)> = parts
                         .iter()
                         .enumerate()
-                        .map(|(i, (id, route, carrier, modulation, level))| {
+                        .map(|(i, (id, form, level))| {
                             let amplitude = (0.05 + 0.95 * level) / n;
                             (
                                 crate::ComponentId::new(id * 16 + u32::try_from(i).unwrap() + 1)
                                     .unwrap(),
-                                SourceLane {
-                                    route: *route,
-                                    peak_dbfs: 20.0 * libm::log10(amplitude),
-                                    carrier: *carrier,
-                                    modulation: *modulation,
+                                {
+                                    let mut form = *form;
+                                    assert!(form.set(
+                                        crate::ParameterId::PeakLevel,
+                                        crate::test_support::finite(20.0 * libm::log10(amplitude))
+                                    ));
+                                    form
                                 },
                             )
                         })
@@ -1117,8 +1129,8 @@ mod tests {
         assert!(engine.is_finished());
     }
 
-    fn gated(hz: f64, peak_dbfs: f64, width_seconds: f64) -> SourceLane {
-        SourceLane {
+    fn gated(hz: f64, peak_dbfs: f64, width_seconds: f64) -> ComponentForm {
+        crate::ComponentForm {
             modulation: Some(Modulation::Pulsed {
                 pulse: crate::PulseSpec {
                     rate_hz: crate::test_support::finite(40.0),
@@ -1157,7 +1169,7 @@ mod tests {
             binary64 conversion is exact for these bounded fixtures"
     )]
     fn frequencies_glide_through_intermediate_steps_during_a_ramp() {
-        let am = |hz: f64, rate_hz: f64, depth: f64| SourceLane {
+        let am = |hz: f64, rate_hz: f64, depth: f64| crate::ComponentForm {
             modulation: Some(Modulation::Sinusoidal {
                 rate_hz: crate::test_support::finite(rate_hz),
                 depth: crate::test_support::finite(depth),

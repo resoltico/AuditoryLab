@@ -40,6 +40,8 @@ Library actions retain an app-issued handle for the rendered listing and capture
 
 **New sound** opens an empty, silent Workbench. **Add component…** offers tones, pulse trains, both explicit pair kinds and pulsed tones. Tone/pulse sources cost one generator lane; pairs cost two within one 16-lane budget. [Fields and limits](formats.md#recipe-schema) define the budgets.
 
+**Pulsed tone (isochronic)** means a single sine carrier under periodic gain pulses, with continuous carrier phase through the silent windows. It uses a `tone` source plus shared `pulsed` modulation, as defined in [waveforms](recipes.md#waveforms). `pulsed-tone` remains the CLI construction key; there is no persisted or CLI `isochronic` kind. A unipolar pulse-train source and a pulsed pair keep their own names.
+
 Component names use their authored IDs; removing/restoring rows keeps those references stable. A pair's secondary lane is labeled as its second tone.
 
 Enter frequency/rate, width, level and modulation values. The UI uses Hz, milliseconds, dBFS and percent. Source, shared modulation, digital channel routing and Remove are in each component’s options. Pulse options and their calculated envelope stay open together; other components use disclosures. **Undo remove** restores the latest removed component and its staged text when capacity permits.

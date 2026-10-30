@@ -423,6 +423,9 @@ fn component_terms(
             Modulation::Sinusoidal { .. } => "sinusoidal amplitude modulation am depth rate",
             Modulation::Pulsed { pulse } => {
                 pulse_terms(pulse, facts);
+                if matches!(form.source, SoundSource::Tone { .. }) {
+                    facts.push(crate::core::vocabulary::PULSED_TONE.phrase.into());
+                }
                 "pulse pulsed modulation"
             }
         };

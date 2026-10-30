@@ -865,18 +865,7 @@ pub fn control_choice(
         ControlValue::ExportRate(rate) => {
             crate::numbers::format(crate::numbers::NumberStyle::Hertz, f64::from(rate.hz()))
         }
-        ControlValue::Creation(kind) => match kind {
-            auditorylab_app::document::construction::CreationKind::Tone => "Add steady tone",
-            auditorylab_app::document::construction::CreationKind::PulseTrain => "Add pulse train",
-            auditorylab_app::document::construction::CreationKind::BinauralPair => {
-                "Add binaural pair"
-            }
-            auditorylab_app::document::construction::CreationKind::MonauralPair => {
-                "Add monaural pair"
-            }
-            auditorylab_app::document::construction::CreationKind::PulsedTone => "Add pulsed tone",
-        }
-        .into(),
+        ControlValue::Creation(kind) => format!("Add {}", kind.term().phrase),
         ControlValue::PulseWidth { duty, .. } => if duty {
             "Duty cycle (%)"
         } else {

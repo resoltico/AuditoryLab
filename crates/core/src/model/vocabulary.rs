@@ -8,6 +8,16 @@ pub struct Term {
     /// Wording used within a sentence.
     pub phrase: &'static str,
 }
+/// One unmodulated sine-tone construction.
+pub const STEADY_TONE: Term = Term {
+    label: "Steady tone",
+    phrase: "steady tone",
+};
+/// A tone under one periodic pulse envelope; the synonym is human-facing only.
+pub const PULSED_TONE: Term = Term {
+    label: "Pulsed tone (isochronic)",
+    phrase: "pulsed tone (isochronic)",
+};
 /// Document title, including query/control labels for the same field.
 pub const TITLE: Term = Term {
     label: "Title",

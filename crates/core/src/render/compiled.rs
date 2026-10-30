@@ -16,7 +16,7 @@ use crate::{
 use alloc::vec::Vec;
 
 /// Source adaptation is bounded and retains the authored component relationship.
-pub(crate) fn source_lanes(
+fn source_lanes(
     component: &crate::Component,
 ) -> Result<[Option<(VoiceId, crate::SourceLane)>; 2], crate::PairError> {
     use crate::{Carrier, ChannelRouting, SoundSource, SourceLane};
@@ -26,7 +26,6 @@ pub(crate) fn source_lanes(
         carrier: Carrier::Tone { frequency_hz },
         peak_dbfs,
         route,
-        modulation: None,
     };
     Ok(match form.source {
         SoundSource::Tone {
@@ -48,7 +47,6 @@ pub(crate) fn source_lanes(
                     carrier: Carrier::PulseTrain { pulse },
                     peak_dbfs: peak_dbfs.get(),
                     route,
-                    modulation: None,
                 },
             )),
             None,

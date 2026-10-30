@@ -116,8 +116,8 @@ fn creation_help() -> String {
     format!(
         "Construction to create: {}. Edit the emitted TOML to customize it.",
         lab::document::construction::CreationKind::ALL
-            .map(auditorylab_app::document::construction::CreationKind::key)
-            .join(", ")
+            .map(|kind| format!("{} — {}", kind.key(), kind.term().label))
+            .join("; ")
     )
 }
 fn creation_kind(text: &str) -> Result<lab::document::construction::CreationKind, String> {

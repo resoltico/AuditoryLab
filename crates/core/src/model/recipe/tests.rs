@@ -3,9 +3,7 @@
 //! Strict one-version portable contract; independent shape, byte and numeric oracles.
 use super::{Recipe, RecipeError};
 use crate::ContractError;
-use crate::{
-    Carrier, Component, ComponentForm, ComponentId, Description, DocumentIdentity, SourceLane,
-};
+use crate::{Component, ComponentForm, ComponentId, Description, DocumentIdentity};
 use alloc::{format, string::ToString, vec, vec::Vec};
 const PAIR: &str = r#"# Two raw tones retain their source order and authored identities.
 schema_version = 5
@@ -349,17 +347,17 @@ fn bounded_property_roundtrips_preserve_all_finite_bits_and_authored_shapes() {
                                     modulation: None,
                                 }
                             } else {
-                                crate::test_support::form(SourceLane {
-                                    route: crate::ChannelRouting::Both,
-                                    peak_dbfs: left,
-                                    carrier: Carrier::PulseTrain {
+                                crate::ComponentForm {
+                                    source: crate::SoundSource::PulseTrain {
+                                        route: crate::ChannelRouting::Both,
+                                        peak_dbfs: crate::test_support::finite(left),
                                         pulse: crate::test_support::rectangular_pulse(base, offset),
                                     },
                                     modulation: Some(crate::Modulation::Sinusoidal {
                                         rate_hz: crate::test_support::finite(right),
                                         depth: crate::test_support::finite(0.0),
                                     }),
-                                })
+                                }
                             },
                         }],
                     )
@@ -604,15 +602,18 @@ fn authored_bits(recipe: &Recipe) -> Vec<u64> {
             source: crate::SoundSource::PulseTrain { .. },
             modulation: _,
         } => {
-            let c = crate::test_support::primitive(form).unwrap();
-            values.push(c.peak_dbfs.to_bits());
-            if let Carrier::PulseTrain { pulse } = c.carrier {
-                values.extend([
-                    pulse.rate_hz.get().to_bits(),
-                    pulse.requested_seconds().to_bits(),
-                ]);
-            }
-            if let Some(crate::Modulation::Sinusoidal { rate_hz, depth }) = c.modulation {
+            let crate::SoundSource::PulseTrain {
+                peak_dbfs, pulse, ..
+            } = form.source
+            else {
+                unreachable!()
+            };
+            values.extend([
+                peak_dbfs.get().to_bits(),
+                pulse.rate_hz.get().to_bits(),
+                pulse.requested_seconds().to_bits(),
+            ]);
+            if let Some(crate::Modulation::Sinusoidal { rate_hz, depth }) = form.modulation {
                 values.extend([rate_hz.get().to_bits(), depth.get().to_bits()]);
             }
         }

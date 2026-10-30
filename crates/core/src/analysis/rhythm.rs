@@ -483,10 +483,14 @@ crate::vocabulary::vocabulary! { Band,"band" {
 crate::vocabulary::vocabulary! { Method,"method" {
     Binaural => ("binaural","Binaural","binaural"),
     Monaural => ("monaural","Monaural","monaural"),
-    PulseTrain => ("pulse_train","Pulse train","pulse train"),
-    Pulsed => ("pulsed","Pulsed modulation","pulsed modulation"),
-    Sinusoidal => ("sinusoidal","Sinusoidal AM","sinusoidal AM"),
-    SteadyTone => ("steady_tone","Steady tone","steady tone"),
+    PulseTrain => ("pulse_train",crate::CarrierKind::PulseTrain.label(),
+        crate::CarrierKind::PulseTrain.phrase()),
+    Pulsed => ("pulsed",crate::ModulationKind::Pulsed.label(),
+        crate::ModulationKind::Pulsed.phrase()),
+    Sinusoidal => ("sinusoidal",crate::ModulationKind::Sinusoidal.label(),
+        crate::ModulationKind::Sinusoidal.phrase()),
+    SteadyTone => ("steady_tone",crate::vocabulary::STEADY_TONE.label,
+        crate::vocabulary::STEADY_TONE.phrase),
 }}
 
 crate::vocabulary::vocabulary! { Completeness,"completeness" {
@@ -554,5 +558,23 @@ mod heading_tests {
             ..form
         };
         assert_eq!(form.heading(), "Pulse train with pulsed modulation");
+        assert!(!form.heading().contains("isochronic"));
+        let tone = ComponentForm {
+            source: SoundSource::Tone {
+                frequency_hz: finite(440.0),
+                peak_dbfs: finite(-30.0),
+                route: ChannelRouting::Both,
+            },
+            ..form
+        };
+        assert_eq!(tone.heading(), "Pulsed tone (isochronic)");
+        assert_eq!(
+            ComponentForm {
+                modulation: None,
+                ..tone
+            }
+            .heading(),
+            "Steady tone"
+        );
     }
 }

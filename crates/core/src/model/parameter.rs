@@ -7,11 +7,7 @@
 //! states the label and the unit people read and type it in. Shared presentation
 //! supplies explanatory help. Model values keep the recipe's units (seconds, hertz, a 0..1 depth);
 //! [`Unit`] converts them to and from the displayed unit.
-#[cfg(test)]
-use crate::Carrier;
 use crate::Modulation;
-#[cfg(test)]
-use crate::SourceLane;
 use core::fmt::{self, Display, Formatter};
 use serde::Serialize;
 
@@ -277,13 +273,17 @@ mod tests {
     use crate::ChannelRouting;
     use alloc::vec::Vec;
 
-    fn every_shape() -> Vec<SourceLane> {
+    fn every_shape() -> Vec<crate::ComponentForm> {
         let mut shapes = Vec::new();
-        for carrier in [
-            Carrier::Tone {
-                frequency_hz: 440.0,
+        for source in [
+            crate::SoundSource::Tone {
+                frequency_hz: crate::test_support::finite(440.0),
+                route: ChannelRouting::Both,
+                peak_dbfs: crate::test_support::finite(-30.0),
             },
-            Carrier::PulseTrain {
+            crate::SoundSource::PulseTrain {
+                route: ChannelRouting::Both,
+                peak_dbfs: crate::test_support::finite(-30.0),
                 pulse: crate::test_support::rectangular_pulse(40.0, 0.001),
             },
         ] {
@@ -303,12 +303,7 @@ mod tests {
                     },
                 }),
             ] {
-                shapes.push(SourceLane {
-                    route: ChannelRouting::Both,
-                    peak_dbfs: -30.0,
-                    carrier,
-                    modulation,
-                });
+                shapes.push(crate::ComponentForm { source, modulation });
             }
         }
         shapes
@@ -316,7 +311,7 @@ mod tests {
 
     #[test]
     fn every_component_quantity_reads_back_what_was_written_and_nothing_else() {
-        for shape in every_shape().into_iter().map(crate::test_support::form) {
+        for shape in every_shape() {
             for id in ParameterId::COMPONENT {
                 let mut changed = shape;
                 let applies = shape.get(id).is_some();
@@ -338,7 +333,7 @@ mod tests {
             }
         }
         // Independently: a gated tone has frequency, level, gate rate and width.
-        let gated = crate::test_support::form(every_shape()[2]);
+        let gated = every_shape()[2];
         let present: Vec<_> = ParameterId::COMPONENT
             .into_iter()
             .filter(|id| gated.get(*id).is_some())
@@ -380,16 +375,13 @@ mod tests {
     #[test]
     fn finite_invalid_rates_never_hide_active_modulation() {
         let mut c = every_shape()[1];
-        assert_eq!(
-            crate::test_support::form(c).heading(),
-            "Tone with sinusoidal AM"
-        );
+        assert_eq!(c.heading(), "Tone with sinusoidal AM");
         c.modulation = Some(Modulation::Sinusoidal {
             rate_hz: crate::test_support::finite(0.0),
             depth: crate::test_support::finite(0.0),
         });
-        assert_eq!(crate::test_support::form(c).heading(), "Steady tone");
-        let form = crate::test_support::form(c);
+        assert_eq!(c.heading(), "Steady tone");
+        let form = c;
         let issues: Vec<_> = form.intrinsic_issues().collect();
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].parameter, ParameterId::ModulationRate);

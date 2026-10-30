@@ -353,3 +353,41 @@ fn search_indexes_actual_pulse_intent_and_modulation_on_pairs() {
         );
     }
 }
+
+#[test]
+fn isochronic_search_names_only_a_tone_under_pulsed_gain() {
+    use auditorylab_core::{Modulation, SoundSource};
+    let modulation = Some(Modulation::Pulsed {
+        pulse: auditorylab_core::test_support::rectangular_pulse(10.0, 0.05),
+    });
+    let mut tone = am(8.0);
+    tone.form.modulation = modulation;
+    let mut train = tone;
+    train.form.source = SoundSource::PulseTrain {
+        pulse: auditorylab_core::test_support::rectangular_pulse(40.0, 0.001),
+        route: ChannelRouting::Both,
+        peak_dbfs: finite(-30.0),
+    };
+    let mut coupled = pair(6.0);
+    coupled.form.modulation = modulation;
+    let input = [
+        entry(1, "A", vec![tone], None),
+        entry(2, "B", vec![train], None),
+        entry(3, "C", vec![coupled], None),
+        entry(4, "D", vec![am(10.0)], None),
+    ];
+    let result = CatalogQuery {
+        search: "isochronic 10".into(),
+        ..Default::default()
+    }
+    .execute(&input)
+    .unwrap();
+    assert_eq!(
+        result
+            .entries
+            .iter()
+            .map(|e| e.title.as_str())
+            .collect::<Vec<_>>(),
+        ["A"]
+    );
+}

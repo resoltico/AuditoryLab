@@ -3031,6 +3031,7 @@ fn library_ux_component_menu_adds_every_kind_and_retains_its_document() {
         "Add pulse train",
         "Add binaural pair",
         "Add monaural pair",
+        "Add pulsed tone (isochronic)",
     ]
     .into_iter()
     .enumerate()

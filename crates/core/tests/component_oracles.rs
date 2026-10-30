@@ -455,3 +455,92 @@ fn a_pair_difference_survives_equal_rounded_carrier_displays() {
     assert_eq!(actual.rhythms[0].hz, expected);
     assert_eq!(actual.pairs[0].difference_hz, expected);
 }
+
+#[test]
+fn every_source_reports_invalid_shared_modulation_at_the_component_boundary() {
+    use auditorylab_core::{ParameterId, PulseError, SoundError, VoiceError};
+    let pulse_source = SoundSource::PulseTrain {
+        route: ChannelRouting::Both,
+        peak_dbfs: f(-30.0),
+        pulse: auditorylab_core::test_support::rectangular_pulse(40.0, 0.001),
+    };
+    let sources = [
+        (tone(440.0).source, 1),
+        (pulse_source, 1),
+        (pair(true, None).source, 2),
+        (pair(false, None).source, 2),
+    ];
+    let cases = [
+        (
+            Modulation::Sinusoidal {
+                rate_hz: f(0.0),
+                depth: f(0.0),
+            },
+            VoiceError::Frequency {
+                parameter: ParameterId::ModulationRate,
+                hz: 0.0,
+                sample_rate_hz: 48000,
+            },
+        ),
+        (
+            Modulation::Sinusoidal {
+                rate_hz: f(10.0),
+                depth: f(1.01),
+            },
+            VoiceError::Depth { depth: 1.01 },
+        ),
+        (
+            Modulation::Pulsed {
+                pulse: PulseSpec {
+                    rate_hz: f(10.0),
+                    width: PulseWidth::DutyCycle { fraction: f(1.0) },
+                    shape: PulseShape::Rectangular {},
+                },
+            },
+            VoiceError::Pulse {
+                modulation: true,
+                width: PulseWidth::DutyCycle { fraction: f(1.0) },
+                rate_hz: 10.0,
+                sample_rate_hz: 48000,
+                error: PulseError::Duty,
+            },
+        ),
+    ];
+    for (source, lanes) in sources {
+        for (modulation, expected) in cases.iter().cloned() {
+            let recipe = recipe(
+                1.0,
+                0.0,
+                &[ComponentForm {
+                    source,
+                    modulation: Some(modulation),
+                }],
+            );
+            let check = recipe.sound().check(SampleRate::DEFAULT);
+            assert_eq!(check.voices().len(), lanes);
+            for (_, result) in check.voices() {
+                assert_eq!(result.as_ref().unwrap_err(), &expected);
+            }
+            let Err(SoundError::Voice { id, error }) = recipe.signal(SampleRate::DEFAULT) else {
+                panic!("invalid shared modulation must block the whole finite component");
+            };
+            assert_eq!(id.component.get(), 1);
+            assert_eq!(error, expected);
+        }
+        assert!(
+            recipe(
+                1.0,
+                0.0,
+                &[ComponentForm {
+                    source,
+                    modulation: Some(Modulation::Sinusoidal {
+                        rate_hz: f(10.0),
+                        depth: f(0.5)
+                    })
+                }]
+            )
+            .signal(SampleRate::DEFAULT)
+            .is_ok()
+        );
+    }
+}

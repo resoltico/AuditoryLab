@@ -13,8 +13,6 @@ pub(crate) struct SourceLane {
     pub(crate) peak_dbfs: f64,
     /// Periodic sound source.
     pub(crate) carrier: Carrier,
-    /// Optional amplitude modulation.
-    pub(crate) modulation: Option<Modulation>,
 }
 /// A periodic sound source.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -53,8 +51,6 @@ impl SourceLane {
                 })?)
             }
         };
-        compile_modulation(self.modulation, rate)?;
-        check_sideband(self, self.modulation, rate)?;
         let route = self.route;
         Ok(GeneratorLane {
             left: route.includes(Channel::Left),

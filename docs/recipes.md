@@ -4,6 +4,8 @@ A recipe describes ordered stereo components, finite duration/fades, identity an
 
 Create a generic document with `auditorylab new tone`, `pulse-train`, `binaural-pair`, `monaural-pair` or `pulsed-tone`. The command prints a complete schema-5 recipe with a fresh identity; optional `--output PATH` never overwrites. Desktop Add component uses the same constructors. New blank Workbench documents remain silent.
 
+**Pulsed tone (isochronic)** means a single sine carrier under periodic gain pulses, with continuous carrier phase through the silent windows. It uses a `tone` source plus shared `pulsed` modulation, as defined in [waveforms](#waveforms). `pulsed-tone` remains the CLI construction key; there is no persisted or CLI `isochronic` kind. A unipolar pulse-train source and a pulsed pair keep their own names.
+
 Or start from a built-in:
 
 ```text

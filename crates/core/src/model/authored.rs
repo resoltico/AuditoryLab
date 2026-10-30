@@ -479,26 +479,28 @@ impl ComponentForm {
             other => other,
         };
         match (self.source, modulation) {
-            (SoundSource::Tone { .. }, None) => "Steady tone",
+            (SoundSource::Tone { .. }, None) => crate::vocabulary::STEADY_TONE.label,
             (SoundSource::Tone { .. }, Some(Modulation::Sinusoidal { .. })) => {
                 "Tone with sinusoidal AM"
             }
-            (SoundSource::Tone { .. }, Some(Modulation::Pulsed { .. })) => "Pulsed tone",
-            (SoundSource::PulseTrain { .. }, None) => "Pulse train",
+            (SoundSource::Tone { .. }, Some(Modulation::Pulsed { .. })) => {
+                crate::vocabulary::PULSED_TONE.label
+            }
+            (SoundSource::PulseTrain { .. }, None) => crate::CarrierKind::PulseTrain.label(),
             (SoundSource::PulseTrain { .. }, Some(Modulation::Sinusoidal { .. })) => {
                 "Pulse train with sinusoidal AM"
             }
             (SoundSource::PulseTrain { .. }, Some(Modulation::Pulsed { .. })) => {
                 "Pulse train with pulsed modulation"
             }
-            (SoundSource::BinauralPair { .. }, None) => "Binaural pair",
+            (SoundSource::BinauralPair { .. }, None) => PairKind::Binaural.label(),
             (SoundSource::BinauralPair { .. }, Some(Modulation::Sinusoidal { .. })) => {
                 "Binaural pair with sinusoidal AM"
             }
             (SoundSource::BinauralPair { .. }, Some(Modulation::Pulsed { .. })) => {
                 "Pulsed binaural pair"
             }
-            (SoundSource::MonauralPair { .. }, None) => "Monaural pair",
+            (SoundSource::MonauralPair { .. }, None) => PairKind::Monaural.label(),
             (SoundSource::MonauralPair { .. }, Some(Modulation::Sinusoidal { .. })) => {
                 "Monaural pair with sinusoidal AM"
             }

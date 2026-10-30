@@ -805,7 +805,7 @@ impl Workspace {
                 document,
                 crate::document::construction::CreationKind::ALL
                     .into_iter()
-                    .map(|kind| (ControlValue::Creation(kind), ""))
+                    .map(|kind| (ControlValue::Creation(kind), kind.term().label))
                     .collect(),
                 None,
             ),
