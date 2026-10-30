@@ -64,14 +64,14 @@ Source reports 17 experimental/11 control participants. Within-group theta incre
 
 ## Lahijanian, Martorell, Orozco Perez and Van Eeckhoutte recipe parameters
 
-The following recipes use schema 4 and 0.1 s endpoint fades. All levels are uncalibrated dBFS; none represents a reproduced acoustic level. `SAM` means full-depth sinusoidal amplitude modulation, and `gate` means rectangular modulation.
+The following recipes use 0.1 s endpoint fades and the current [recipe schema](formats.md#recipe-schema). All levels are uncalibrated dBFS; none represents a reproduced acoustic level. `SAM` means full-depth sinusoidal amplitude modulation, and `pulsed` means shared rectangular pulse modulation.
 
 | Exact recipe ID | Declared components/routing | Rate/width/depth | Duration | Peak/component |
 |---|---|---|---|---|
-| `lahijanian-2024-tone-pips-40-hz` | 5000 Hz tone, Both | gate 40 Hz / 1 ms | 40 s | -20 dBFS |
-| `martorell-2019-tone-pips-8-hz` | 10000 Hz tone, Both | gate 8 Hz / 1 ms | 3600 s | -20 dBFS |
-| `martorell-2019-tone-pips-40-hz` | 10000 Hz tone, Both | gate 40 Hz / 1 ms | 3600 s | -20 dBFS |
-| `martorell-2019-tone-pips-80-hz` | 10000 Hz tone, Both | gate 80 Hz / 1 ms | 3600 s | -20 dBFS |
+| `lahijanian-2024-tone-pips-40-hz` | 5000 Hz tone, Both | pulsed 40 Hz / 1 ms | 40 s | -20 dBFS |
+| `martorell-2019-tone-pips-8-hz` | 10000 Hz tone, Both | pulsed 8 Hz / 1 ms | 3600 s | -20 dBFS |
+| `martorell-2019-tone-pips-40-hz` | 10000 Hz tone, Both | pulsed 40 Hz / 1 ms | 3600 s | -20 dBFS |
+| `martorell-2019-tone-pips-80-hz` | 10000 Hz tone, Both | pulsed 80 Hz / 1 ms | 3600 s | -20 dBFS |
 | `orozco-perez-2020-binaural-7-hz` | `binaural_pair`, 396.5 Hz Left / 403.5 Hz Right | beat offset +7 Hz | 480 s | -20 dBFS |
 | `orozco-perez-2020-binaural-40-hz` | `binaural_pair`, 380 Hz Left / 420 Hz Right | beat offset +40 Hz | 480 s | -20 dBFS |
 | `orozco-perez-2020-monaural-7-hz` | `monaural_pair`, 396.5 + 403.5 Hz, Both | beat offset +7 Hz | 480 s | -23.0103 dBFS |
@@ -86,7 +86,7 @@ The following recipes use schema 4 and 0.1 s endpoint fades. All levels are unca
 
 **Source facts:** A 5 kHz carrier uses 40 Hz rectangular modulation, 4% duty/1 ms; six or ten 40 s trials alternate with 20 s silence. Two speakers are 50 cm apart and 50 cm from the listener. The paper reports approximately -40 dB without naming that level's reference, then participant comfort adjustments. Audio phase, ramps and audio sample rate are unspecified. Thirty-five memory-clinic volunteers were recruited; P6/P13 were excluded, leaving 33. EEG findings concern entrainment/connectivity, with unequal responsiveness and a single session; treatment or memory improvement was not tested here.
 
-**Recipe adaptation:** The single-trial timing and carrier/gate agree. Digital Both routing, continuous phase-zero carrier, -20 dBFS and endpoint fades are explicitly disclosed synthesis choices. The adaptation acknowledges the ambiguous -40 dB statement without relabeling it SPL or dBFS. The recipe does not reproduce a calibrated exposure or treatment.
+**Recipe adaptation:** The single-trial timing and carrier/pulsed modulation agree. Digital Both routing, continuous phase-zero carrier, -20 dBFS and endpoint fades are explicitly disclosed synthesis choices. The adaptation acknowledges the ambiguous -40 dB statement without relabeling it SPL or dBFS. The recipe does not reproduce a calibrated exposure or treatment.
 
 ## 6. Martorell 2019 — three recipes
 

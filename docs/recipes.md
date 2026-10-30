@@ -4,8 +4,6 @@ A recipe describes ordered stereo components, finite duration/fades, identity an
 
 Create a generic document with `auditorylab new tone`, `pulse-train`, `binaural-pair`, `monaural-pair` or `pulsed-tone`. The command prints a complete schema-5 recipe with a fresh identity; optional `--output PATH` never overwrites. Desktop Add component uses the same constructors. New blank Workbench documents remain silent.
 
-**Pulsed tone (isochronic)** means a single sine carrier under periodic gain pulses, with continuous carrier phase through the silent windows. It uses a `tone` source plus shared `pulsed` modulation, as defined in [waveforms](#waveforms). `pulsed-tone` remains the CLI construction key; there is no persisted or CLI `isochronic` kind. A unipolar pulse-train source and a pulsed pair keep their own names.
-
 Or start from a built-in:
 
 ```text
@@ -15,7 +13,7 @@ auditorylab inspect --file custom.toml --sample-rate 48000
 
 Use **Edit a copy** or `library add --as-copy` to allocate a separate identity. Portable export retains the source identity. Keep your own notes in `[description]`; retain source methods and limitations in scoped evidence.
 
-## A signed-offset pair
+## A pair with a negative beat offset
 
 Save the example as UTF-8. It sends 250 Hz left and 240 Hz right:
 
@@ -74,7 +72,9 @@ rate_hz = 40.0
 depth = 1.0
 ```
 
-For a pulsed tonal construction, create `auditorylab new pulsed-tone --output pulse.toml`. Its generic defaults are a 440 Hz carrier in both channels at −30 dBFS, 10 pulses/s, 50% requested duty and 2 ms raised-cosine rise/fall. It carries no study or benefit claims. Add the same shared modulation to either explicit pair kind; a generic pulse source is not a tonal construction.
+**Pulsed tone (isochronic)** means a single sine carrier under periodic gain pulses, with continuous carrier phase through the silent windows. It uses a `tone` source plus shared `pulsed` modulation; `pulsed-tone` is its CLI construction key. A unipolar pulse-train source and a pulsed pair keep their own names.
+
+Create `auditorylab new pulsed-tone --output pulse.toml`. Its generic defaults are a 440 Hz carrier in both channels at −30 dBFS, 10 pulses/s, 50% requested duty and 2 ms raised-cosine rise/fall. It carries no study or benefit claims. Add the same shared modulation to either explicit pair kind; a generic pulse source is not a tonal construction.
 
 The modulation table uses `kind = "pulsed"` and a nested pulse with `rate_hz`, `width` and `shape`; see [component fields](formats.md#components). Pulse sources use that identical pulse definition under their source table.
 
@@ -92,7 +92,7 @@ Workbench typing stages values; committing applies the complete finite candidate
 
 Tone and sinusoidal-AM phases use a 64-bit cycle with step `ceil(hz × 2^64 / fs)`, derived from the exact binary64 requested frequency. Origin-zero frame `n` uses `n × step` modulo `2^64`. Portable libm evaluates sine from the signed top 53 phase bits as cycles in `[-0.5,0.5)`. Each tone starts at phase zero and continues through closed pulses. There is no per-pulse phase reset.
 
-Evaluate lanes in source order (first/left, then second/right), applying levels `A = 10^(peak_dbfs/20)` and digital routes to form a stereo component sum. Multiply that sum by its one shared modulation gain. Sum components in authored order, then apply the finite or interactive outer gain. This association can change old AM/mixed-pair sample bits; it does not normalize levels. Active sinusoidal AM uses `(1 + depth × sin(phase)) / (1 + depth)` and has an upper-sideband guard for each tonal lane.
+Evaluate lanes in source order (first/left, then second/right), applying levels `A = 10^(peak_dbfs/20)` and digital routes to form a stereo component sum. Multiply that sum by its one shared modulation gain. Sum components in authored order, then apply the finite or interactive outer gain. Levels are not normalized. Active sinusoidal AM uses `(1 + depth × sin(phase)) / (1 + depth)` and has an upper-sideband guard for each tonal lane.
 
 Pulse onsets are `ceil(k × fs / rate_hz)` using the requested binary64 rate as an exact binary rational, without accumulating floating-point periods. The resolved window is constant:
 

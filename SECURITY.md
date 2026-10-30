@@ -4,7 +4,7 @@ Report suspected vulnerabilities through [GitHub private vulnerability reporting
 
 ## Recipe input
 
-The shared parser bounds input size, requires UTF-8, checks the schema version and rejects unknown fields. Signal validation bounds duration, component count, rates, pulse widths and per-ear peak sums. File loading checks the opened handle and admits only regular files, including symlinks to them. Unix opens are nonblocking so FIFOs can be rejected before reading. Intentional streams use the bounded reader or CLI `--stdin`.
+The shared parser bounds input size, requires UTF-8, checks the schema version and rejects unknown fields. Signal validation bounds duration, component count, rates, pulse widths and per-channel digital peak sums. File loading checks the opened handle and admits only regular files, including symlinks to them. Unix opens are nonblocking so FIFOs can be rejected before reading. Intentional streams use the bounded reader or CLI `--stdin`.
 
 Recipe metadata is descriptive text. Human-readable CLI reports escape terminal controls and bidi characters. Portable TOML output retains its bytes, and JSON preserves decoded string data using JSON escaping; treat these as machine-readable formats when displaying untrusted metadata. Parsing recipe metadata does not fetch source URLs; explicit desktop link actions open HTTP(S) source addresses in the system browser. WAV export stages a file beside its destination and publishes only completed output. Cancellation and failures remove the partial file, and cleanup errors name any leftover. Native Save dialogs confirm replacement; CLI output paths preserve existing files.
 

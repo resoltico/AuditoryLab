@@ -41,7 +41,7 @@ One authored budget permits 16 generator lanes: a tone or pulse train costs one;
 
 ### Components
 
-Every `[[sound.component]]` requires a positive `id`, a `[sound.component.source]` table and a `[sound.component.modulation]` table. Components sum in authored order. Unknown or inapplicable fields are errors; there are no old-kind or old-field aliases.
+Every `[[sound.component]]` requires a positive `id`, a `[sound.component.source]` table and a `[sound.component.modulation]` table. Components sum in authored order. Unknown or inapplicable fields are errors.
 
 | Source `kind` | Required source fields |
 | --- | --- |
@@ -91,7 +91,7 @@ Lengths resolve to nearest whole frames, with halves away from zero. A structura
 
 ## Unsupported and unreadable recipes
 
-Only recipe schema 5 is accepted; schema 4 and every other version are rejected without conversion. Unsupported versions and malformed documents produce a diagnostic naming the file and the failed rule. The file remains unchanged. If it is inside `recipes/` or `trash/`, discovery is incomplete: healthy rows remain available and `list` exits **5**.
+Only recipe schema 5 is accepted. Every other version is rejected without conversion. Unsupported versions and malformed documents produce a diagnostic naming the file and the failed rule. The file remains unchanged. If it is inside `recipes/` or `trash/`, discovery is incomplete: healthy rows remain available and `list` exits **5**.
 
 Back up the affected file. Correct it against the [recipe reference](#recipe-schema), or move it outside the library. Check the corrected file with `auditorylab inspect --file PATH` before returning it, then run `library check` or Refresh. Changing a declared schema number does not establish that a document satisfies the format.
 

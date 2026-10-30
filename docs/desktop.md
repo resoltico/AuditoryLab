@@ -40,7 +40,7 @@ Library actions retain an app-issued handle for the rendered listing and capture
 
 **New sound** opens an empty, silent Workbench. **Add component…** offers tones, pulse trains, both explicit pair kinds and pulsed tones. Tone/pulse sources cost one generator lane; pairs cost two within one 16-lane budget. [Fields and limits](formats.md#recipe-schema) define the budgets.
 
-**Pulsed tone (isochronic)** means a single sine carrier under periodic gain pulses, with continuous carrier phase through the silent windows. It uses a `tone` source plus shared `pulsed` modulation, as defined in [waveforms](recipes.md#waveforms). `pulsed-tone` remains the CLI construction key; there is no persisted or CLI `isochronic` kind. A unipolar pulse-train source and a pulsed pair keep their own names.
+**Pulsed tone (isochronic)** adds a single tone with shared pulsed modulation. The [recipe guide](recipes.md#sinusoidal-and-pulsed-modulation) explains its waveform and defaults. Pulse trains and pulsed pairs have distinct names.
 
 Component names use their authored IDs; removing/restoring rows keeps those references stable. A pair's secondary lane is labeled as its second tone.
 
@@ -88,4 +88,4 @@ Linux downloads require glibc 2.35 or later, ALSA, X11 or Wayland, fonts, fontco
 
 Windows requires Windows 10 on x86_64 or Windows 11 on ARM64 and an OpenGL 2.0 or newer driver. x86_64 requires SSE3, CMPXCHG16B and LAHF/SAHF. Fatal graphics/application failures use a native dialog.
 
-The Edit menu applies Undo, Cut, Copy, Paste and Select All to the focused text field; keyboard shortcuts work in fields directly. **Help › Auditory Lab desktop guide** opens this guide as it was for the running build. About is in the macOS application menu or the Windows/Linux Help menu. It shows product identity and links to source and licenses. Packaged dependency notices stay with the download and inside the macOS app. [Packaging](releasing.md) defines the complete delivered contents.
+The Edit menu applies Undo, Cut, Copy, Paste and Select All to the focused text field; keyboard shortcuts work in fields directly. **Help › Auditory Lab desktop guide** opens the guide for the build’s source revision, or its version tag when no revision is embedded. About is in the macOS application menu or the Windows/Linux Help menu. It shows product identity and links to source and licenses. Packaged dependency notices stay with the download and inside the macOS app. [Packaging](releasing.md) defines the complete delivered contents.
