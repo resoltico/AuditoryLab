@@ -2248,8 +2248,6 @@ fn compact_empty_filters_and_recovery_remain_reachable_through_real_controls() {
 
 #[test]
 fn compact_unavailable_root_keeps_recovery_and_non_authoritative_counts_visible() {
-    use slint::private_unstable_api::re_exports::AccessibilityAction;
-
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("library");
     let root = auditorylab_app::services::library::Library::at_path(path.clone()).unwrap();

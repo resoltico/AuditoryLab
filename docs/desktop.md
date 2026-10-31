@@ -22,7 +22,7 @@ Sound diagrams use actual compiled data. Signed waveforms share one fitted scale
 
 Band illustrations are one-second, zero-phase normalized sine schematics, with native labels and light/dark colors. They are not recorded EEG, rendered audio or pulse envelopes. Observed EEG/MEG associations overlap and depend on region, task and measurement; matching an audio rate to a band does not establish a brain state or promise an effect. Direct references open the [IFCN glossary](https://pmc.ncbi.nlm.nih.gov/articles/PMC6123891/), [memory-study record](https://pubmed.ncbi.nlm.nih.gov/16837600/) and [NIH sleep-stage overview](https://www.nhlbi.nih.gov/health/sleep/stages-of-sleep), independently of application-manual version links. The memory study used 4.5–8.5 and 60–90 Hz, rather than the app’s exact reference intervals.
 
-The `onboarding-seen` flag lives in the native application configuration directory, independently of User Library and `AUDITORYLAB_LIBRARY_DIR`. Closing before departure leaves the guide unseen. A malformed or unwritable preference produces a compact **Preference notice** with selectable path, cause and recovery details; Stop and Cancel remain available in that popup. Unknown bytes are never replaced automatically. Successful publication clears its notice and closes the popup. Repair the named file or directory and restart if the notice remains. Only the seen flag persists; lesson progress and workspace restoration are not stored.
+The `onboarding-seen` flag lives in the native application configuration directory, independently of User Library and `AUDITORYLAB_LIBRARY_DIR`. Closing before departure leaves the guide unseen. A malformed or unwritable preference produces a one-line notice above the workspace (**Preference notice** inside Start here) whose centred details popup gives the selectable path, cause and recovery; Stop and Cancel remain available in that popup. Unknown bytes are never replaced automatically. Successful publication clears its notice and closes the popup. Repair the named file or directory and restart if the notice remains. Only the seen flag persists; lesson progress and workspace restoration are not stored.
 
 ## Browse the Library
 
@@ -34,7 +34,7 @@ Search, Method and Sort apply immediately. Filters also offer study, population,
 
 Desktop date bounds are inclusive local days. The timezone is shown; the selected sound's **Source and dates** section also shows the exact canonical UTC values. Created/Modified describe the recipe, while Added here/Trashed here describe this library. Unknown dates stay visible as Unknown and sort last.
 
-**Library options…** provides Open, Refresh, Show saved, filter resets and storage details, including when results are empty. Saving itself preserves the current query. **Show saved** selects the confirmed entry in User or Trash and restores an unrestricted query with automatic ordering and no grouping. Incomplete discovery keeps healthy and last-observed rows with a warning. Use Refresh and inspect the named files before editing a saved version.
+**Open recipe…** sits in the Library toolbar. The **Library storage and recovery** section after the results shows storage status with Refresh, Show saved, Reset sort and Initialize configured library, including when results are empty. Applied filters are listed above the results with **Clear all filters**; **Query details…** shows the full committed query as selectable text. Saving itself preserves the current query. **Show saved** selects the confirmed entry in User or Trash and restores an unrestricted query with automatic ordering and no grouping. Incomplete discovery keeps healthy and last-observed rows with a warning. Use Refresh and inspect the named files before editing a saved version.
 
 Filter resets have distinct scopes:
 
@@ -44,7 +44,7 @@ Filter resets have distinct scopes:
 | Clear all filters | Clears search, rhythm, evidence and date restrictions; retains collection, sort, direction and grouping. |
 | Reset sort | Restores automatic sort/direction; retains filters, collection and grouping. |
 
-Clearing rhythm filters is available with the compact/list filter controls. Other resets are available through Library options or the filter popup. Unapplied advanced input survives unrelated selection and display updates; an explicit full reset or reveal discards it.
+Clearing rhythm filters is available with the compact/list filter controls. Other resets are available beside the results, in the storage section or in the filter popup. Unapplied advanced input survives unrelated selection and display updates; an explicit full reset or reveal discards it.
 
 The native per-user library can be overridden with an absolute `AUDITORYLAB_LIBRARY_DIR`. Initialize an override through Library storage controls or `auditorylab --library-dir PATH library init`. Built-ins and independent external exports remain available when persistent storage is unavailable. See [library configuration](cli.md#root-and-lifecycle) and [unsupported-file recovery](formats.md#unsupported-and-unreadable-recipes).
 
@@ -96,7 +96,7 @@ New/copy/close/Quit protect unsaved content through Save/Discard/Cancel. Repeate
 
 The monitor displays generated stereo samples before device conversion, with peak/RMS values and coverage status. Choose a 2/10/40/100 ms window. **Fit signal** changes the common stereo axis, while **Fixed ±1** uses digital full scale. Neither changes samples or levels.
 
-**Hold display** retains samples, source, rate, frame span, scale and meters together across navigation and sessions. **Return to live** selects current coverage. Monitor gaps, stale coverage and backend underruns remain distinct. Details opens selectable quantities; **Refresh diagnostics snapshot** updates them explicitly.
+**Hold display** retains samples, source, rate, frame span, scale and meters together across navigation and sessions. **Return to live** selects current coverage. Monitor gaps, stale coverage and backend underruns remain distinct. **Audio details…** in the player row, or Details in the separate monitor window, opens selectable quantities; **Refresh diagnostics snapshot** updates them explicitly. When Play is unavailable, the player names the reason.
 
 Worker completion, export progress and native preference changes arrive as events. The desktop redraw timer runs while audio is bound or the monitor is visible; an idle closed monitor needs no periodic workspace polling. Commands refresh their calculated source models before projection, independently of that redraw timer.
 
