@@ -155,7 +155,11 @@ impl Pulse {
         }
     }
     fn local(self, n: u64) -> u64 {
-        let k = self.periods(n);
+        self.local_in(n, self.periods(n))
+    }
+    /// Frames since the onset of period `k`, which contains frame `n`.
+    #[inline]
+    fn local_in(self, n: u64, k: u64) -> u64 {
         let onset = if k == 0 {
             0
         } else {
@@ -167,15 +171,32 @@ impl Pulse {
     }
     #[inline]
     pub(crate) fn sample(self, n: u64) -> f64 {
-        let open = n < self.frames
-            || self.periods(n) * u64::from(self.fs) > self.rate_product(n - self.frames);
+        let k = self.periods(n);
+        let open = n < self.frames || k * u64::from(self.fs) > self.rate_product(n - self.frames);
         if !open {
             return 0.0;
         }
         if self.rise_frames == 0 {
             return 1.0;
         }
-        let local = self.local(n);
+        // Frame x has reached period k's onset exactly when periods(x) ≥ k, so
+        // edge membership needs no onset division; only edge frames locate it.
+        let in_rise = n < self.rise_frames || self.periods(n - self.rise_frames) < k;
+        let fall_start = self.frames - self.fall_frames;
+        let in_fall = !in_rise && n >= fall_start && self.periods(n - fall_start) >= k;
+        #[cfg(debug_assertions)]
+        {
+            let local = self.local_in(n, k);
+            debug_assert_eq!(in_rise, local < self.rise_frames);
+            debug_assert_eq!(
+                in_rise || in_fall,
+                local < self.rise_frames || self.frames - 1 - local < self.fall_frames
+            );
+        }
+        if !in_rise && !in_fall {
+            return 1.0;
+        }
+        let local = self.local_in(n, k);
         let remaining = self.frames - 1 - local;
         let edge = if local < self.rise_frames {
             Some((local, self.rise_frames))

@@ -71,6 +71,8 @@ fn glide(a: u64, b: u64, p: f64) -> u64 {
 #[derive(Debug, Clone, Copy)]
 struct Slot {
     component: CompiledComponent,
+    // The carriers alone, so each frame reads a few words, not the whole definition.
+    carriers: [Option<Carrier>; 2],
     lanes: [Option<LaneState>; 2],
     role: SlotRole,
     origin: u64,
@@ -83,6 +85,9 @@ impl Slot {
         let (s, d) = modulation_steps(component.modulation);
         Self {
             component: *component,
+            carriers: component
+                .lanes
+                .map(|lane| lane.map(|lane| lane.voice.carrier)),
             origin,
             role: SlotRole::Incoming,
             lanes: component.lanes.map(|lane| {
@@ -108,10 +113,11 @@ impl Slot {
         self.modulation_step = (self.modulation_step.1, s);
         self.depth = (self.depth.1, d);
         self.component = *next;
+        self.carriers = next.lanes.map(|lane| lane.map(|lane| lane.voice.carrier));
         self.role = SlotRole::Continuing;
     }
     fn gains(&self, p: f64) -> [[f64; 2]; 2] {
-        self.lanes.map(|lane| {
+        self.lanes.each_ref().map(|lane| {
             lane.map_or([0.0; 2], |lane| {
                 [
                     between(lane.gain.0[0], lane.gain.1[0], p),
@@ -120,16 +126,21 @@ impl Slot {
             })
         })
     }
+    #[inline]
+    fn advance_modulation(&mut self, p: f64) {
+        if let Some(Modulator::Sinusoidal { .. }) = self.component.modulation {
+            self.modulation_phase = self.modulation_phase.wrapping_add(glide(
+                self.modulation_step.0,
+                self.modulation_step.1,
+                p,
+            ));
+        }
+    }
     fn frame(&mut self, frame: u64, p: f64) -> [f64; 2] {
         let mut samples = [0.0; 2];
-        for (i, (state, definition)) in self
-            .lanes
-            .iter_mut()
-            .zip(self.component.lanes.iter())
-            .enumerate()
-        {
-            if let (Some(state), Some(definition)) = (state, definition) {
-                samples[i] = match definition.voice.carrier {
+        for (i, (state, carrier)) in self.lanes.iter_mut().zip(&self.carriers).enumerate() {
+            if let (Some(state), Some(carrier)) = (state, carrier) {
+                samples[i] = match *carrier {
                     Carrier::Tone { .. } => {
                         let sample = synthesis::sine(state.phase);
                         state.phase =
@@ -142,19 +153,22 @@ impl Slot {
                 };
             }
         }
+        // Silent sources give +0.0 output whatever the shared gain, so a closed
+        // pulse skips the gain; its modulation clock still advances.
+        let silent = samples == [0.0; 2];
         let modulation = match self.component.modulation {
             None => 1.0,
+            Some(_) if silent => {
+                self.advance_modulation(p);
+                return [0.0; 2];
+            }
             Some(Modulator::Pulsed(pulse)) => pulse.sample(frame - self.origin),
             Some(Modulator::Sinusoidal { .. }) => {
                 let sample = synthesis::am_gain(
                     self.modulation_phase,
                     between(self.depth.0, self.depth.1, p),
                 );
-                self.modulation_phase = self.modulation_phase.wrapping_add(glide(
-                    self.modulation_step.0,
-                    self.modulation_step.1,
-                    p,
-                ));
+                self.advance_modulation(p);
                 sample
             }
         };

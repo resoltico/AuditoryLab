@@ -104,11 +104,14 @@ impl CompiledComponent {
                 })
     }
     pub(crate) fn frame(&self, n: u64) -> [f64; 2] {
+        // Borrow the lanes: copying them would move their facts on every frame.
         let samples = self
             .lanes
+            .each_ref()
             .map(|lane| lane.map_or(0.0, |lane| lane.voice.carrier.sample(n)));
         let gains = self
             .lanes
+            .each_ref()
             .map(|lane| lane.map_or([0.0; 2], |lane| lane.voice.gains()));
         crate::synthesis::component_frame(
             samples,
