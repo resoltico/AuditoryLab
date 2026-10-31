@@ -1367,15 +1367,15 @@ impl WindowInner {
                 &focus_item,
             ) == crate::input::KeyEventResult::EventAccepted
             {
+                self.ensure_tree_instantiated();
                 // The handler may move the editor, for example when a restored
-                // value removes text above it; reveal against the new layout.
+                // value shortens text above it; reveal it again in the new
+                // layout. Revealing moves only as far as needed.
                 if let Some(revealed) = revealed
                     && self.focus_item.borrow().upgrade().as_ref() == Some(&revealed)
-                    && !revealed.is_visible()
                 {
                     revealed.try_scroll_into_visible();
                 }
-                self.ensure_tree_instantiated();
                 return crate::input::KeyEventResult::EventAccepted;
             }
             item = focus_item.parent_item(ParentItemTraversalMode::StopAtPopups);

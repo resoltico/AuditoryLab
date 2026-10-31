@@ -2,7 +2,7 @@
 //! row removal and auxiliary-window handoff, with the production bindings.
 use crate::adapter::hide_monitor_window;
 use crate::adapter_tests::Harness;
-use crate::generated::MonitorWindow;
+use crate::generated::{MainWindow, MonitorWindow};
 use auditorylab_app::core::ParameterId;
 use auditorylab_app::document::editing::EditingField;
 use slint::platform::{Key, WindowEvent};
@@ -316,8 +316,9 @@ fn assert_clipped_keyboard_and_pointer(h: &Harness, input: &ItemRc, overflow: f3
     );
     assert_eq!(text(input), "40");
     assert!(
-        input.is_visible(),
-        "no-pointer Escape must reveal its restored editor"
+        input.is_visible() && fully_in_viewport(ui, input),
+        "no-pointer Escape must reveal its restored editor: {}",
+        escape_focus_report(h, Some(input), input, overflow)
     );
     for _ in 0..4 {
         h.key(Key::RightArrow);
@@ -357,6 +358,38 @@ fn assert_clipped_keyboard_and_pointer(h: &Harness, input: &ItemRc, overflow: f3
     assert_eq!(inner.focus_item.borrow().upgrade().as_ref(), Some(input));
     h.key(Key::Escape);
     assert_pointer_blur_commit(h);
+}
+
+/// Whether the whole item lies within its nearest scroll view's viewport.
+fn fully_in_viewport(ui: &MainWindow, input: &ItemRc) -> bool {
+    let inner = WindowInner::from_pub(ui.window());
+    let bounds = |item: &ItemRc| {
+        let geometry = item.geometry();
+        let origin = item.map_to_window(geometry.origin);
+        (origin.y, origin.y + geometry.size.height)
+    };
+    let (top, bottom) = bounds(input);
+    inner
+        .window_item_rc()
+        .unwrap()
+        .visit_descendants(|item| {
+            let holds_input = item
+                .visit_descendants(|child| {
+                    if child == input {
+                        ControlFlow::Break(())
+                    } else {
+                        ControlFlow::Continue(())
+                    }
+                })
+                .is_some();
+            if item.downcast::<Flickable>().is_some() && holds_input {
+                let (view_top, view_bottom) = bounds(item);
+                ControlFlow::Break(top >= view_top && bottom <= view_bottom)
+            } else {
+                ControlFlow::Continue(())
+            }
+        })
+        .unwrap_or(false)
 }
 
 /// Where the editor, its viewport and focus are after a failed focus check.

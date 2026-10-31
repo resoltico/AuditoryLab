@@ -495,18 +495,18 @@
  
          // Deliver key_event (to focused item, going up towards the window):
          while let Some(focus_item) = item {
-@@ -1341,6 +1367,14 @@
-                 &focus_item,
+@@ -1342,6 +1368,14 @@
              ) == crate::input::KeyEventResult::EventAccepted
              {
+                 self.ensure_tree_instantiated();
 +                // The handler may move the editor, for example when a restored
-+                // value removes text above it; reveal against the new layout.
++                // value shortens text above it; reveal it again in the new
++                // layout. Revealing moves only as far as needed.
 +                if let Some(revealed) = revealed
 +                    && self.focus_item.borrow().upgrade().as_ref() == Some(&revealed)
-+                    && !revealed.is_visible()
 +                {
 +                    revealed.try_scroll_into_visible();
 +                }
-                 self.ensure_tree_instantiated();
                  return crate::input::KeyEventResult::EventAccepted;
              }
+             item = focus_item.parent_item(ParentItemTraversalMode::StopAtPopups);
