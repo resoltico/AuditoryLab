@@ -5062,7 +5062,7 @@ fn onboarding_publication_notice_uses_shared_prose_and_does_not_block_work() {
     );
     assert!(notice.contains("continue working"), "{notice}");
     assert!(!notice.contains("file.read_limit"), "{notice}");
-    assert!(labelled(ui, "Start here preference needs attention.").is_visible());
+    assert!(labelled(ui, "Couldn't save that you've seen Start here").is_visible());
     ui.invoke_show_onboarding_notice();
     h.settle();
     assert_eq!(

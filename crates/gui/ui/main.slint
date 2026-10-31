@@ -594,11 +594,12 @@ export component MainWindow inherits Window {
         }
     }
 
+    // Centred and sized for a short explanation; the text scrolls if it is longer.
     preference-popup := PopupWindow {
-        x: 16px;
-        y: 16px;
-        width: min(720px,root.width - 32px);
-        height: min(560px,max(280px,root.height - transport.preferred-height - 32px));
+        width: min(root.ui-size * 40, root.width - 32px);
+        height: min(root.ui-size * 20, max(240px, root.height - 32px));
+        x: (root.width - self.width) / 2;
+        y: max(16px, (root.height - self.height) / 3);
         close-policy: close-on-click-outside;
         forward-focus: preference-focus;
         Rectangle {
@@ -620,7 +621,7 @@ export component MainWindow inherits Window {
                 padding: 16px;
                 spacing: 12px;
                 Text {
-                    text: "Start here preference notice";
+                    text: "Couldn't save the Start here preference";
                     color: Palette.foreground;
                     font-weight: 600;
                     wrap: word-wrap;
@@ -677,7 +678,8 @@ export component MainWindow inherits Window {
                 height: parent.height;
                 padding: 4px;
                 Text {
-                    text: "Start here preference needs attention.";
+                    text: "Couldn't save that you've seen Start here; it may open again " +
+                        "next time. Everything else works.";
                     color: Palette.foreground;
                     wrap: no-wrap;
                     overflow: elide;
