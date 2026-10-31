@@ -39,15 +39,51 @@ pub(crate) fn step(hz: f64, fs: u32) -> Option<u64> {
     };
     u64::try_from(quotient).ok()
 }
+/// sin(2π × phase / 2^64). The top two phase bits, rounded, choose the
+/// quadrant exactly; the signed remainder within ±1/8 cycle keeps 51 bits and
+/// evaluates a Taylor series whose truncation stays below 2^-53.
 #[inline]
 #[expect(
     clippy::cast_precision_loss,
-    reason = "Arithmetic shift retains a signed 53-bit phase before binary64 \
-        conversion; the intentionally reduced phase bounds sine input"
+    reason = "Arithmetic shift retains a signed 51-bit remainder, exact in binary64"
 )]
 pub(crate) fn sine(phase: u64) -> f64 {
-    let cycles = (phase.cast_signed() >> 11) as f64 / 9_007_199_254_740_992.0;
-    libm::sin(TAU * cycles)
+    let quadrant = phase.wrapping_add(1 << 61) >> 62;
+    let remainder = phase.wrapping_sub(quadrant << 62).cast_signed() >> 11;
+    let x = remainder as f64 * (TAU / 9_007_199_254_740_992.0);
+    let x2 = x * x;
+    match quadrant {
+        0 => sine_series(x, x2),
+        1 => cosine_series(x2),
+        // Subtraction keeps the half-cycle zero positive, like phase zero.
+        2 => 0.0 - sine_series(x, x2),
+        _ => -cosine_series(x2),
+    }
+}
+/// sin x for |x| ≤ π/4, through the x^15 term.
+#[inline]
+fn sine_series(x: f64, x2: f64) -> f64 {
+    let tail = -1.0 / 1_307_674_368_000.0;
+    let tail = tail * x2 + 1.0 / 6_227_020_800.0;
+    let tail = tail * x2 - 1.0 / 39_916_800.0;
+    let tail = tail * x2 + 1.0 / 362_880.0;
+    let tail = tail * x2 - 1.0 / 5_040.0;
+    let tail = tail * x2 + 1.0 / 120.0;
+    let tail = tail * x2 - 1.0 / 6.0;
+    x + x * x2 * tail
+}
+/// cos x for |x| ≤ π/4, through the x^16 term.
+#[inline]
+fn cosine_series(x2: f64) -> f64 {
+    let tail = 1.0 / 20_922_789_888_000.0;
+    let tail = tail * x2 - 1.0 / 87_178_291_200.0;
+    let tail = tail * x2 + 1.0 / 479_001_600.0;
+    let tail = tail * x2 - 1.0 / 3_628_800.0;
+    let tail = tail * x2 + 1.0 / 40_320.0;
+    let tail = tail * x2 - 1.0 / 720.0;
+    let tail = tail * x2 + 1.0 / 24.0;
+    let tail = tail * x2 - 0.5;
+    1.0 + x2 * tail
 }
 /// Whether x × k ≤ fs, exactly, for non-negative finite x, positive k and a valid sample rate.
 #[expect(
@@ -350,6 +386,55 @@ impl GeneratorLane {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The series stays within two binary64 units of portable libm across
+    /// every quadrant and its boundaries, and the axis phases are exact. The
+    /// reference corrects libm's argument by the rounding of 2π × cycles.
+    #[test]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "Reference cycles from a 53-bit phase"
+    )]
+    fn sine_matches_libm_and_is_exact_on_the_axes() {
+        const TAU_LOW: f64 = 2.449_293_598_294_706_4e-16;
+        let reference = |phase: u64| {
+            let cycles = (phase.cast_signed() >> 11) as f64 / 9_007_199_254_740_992.0;
+            let angle = TAU * cycles;
+            let error = libm::fma(TAU, cycles, -angle) + TAU_LOW * cycles;
+            libm::sin(angle) + error * libm::cos(angle)
+        };
+        let quarter = 1_u64 << 62;
+        let mut phases = [0, quarter, 2 * quarter, 3 * quarter]
+            .into_iter()
+            .flat_map(|axis| {
+                let eighth = 1_u64 << 61;
+                [axis, axis.wrapping_add(eighth), axis.wrapping_sub(eighth)]
+                    .into_iter()
+                    .flat_map(|centre| (0..64_u64).map(move |d| centre.wrapping_add(d << 11)))
+                    .chain([axis.wrapping_add(eighth - 1), axis.wrapping_sub(eighth + 1)])
+            })
+            .collect::<std::vec::Vec<_>>();
+        let mut state = 0x9e37_79b9_7f4a_7c15_u64;
+        phases.extend((0..200_000).map(|_| {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        }));
+        for phase in phases {
+            let value = sine(phase);
+            assert!(value.abs() <= 1.0, "{phase:#x}");
+            let expected = reference(phase);
+            assert!(
+                (value - expected).abs() <= 2.3e-16,
+                "{phase:#x}: {value} {expected}"
+            );
+        }
+        assert_eq!(sine(0).to_bits(), 0.0_f64.to_bits());
+        assert_eq!(sine(quarter), 1.0);
+        assert_eq!(sine(2 * quarter).to_bits(), 0.0_f64.to_bits());
+        assert_eq!(sine(3 * quarter), -1.0);
+    }
 
     /// Shaped samples equal the original rule that locates every open frame
     /// by its onset division before choosing an edge.

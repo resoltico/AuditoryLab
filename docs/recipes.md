@@ -92,7 +92,7 @@ Workbench typing stages values; committing applies the complete finite candidate
 
 ## Waveforms
 
-Tone and sinusoidal-AM phases use a 64-bit cycle with step `ceil(hz × 2^64 / fs)`, derived from the exact binary64 requested frequency. Origin-zero frame `n` uses `n × step` modulo `2^64`. Portable libm evaluates sine from the signed top 53 phase bits as cycles in `[-0.5,0.5)`. Each tone starts at phase zero and continues through closed pulses. There is no per-pulse phase reset.
+Tone and sinusoidal-AM phases use a 64-bit cycle with step `ceil(hz × 2^64 / fs)`, derived from the exact binary64 requested frequency. Origin-zero frame `n` uses `n × step` modulo `2^64`. Sine takes the quarter cycle nearest the phase exactly from its top bits; the signed remainder's top 51 bits give an angle within ±π/4 for a fixed binary64 Taylor series (through x^15 for sine, x^16 for cosine), so every platform computes the same bits within two units of the true sine. Each tone starts at phase zero and continues through closed pulses. There is no per-pulse phase reset.
 
 Evaluate lanes in source order (first/left, then second/right), applying levels `A = 10^(peak_dbfs/20)` and digital routes to form a stereo component sum. Multiply that sum by its one shared modulation gain. Sum components in authored order, then apply the finite or interactive outer gain. Levels are not normalized. Active sinusoidal AM uses `(1 + depth × sin(phase)) / (1 + depth)` and has an upper-sideband guard for each tonal lane.
 

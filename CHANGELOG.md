@@ -5,6 +5,7 @@
 - Recipe schema 5 replaces schema 4. Recreate old recipes with `new KIND` or updated built-ins; unsupported files remain intact and reported.
 - Update method filters to `pulse_train`, `pulsed` and `sinusoidal`; JSON schema 3/classifier 3 reports source and shared modulation independently.
 - AM and mixtures containing pairs can have different sample bits under component sum-then-modulate order; see [waveforms](docs/recipes.md#waveforms).
+- Tone and AM sine uses a portable quarter-cycle series instead of libm, so their sample bits differ by about one unit; see [waveforms](docs/recipes.md#waveforms).
 - Exported WAV and recipe files get ordinary permissions instead of owner-only; a replaced external recipe keeps its permissions.
 - Start here explains Library, six sound constructions and rhythm ranges with native light/dark diagrams, visible details and direct research references.
 - Sound lessons show compiled carrier/rhythm facts, fitted stereo waveforms and source/modulation timing without opening a device.
