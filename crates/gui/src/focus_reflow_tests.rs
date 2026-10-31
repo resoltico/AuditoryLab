@@ -7,7 +7,7 @@ use auditorylab_app::core::ParameterId;
 use auditorylab_app::document::editing::EditingField;
 use slint::platform::{Key, WindowEvent};
 use slint::private_unstable_api::re_exports::{
-    Flickable, FocusReason, ItemRc, TextInput, WindowInner,
+    AccessibleStringProperty, Flickable, FocusReason, ItemRc, TextInput, WindowInner,
 };
 use slint::{ComponentHandle, Model};
 use std::ops::ControlFlow;
@@ -303,9 +303,36 @@ fn assert_clipped_keyboard_and_pointer(h: &Harness, input: &ItemRc, overflow: f3
     // Escape is the first input after clipping: no pointer event or refocus.
     assert_eq!(inner.focus_item.borrow().upgrade().as_ref(), Some(input));
     h.key(Key::Escape);
+    let focused = inner.focus_item.borrow().upgrade();
+    let describe = |item: &ItemRc| {
+        let geometry = item.geometry();
+        format!(
+            "{:?} {:?} at {:?} size {:?} visible={}",
+            item.accessible_role(),
+            item.accessible_string_property(AccessibleStringProperty::Label),
+            item.map_to_window(geometry.origin),
+            geometry.size,
+            item.is_visible()
+        )
+    };
+    let in_tree = inner
+        .window_item_rc()
+        .unwrap()
+        .visit_descendants(|item| {
+            if item == input {
+                ControlFlow::Break(())
+            } else {
+                ControlFlow::Continue(())
+            }
+        })
+        .is_some();
     assert!(
-        inner.focus_item.borrow().upgrade().as_ref() == Some(input),
-        "no-pointer Escape must retain the clipped editor's focus"
+        focused.as_ref() == Some(input),
+        "no-pointer Escape must retain the clipped editor's focus: focused={:?}, \
+         input={} in_tree={in_tree} scroll={} overflow={overflow}",
+        focused.as_ref().map(describe),
+        describe(input),
+        ui.get_editor_scroll_y()
     );
     assert_eq!(
         field_state(h, ParameterId::SourcePulseRate),
