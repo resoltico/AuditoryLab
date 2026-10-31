@@ -205,7 +205,12 @@ impl Pulse {
         };
         n - onset
     }
-    #[inline]
+    #[inline(always)]
+    #[expect(
+        clippy::inline_always,
+        reason = "Inlining into the live frame loop avoids copying the pulse per call; \
+            the callback cost check measures it"
+    )]
     pub(crate) fn sample(self, n: u64) -> f64 {
         let k = self.periods(n);
         // Frame x has reached period k's onset exactly when periods(x) ≥ k,
@@ -470,6 +475,9 @@ mod tests {
                 (40.0, 0.5, 0.002, 0.001),
                 (37.3, 0.25, 0.0005, 0.003),
                 (1_000.7, 0.6, 0.0003, 0.0002),
+                // Below 1 Hz neighbouring frames share a rate product, so the
+                // frame after an onset compares equal to the onset product.
+                (0.5, 0.5, 0.002, 0.001),
                 // Edges filling the window, so rise and fall meet.
                 (100.0, 0.5, 0.0025, 0.002_45),
             ] {

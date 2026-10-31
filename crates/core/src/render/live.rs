@@ -138,8 +138,13 @@ impl Slot {
     }
     fn frame(&mut self, frame: u64, p: f64) -> [f64; 2] {
         let mut samples = [0.0; 2];
-        for (i, (state, carrier)) in self.lanes.iter_mut().zip(&self.carriers).enumerate() {
-            if let (Some(state), Some(carrier)) = (state, carrier) {
+        #[expect(
+            clippy::needless_range_loop,
+            reason = "Fixed indices keep the lane state in registers; the zipped \
+                iterators were spilled per frame, as the callback cost check measures"
+        )]
+        for i in 0..2 {
+            if let (Some(state), Some(carrier)) = (&mut self.lanes[i], &self.carriers[i]) {
                 samples[i] = match *carrier {
                     Carrier::Tone { .. } => {
                         let sample = synthesis::sine(state.phase);
