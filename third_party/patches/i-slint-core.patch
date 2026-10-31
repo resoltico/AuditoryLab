@@ -177,7 +177,16 @@
          if self.is_visible() {
              return true;
          }
-@@ -445,8 +481,9 @@
+@@ -441,21 +477,27 @@
+         // The item is not visible. Walk toward the root and find the first
+         // clipping ancestor that actually hides the item: if it is a
+         // Flickable, scrolling can bring the item back into view.
+-        let geometry = self.absolute_clip_rect_and_geometry().1.to_box2d();
++        //
++        // Clips accumulate, as in `is_visible`: an inner clip and an outer
++        // Flickable can each overlap a partly scrolled-out item while their
++        // intersection is empty, and that Flickable is then what hides it.
++        let mut region = self.absolute_clip_rect_and_geometry().1.to_box2d();
          let mut parent = self.parent_item(ParentItemTraversalMode::StopAtPopups);
          while let Some(ancestor) = parent {
              if ancestor.borrow().as_ref().clips_children() {
@@ -187,9 +196,23 @@
 +                // the item and this ancestor without changing their local relation.
 +                let clip = ancestor.absolute_clip_rect_and_geometry().1.to_box2d();
                  let item_in_clip = !clip.is_empty()
-                     && clip.max.x >= geometry.min.x
-                     && clip.max.y >= geometry.min.y
-@@ -1057,34 +1094,81 @@
+-                    && clip.max.x >= geometry.min.x
+-                    && clip.max.y >= geometry.min.y
+-                    && clip.min.x <= geometry.max.x
+-                    && clip.min.y <= geometry.max.y;
++                    && clip.max.x >= region.min.x
++                    && clip.max.y >= region.min.y
++                    && clip.min.x <= region.max.x
++                    && clip.min.y <= region.max.y;
+                 if !item_in_clip {
+                     return ancestor.downcast::<crate::items::Flickable>().is_some()
+                         && ancestor.is_visible_or_clipped_by_flickable();
+                 }
++                region = euclid::Box2D::new(region.min.max(clip.min), region.max.min(clip.max));
+             }
+             parent = ancestor.parent_item(ParentItemTraversalMode::StopAtPopups);
+         }
+@@ -1057,34 +1099,81 @@
      }
  
      pub(crate) fn try_scroll_into_visible(&self) {

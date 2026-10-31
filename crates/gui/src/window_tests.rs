@@ -1599,3 +1599,54 @@ fn diagnose_monitor_focus(root: &ItemRc, focused: &ItemRc, item: &ItemRc) {
         ControlFlow::<()>::Continue(())
     });
 }
+
+slint::slint! {
+    export component PartlyScrolledEditor inherits Window {
+        width: 200px;
+        height: 100px;
+        in-out property <length> scroll <=> flickable.content-y;
+        flickable := Flickable {
+            y: 20px;
+            height: 60px;
+            content-height: 400px;
+            // A clip shorter than its editor, as inside a padded line edit.
+            Rectangle {
+                y: 100px;
+                height: 10px;
+                clip: true;
+                editor := TextInput {
+                    height: 40px;
+                    text: "40";
+                }
+            }
+        }
+        public function focus-editor() { editor.focus(); }
+        out property <bool> editor-focused: editor.has-focus;
+    }
+}
+
+/// A key reaches an editor whose own clip has scrolled out while the editor
+/// still overlaps the viewport: the scroll view, not a hidden parent, hides it.
+#[test]
+fn partly_scrolled_editor_keeps_focus_through_keys() {
+    install();
+    let window = PartlyScrolledEditor::new().unwrap();
+    window.show().unwrap();
+    window.invoke_focus_editor();
+    // Clip spans 100..110 and the editor 100..140 in content. At -112 the clip
+    // lies at window y 8..18, above the viewport that starts at 20, while the
+    // editor's lower part (20..48) stays inside the viewport.
+    window.set_scroll(-112.0);
+    crate::test_platform::settle(window.window());
+    assert!(window.get_editor_focused());
+    for key in [slint::SharedString::from(Key::Escape), "5".into()] {
+        window
+            .window()
+            .dispatch_event(WindowEvent::KeyPressed { text: key.clone() });
+        window
+            .window()
+            .dispatch_event(WindowEvent::KeyReleased { text: key });
+        crate::test_platform::settle(window.window());
+        assert!(window.get_editor_focused(), "a key must not drop focus");
+    }
+}
