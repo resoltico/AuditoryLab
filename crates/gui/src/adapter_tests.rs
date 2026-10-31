@@ -5194,7 +5194,8 @@ fn library_export_actions_are_visible_and_open_the_real_path_flow() {
     let ui = h.ui();
     ui.set_monitor_open(false);
     let key = ui.get_library_key();
-    action_button(ui, "Export WAV…").accessible_action(&AccessibilityAction::Default);
+    // Font metrics decide whether the Export section starts below the fold.
+    reveal_library_control(&h, "Export WAV…").accessible_action(&AccessibilityAction::Default);
     h.settle();
     let [Request::Path(prompt, PathPurpose::ExportWav, _)] = h.take()[..] else {
         panic!("the native export action must open its real path flow");
@@ -5203,7 +5204,7 @@ fn library_export_actions_are_visible_and_open_the_real_path_flow() {
     h.settle();
     assert_eq!(ui.get_library_key(), key);
     assert!(!h.adapter.inspect(|w| w.audio_busy() || w.file_busy()));
-    assert!(action_button(ui, "Export portable recipe…").is_visible());
+    assert!(reveal_library_control(&h, "Export portable recipe…").is_visible());
 }
 
 #[test]
