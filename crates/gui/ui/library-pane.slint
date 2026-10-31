@@ -446,7 +446,13 @@ export component LibraryPane inherits Rectangle {
 
                             function reveal() {
                                 if self.selected-row && !root.library-restoring {
-                                    if self.y + entries.content-y < 0px {
+                                    // The first row keeps the notes above it in view, even
+                                    // after a reveal during an earlier, unsettled layout.
+                                    if index == 0 && self.y + self.height <=
+                                        entries.visible-height {
+                                        entries.content-y = 0px;
+                                    }
+                                    else if self.y + entries.content-y < 0px {
                                         entries.content-y = -self.y;
                                     }
                                     else if self.y + self.height + entries.content-y >

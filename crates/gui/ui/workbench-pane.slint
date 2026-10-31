@@ -131,28 +131,37 @@ export component WorkbenchPane inherits Rectangle {
                     restore-field(owner) => { root.restore-metadata(owner); }
                 }
 
-                if root.components.length > 0 || root.dirty: Text {
-                    text: ViewCaptions.editor-status;
-                    font-weight: 600;
-                    vertical-alignment: center;
+                // The taller title field sets the row height; status and actions
+                // centre on it rather than sitting at its top edge.
+                VerticalLayout {
+                    alignment: center;
                     horizontal-stretch: 0;
-                }
+                    HorizontalBox {
+                        padding: 0px;
+                        if root.components.length > 0 || root.dirty: Text {
+                            text: ViewCaptions.editor-status;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                            horizontal-stretch: 0;
+                        }
 
-                Button {
-                    text: Actions.save.label;
-                    enabled: Actions.save.enabled;
-                    primary: true;
-                    horizontal-stretch: 0;
-                    accessible-description: root.save-reason;
-                    triggered => { root.save-recipe(); }
-                }
+                        Button {
+                            text: Actions.save.label;
+                            enabled: Actions.save.enabled;
+                            primary: true;
+                            horizontal-stretch: 0;
+                            accessible-description: root.save-reason;
+                            triggered => { root.save-recipe(); }
+                        }
 
-                Button {
-                    horizontal-stretch: 0;
-                    text: Actions.new-sound.label;
-                    enabled: Actions.new-sound.enabled;
-                    triggered => {
-                        root.new-draft();
+                        Button {
+                            horizontal-stretch: 0;
+                            text: Actions.new-sound.label;
+                            enabled: Actions.new-sound.enabled;
+                            triggered => {
+                                root.new-draft();
+                            }
+                        }
                     }
                 }
             }

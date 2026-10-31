@@ -1216,6 +1216,21 @@ fn toolbar_controls_share_one_height_and_centre_line() {
                 );
             }
         }
+        // Workbench document actions centre on the taller title heading field.
+        ui.invoke_tab_changed(1);
+        h.settle();
+        let centre_y = |item: &ItemRc| {
+            let geometry = item.geometry();
+            item.map_to_window(geometry.origin).y + geometry.size.height / 2.0
+        };
+        let title = centre_y(&labelled(ui, "Sound title"));
+        for action in ["Save sound", "New sound"] {
+            let centre = centre_y(&action_button(ui, action));
+            assert!(
+                (centre - title).abs() < 1.0,
+                "{action} centre {centre}, title centre {title} (text {text_size})"
+            );
+        }
     }
 }
 
@@ -2288,6 +2303,37 @@ fn compact_unavailable_root_keeps_recovery_and_non_authoritative_counts_visible(
     assert!(reveal_library_control(&h, "Refresh").is_visible());
     assert!(reveal_library_control(&h, "Clear all filters").is_visible());
     assert!(reveal_library_control(&h, "Initialize configured library").is_visible());
+}
+
+#[test]
+fn first_selected_row_keeps_the_results_note_in_view_after_launch() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("library");
+    std::fs::create_dir(&path).unwrap();
+    let store = auditorylab_app::services::library::Library::at_path(path).unwrap();
+    let h = Harness::with_workspace(
+        Workspace::with_library(
+            auditorylab_app::services::catalog().unwrap(),
+            Capabilities::no_device_playback(),
+            store,
+        )
+        .unwrap(),
+    );
+    h.wait_for_files();
+    let ui = h.ui();
+    ui.window().set_size(slint::LogicalSize::new(1280.0, 932.0));
+    for _ in 0..3 {
+        h.settle();
+        std::thread::sleep(Duration::from_millis(15));
+    }
+    h.settle();
+    assert!(ui.get_library_alert().contains("incomplete"));
+    assert_eq!(ui.get_selected(), 0);
+    assert!(
+        ui.get_library_scroll_y().abs() < 1.0,
+        "the note above the selected first row must stay in view, got {}",
+        ui.get_library_scroll_y()
+    );
 }
 
 #[test]

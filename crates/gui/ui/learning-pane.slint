@@ -318,6 +318,8 @@ export component LearningPane inherits Rectangle {
                     width: min(reader.visible-width,1000px);
                     height: self.preferred-height;
                     padding: 4px;
+                    // Clears the overlay scroll bar, so choices and plots never run under it.
+                    padding-right: 16px;
                     spacing: 20px;
                     Text {
                         text: root.heading;
