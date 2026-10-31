@@ -281,7 +281,8 @@ fn assert_monitor_lane_geometry(
             lane_settle(ui.window());
             if ui.get_drawer_fits() {
                 drawer_cases += 1;
-                lane_check(ui.window(), size, "drawer", 7);
+                // The player row, not the drawer, holds Hide and Audio details.
+                lane_check(ui.window(), size, "drawer", 5);
             } else {
                 assert!(
                     ui.get_monitor_open(),

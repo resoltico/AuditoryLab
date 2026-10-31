@@ -995,6 +995,7 @@ export component MainWindow inherits Window {
                 }
 
                 MonitorPanel {
+                    embedded: true;
                     data: root.monitor-data;
                     ui-size: root.ui-size;
                     span-choices: root.span-choices;
@@ -1030,6 +1031,7 @@ export component MainWindow inherits Window {
             play-stop() => { root.play-stop(); }
             stop-audio() => { root.stop-audio(); }
             play-target: root.play-target;
+            play-reason: root.play-reason;
             playback-busy: root.playback-busy;
             player-title: root.player-title;
             show-diagnostics() => { root.show-diagnostics(); }

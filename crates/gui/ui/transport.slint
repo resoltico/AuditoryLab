@@ -31,6 +31,8 @@ export component TransportBar inherits Rectangle {
     callback play-stop();
     callback stop-audio();
     in property <string> play-target;
+    // Why Play is unavailable; shown in place of the generated line meanwhile.
+    in property <string> play-reason;
     in property <bool> playback-busy;
     in property <string> player-title;
     callback show-diagnostics();
@@ -71,6 +73,7 @@ export component TransportBar inherits Rectangle {
                 labels: root.transport-labels;
                 primary: true;
                 enabled: root.transport-enabled;
+                description: root.transport-enabled ? "" : root.play-reason;
                 accessible-name: root.transport-action + (root.playback-busy || root.play-target ==
                     "" ? "" : " · " + root.play-target);
                 clicked => { root.play-stop(); }
@@ -98,7 +101,8 @@ export component TransportBar inherits Rectangle {
 
                 if !root.learning: Text {
                     min-width: 0px;
-                    text: root.generated;
+                    text: !root.transport-enabled && root.play-reason != "" ? root.play-reason :
+                        root.generated;
                     color: Palette.foreground.with-alpha(0.72);
                     wrap: no-wrap;
                     overflow: elide;

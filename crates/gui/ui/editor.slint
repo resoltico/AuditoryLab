@@ -279,6 +279,7 @@ export component StableButton inherits Rectangle {
     in property <bool> enabled: true;
     in property <string> accessible-name: root.text;
     in property <bool> expanded: false;
+    in property <string> description;
     callback clicked();
     forward-focus: button;
     public function focus-button() { button.focus(); }
@@ -307,6 +308,7 @@ export component StableButton inherits Rectangle {
         primary: root.primary;
         enabled: root.enabled;
         accessible-label: root.accessible-name;
+        accessible-description: root.description;
         accessible-expanded: root.expanded;
         triggered => { root.clicked(); }
     }
