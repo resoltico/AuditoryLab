@@ -259,17 +259,23 @@ jobs:
         # keeps one worker/build directory, rather than competing for disk/CPU.
         include:
           - source: render/synthesis
-            shard: 0/2
+            shard: 0/4
           - source: render/synthesis
-            shard: 1/2
+            shard: 1/4
+          - source: render/synthesis
+            shard: 2/4
+          - source: render/synthesis
+            shard: 3/4
           - source: render/live
             shard: 0/2
           - source: render/live
             shard: 1/2
           - source: analysis/timing
-            shard: 0/2
+            shard: 0/3
           - source: analysis/timing
-            shard: 1/2
+            shard: 1/3
+          - source: analysis/timing
+            shard: 2/3
           - source: model/authored
             shard: 0/2
           - source: model/authored
@@ -279,9 +285,11 @@ jobs:
           - source: analysis/facts
             shard: 0/1
           - source: analysis/rhythm
-            shard: 0/2
+            shard: 0/3
           - source: analysis/rhythm
-            shard: 1/2
+            shard: 1/3
+          - source: analysis/rhythm
+            shard: 2/3
           - source: model/validity
             shard: 0/1
           - source: model/finite
