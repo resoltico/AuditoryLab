@@ -208,21 +208,23 @@ impl Pulse {
     #[inline]
     pub(crate) fn sample(self, n: u64) -> f64 {
         let k = self.periods(n);
-        let open = n < self.frames || k * u64::from(self.fs) > self.rate_product(n - self.frames);
+        // Frame x has reached period k's onset exactly when periods(x) ≥ k,
+        // that is when floor(x × rate) ≥ k × fs; comparing products avoids
+        // dividing again, and only edge frames locate the onset itself.
+        let onset_product = k * u64::from(self.fs);
+        let open = n < self.frames || onset_product > self.rate_product(n - self.frames);
         if !open {
             return 0.0;
         }
         if self.rise_frames == 0 {
             return 1.0;
         }
-        // Frame x has reached period k's onset exactly when periods(x) ≥ k, so
-        // edge membership needs no onset division; only edge frames locate it.
         let in_rise = n
             .checked_sub(self.rise_frames)
-            .is_none_or(|earlier| self.periods(earlier) < k);
+            .is_none_or(|earlier| self.rate_product(earlier) < onset_product);
         let in_fall = !in_rise
             && n.checked_sub(self.frames - self.fall_frames)
-                .is_some_and(|earlier| self.periods(earlier) >= k);
+                .is_some_and(|earlier| self.rate_product(earlier) >= onset_product);
         if !in_rise && !in_fall {
             return 1.0;
         }
