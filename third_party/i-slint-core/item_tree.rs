@@ -478,26 +478,29 @@ impl ItemRc {
         // clipping ancestor that actually hides the item: if it is a
         // Flickable, scrolling can bring the item back into view.
         //
-        // Clips accumulate, as in `is_visible`: an inner clip and an outer
-        // Flickable can each overlap a partly scrolled-out item while their
-        // intersection is empty, and that Flickable is then what hides it.
-        let mut region = self.absolute_clip_rect_and_geometry().1.to_box2d();
+        // Clips accumulate exactly as in `is_visible`: an inner clip and an
+        // outer Flickable can each overlap a partly scrolled-out item while
+        // their intersection is empty, and that Flickable then hides it.
+        let geometry = self.absolute_clip_rect_and_geometry().1.to_box2d();
+        let mut clip: Option<euclid::Box2D<crate::Coord, crate::lengths::LogicalPx>> = None;
         let mut parent = self.parent_item(ParentItemTraversalMode::StopAtPopups);
         while let Some(ancestor) = parent {
             if ancestor.borrow().as_ref().clips_children() {
-                // Test this clip itself. An outer Flickable may have clipped both
-                // the item and this ancestor without changing their local relation.
-                let clip = ancestor.absolute_clip_rect_and_geometry().1.to_box2d();
-                let item_in_clip = !clip.is_empty()
-                    && clip.max.x >= region.min.x
-                    && clip.max.y >= region.min.y
-                    && clip.min.x <= region.max.x
-                    && clip.min.y <= region.max.y;
+                let own = ancestor.absolute_clip_rect_and_geometry().1.to_box2d();
+                let accumulated = match clip {
+                    None => own,
+                    Some(inner) => inner.intersection(&own).unwrap_or_default(),
+                };
+                clip = Some(accumulated);
+                let item_in_clip = !accumulated.is_empty()
+                    && accumulated.max.x >= geometry.min.x
+                    && accumulated.max.y >= geometry.min.y
+                    && accumulated.min.x <= geometry.max.x
+                    && accumulated.min.y <= geometry.max.y;
                 if !item_in_clip {
                     return ancestor.downcast::<crate::items::Flickable>().is_some()
                         && ancestor.is_visible_or_clipped_by_flickable();
                 }
-                region = euclid::Box2D::new(region.min.max(clip.min), region.max.min(clip.max));
             }
             parent = ancestor.parent_item(ParentItemTraversalMode::StopAtPopups);
         }

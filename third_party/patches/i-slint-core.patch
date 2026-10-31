@@ -177,42 +177,41 @@
          if self.is_visible() {
              return true;
          }
-@@ -441,21 +477,27 @@
+@@ -441,17 +477,26 @@
          // The item is not visible. Walk toward the root and find the first
          // clipping ancestor that actually hides the item: if it is a
          // Flickable, scrolling can bring the item back into view.
--        let geometry = self.absolute_clip_rect_and_geometry().1.to_box2d();
 +        //
-+        // Clips accumulate, as in `is_visible`: an inner clip and an outer
-+        // Flickable can each overlap a partly scrolled-out item while their
-+        // intersection is empty, and that Flickable is then what hides it.
-+        let mut region = self.absolute_clip_rect_and_geometry().1.to_box2d();
++        // Clips accumulate exactly as in `is_visible`: an inner clip and an
++        // outer Flickable can each overlap a partly scrolled-out item while
++        // their intersection is empty, and that Flickable then hides it.
+         let geometry = self.absolute_clip_rect_and_geometry().1.to_box2d();
++        let mut clip: Option<euclid::Box2D<crate::Coord, crate::lengths::LogicalPx>> = None;
          let mut parent = self.parent_item(ParentItemTraversalMode::StopAtPopups);
          while let Some(ancestor) = parent {
              if ancestor.borrow().as_ref().clips_children() {
 -                let (clip, ancestor_geo) = ancestor.absolute_clip_rect_and_geometry();
 -                let clip = ancestor_geo.intersection(&clip).unwrap_or_default().to_box2d();
-+                // Test this clip itself. An outer Flickable may have clipped both
-+                // the item and this ancestor without changing their local relation.
-+                let clip = ancestor.absolute_clip_rect_and_geometry().1.to_box2d();
-                 let item_in_clip = !clip.is_empty()
+-                let item_in_clip = !clip.is_empty()
 -                    && clip.max.x >= geometry.min.x
 -                    && clip.max.y >= geometry.min.y
 -                    && clip.min.x <= geometry.max.x
 -                    && clip.min.y <= geometry.max.y;
-+                    && clip.max.x >= region.min.x
-+                    && clip.max.y >= region.min.y
-+                    && clip.min.x <= region.max.x
-+                    && clip.min.y <= region.max.y;
++                let own = ancestor.absolute_clip_rect_and_geometry().1.to_box2d();
++                let accumulated = match clip {
++                    None => own,
++                    Some(inner) => inner.intersection(&own).unwrap_or_default(),
++                };
++                clip = Some(accumulated);
++                let item_in_clip = !accumulated.is_empty()
++                    && accumulated.max.x >= geometry.min.x
++                    && accumulated.max.y >= geometry.min.y
++                    && accumulated.min.x <= geometry.max.x
++                    && accumulated.min.y <= geometry.max.y;
                  if !item_in_clip {
                      return ancestor.downcast::<crate::items::Flickable>().is_some()
                          && ancestor.is_visible_or_clipped_by_flickable();
-                 }
-+                region = euclid::Box2D::new(region.min.max(clip.min), region.max.min(clip.max));
-             }
-             parent = ancestor.parent_item(ParentItemTraversalMode::StopAtPopups);
-         }
-@@ -1057,34 +1099,81 @@
+@@ -1057,34 +1102,81 @@
      }
  
      pub(crate) fn try_scroll_into_visible(&self) {
@@ -475,7 +474,7 @@
              self.take_focus_item(&FocusEvent::FocusOut(FocusReason::TabNavigation));
              item = None;
          }
-@@ -1332,6 +1344,18 @@
+@@ -1332,6 +1344,20 @@
          }
  
          drop(item_list);
@@ -483,6 +482,7 @@
 +        // Editing a scroll-clipped control needs its context back, but captured
 +        // shortcuts and pointer movement must leave the user's viewport alone.
 +        let current_focus = self.focus_item.borrow().upgrade();
++        let mut revealed = None;
 +        if internal_key_event.event_type == KeyEventType::KeyPressed
 +            && !is_modifier_event
 +            && let Some(focus_item) = item.as_ref()
@@ -490,7 +490,23 @@
 +            && !focus_item.is_visible()
 +        {
 +            focus_item.try_scroll_into_visible();
++            revealed = Some(focus_item.clone());
 +        }
  
          // Deliver key_event (to focused item, going up towards the window):
          while let Some(focus_item) = item {
+@@ -1341,6 +1367,14 @@
+                 &focus_item,
+             ) == crate::input::KeyEventResult::EventAccepted
+             {
++                // The handler may move the editor, for example when a restored
++                // value removes text above it; reveal against the new layout.
++                if let Some(revealed) = revealed
++                    && self.focus_item.borrow().upgrade().as_ref() == Some(&revealed)
++                    && !revealed.is_visible()
++                {
++                    revealed.try_scroll_into_visible();
++                }
+                 self.ensure_tree_instantiated();
+                 return crate::input::KeyEventResult::EventAccepted;
+             }

@@ -1633,20 +1633,25 @@ fn partly_scrolled_editor_keeps_focus_through_keys() {
     let window = PartlyScrolledEditor::new().unwrap();
     window.show().unwrap();
     window.invoke_focus_editor();
-    // Clip spans 100..110 and the editor 100..140 in content. At -112 the clip
-    // lies at window y 8..18, above the viewport that starts at 20, while the
-    // editor's lower part (20..48) stays inside the viewport.
-    window.set_scroll(-112.0);
-    crate::test_platform::settle(window.window());
-    assert!(window.get_editor_focused());
-    for key in [slint::SharedString::from(Key::Escape), "5".into()] {
-        window
-            .window()
-            .dispatch_event(WindowEvent::KeyPressed { text: key.clone() });
-        window
-            .window()
-            .dispatch_event(WindowEvent::KeyReleased { text: key });
+    // Clip spans 100..110 and the editor 100..140 in content; the viewport
+    // starts at window y 20. At -112 the clip lies at 8..18, above it; at -110
+    // it ends exactly at its edge. Either way the editor's lower part remains.
+    for scroll in [-112.0, -110.0] {
+        window.set_scroll(scroll);
         crate::test_platform::settle(window.window());
-        assert!(window.get_editor_focused(), "a key must not drop focus");
+        assert!(window.get_editor_focused());
+        for key in [slint::SharedString::from(Key::Escape), "5".into()] {
+            window
+                .window()
+                .dispatch_event(WindowEvent::KeyPressed { text: key.clone() });
+            window
+                .window()
+                .dispatch_event(WindowEvent::KeyReleased { text: key });
+            crate::test_platform::settle(window.window());
+            assert!(
+                window.get_editor_focused(),
+                "a key at scroll {scroll} must not drop focus"
+            );
+        }
     }
 }
