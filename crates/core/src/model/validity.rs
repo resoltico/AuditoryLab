@@ -90,11 +90,24 @@ mod tests {
             (ParameterId::ToneFrequency, 0.0, "value.positive"),
             (ParameterId::PeakLevel, 1.0, "value.peak"),
             (ParameterId::ModulationDepth, 1.25, "value.depth"),
+            (ParameterId::SourceDuty, 1.0, "value.duty"),
         ] {
             let failure = check_value(parameter, value).unwrap_err();
             assert_eq!(crate::Code::code(&failure), code);
             assert_eq!(failure.parameter, parameter);
             assert_eq!(failure.value.to_bits(), value.to_bits());
+        }
+        for (parameter, value) in [
+            (ParameterId::ToneFrequency, 440.0),
+            (ParameterId::PeakLevel, -30.0),
+            (ParameterId::ModulationDepth, 1.0),
+            (ParameterId::SourceDuty, 0.5),
+        ] {
+            assert_eq!(
+                check_value(parameter, value),
+                Ok(()),
+                "{parameter:?} = {value}"
+            );
         }
     }
 }

@@ -13,22 +13,15 @@ import {
     HorizontalBox,
     ScrollView,
 } from "std-widgets.slint";
-import { Disclosure } from "editor.slint";
+import { Section } from "editor.slint";
 
 export component Dialogs inherits Rectangle {
-    in property <[ControlOption]> add-choices;
-    in property <string> add-binaural-label;
-    in property <string> add-monaural-label;
-    callback add-component(string, int);
-    in property <string> add-reason;
     in-out property <string> added-from;
     in-out property <string> added-through;
     in-out property <int> analysis-choice;
     in property <[string]> analysis-labels;
     in-out property <int> band-choice;
     in property <string> calendar-context;
-    in property <bool> can-add-component;
-    in property <bool> can-add-pair;
     in property <bool> can-import;
     in property <bool> can-manage-library;
     callback clear-library-filters();
@@ -39,49 +32,32 @@ export component Dialogs inherits Rectangle {
     in-out property <string> created-through;
     in-out property <int> direction-choice;
     in property <[string]> direction-labels;
-    in property <string> document;
     in-out property <int> group-choice;
     in property <[string]> group-labels;
-    callback initialize-library();
     in property <string> library-alert;
     in property <string> library-count;
-    in property <string> library-status;
     in-out property <int> method-choice;
     in property <[string]> method-labels;
     in-out property <string> modified-from;
     in-out property <string> modified-through;
     callback more-filters(string, int, int, int, int, int, DateInput, DateInput, DateInput);
-    callback open-recipe();
-    in property <string> pair-add-reason;
     in-out property <int> population-choice;
     in property <[string]> population-labels;
     in-out property <string> query;
-    callback refresh-library();
-    callback reset-library-sort();
     callback rhythm-filter(int, int);
     in-out property <int> role-choice;
     in property <[string]> role-labels;
-    callback show-saved();
-    in-out property <int> sort-choice;
-    in property <[string]> sort-labels;
-    in-out property <bool> storage-open;
     in-out property <string> study-query;
     in property <length> ui-size;
     in property <length> window-width;
     in property <length> window-height;
     in property <length> toolbar-height;
-    private property <string> component-menu-document;
     out property <bool> library-tools-open: filters-popup.is-open;
     out property <bool> library-query-open: query-popup.is-open;
     public function open-query-details() { query-popup.show(); }
     public function close-query-details() { query-popup.close(); }
     public function open-library-filters() { filters-popup.show(); }
     public function close-library-filters() { filters-popup.close(); }
-    public function open-library-options() { library-options.show(); }
-    public function open-component-menu() {
-        root.component-menu-document = root.document;
-        component-menu.show();
-    }
 
     public function clear-applied-filters() {
         root.clear-library-filters();
@@ -314,137 +290,6 @@ export component Dialogs inherits Rectangle {
                         primary: true;
                         triggered => { root.apply-filters(); }
                     }
-                }
-            }
-        }
-    }
-
-    library-options := PopupWindow {
-        x: max(8px,root.window-width - self.width - 12px);
-        y: root.toolbar-height + 8px;
-        width: min(450px,root.window-width - 24px);
-        height: min(480px,root.window-height - root.toolbar-height - 24px);
-        close-policy: close-on-click-outside;
-        Rectangle {
-            background: Palette.background;
-            border-width: 1px;
-            border-color: Palette.border;
-            border-radius: 6px;
-        }
-
-        FocusScope {
-            key-pressed(event) => {
-                if event.text == Key.Escape {
-                    library-options.close();
-                    return accept;
-                }
-                return reject;
-            }
-            options-scroll := ScrollView {
-                VerticalBox {
-                    width: options-scroll.visible-width;
-                    Text {
-                        text: Terms.caption-library-options;
-                        font-weight: 600;
-                        vertical-stretch: 0;
-                    }
-
-                    if root.compact: ComboBox {
-                        model: root.sort-labels;
-                        current-index <=> root.sort-choice;
-                        accessible-label: Terms.facet-sort-library;
-                        selected(value) => {
-                            root.collection-filter(root.collection-choice,
-                            root.sort-choice);
-                        }
-                    }
-                    Button {
-                        text: (Actions.open-recipe.label + "…");
-                        enabled: Actions.open-recipe.enabled;
-                        triggered => { root.open-recipe(); library-options.close(); }
-                    }
-
-                    Button {
-                        enabled: Actions.library-refresh.enabled;
-                        text: Actions.library-refresh.label;
-                        triggered => { root.refresh-library(); }
-                    }
-
-                    Button {
-                        enabled: Actions.show-saved.enabled;
-                        text: Actions.show-saved.label;
-                        triggered => { root.show-saved(); library-options.close(); }
-                    }
-
-                    Button {
-                        text: Terms.action-reset-sort;
-                        triggered => { root.reset-library-sort(); }
-                    }
-
-                    Button {
-                        text: Terms.action-clear-all-filters;
-                        triggered => { root.clear-applied-filters(); }
-                    }
-
-                    Disclosure {
-                        label: Terms.caption-library-storage-and-recovery;
-                        expanded <=> root.storage-open;
-                    }
-
-                    if root.storage-open: Text {
-                        text: root.library-status;
-                        wrap: word-wrap;
-                        min-width: 0px;
-                        vertical-stretch: 0;
-                    }
-                    if root.storage-open: Button {
-                        enabled: Actions.library-init.enabled;
-                        text: Actions.library-init.label;
-                        triggered => { root.initialize-library(); }
-                    }
-                    Button {
-                        text: Terms.action-close;
-                        triggered => { library-options.close(); }
-                    }
-                }
-            }
-        }
-    }
-
-    component-menu := PopupWindow {
-        x: max(8px,root.window-width - self.width - 12px);
-        y: root.toolbar-height + 64px;
-        width: min(310px,root.window-width - 24px);
-        height: min(root.window-height - root.toolbar-height - 80px,root.ui-size * 20);
-        close-policy: close-on-click-outside;
-        Rectangle {
-            background: Palette.background;
-            border-width: 1px;
-            border-color: Palette.border;
-            border-radius: 6px;
-        }
-
-        FocusScope {
-            key-pressed(event) => {
-                if event.text == Key.Escape {
-                    component-menu.close();
-                    return accept;
-                }
-                return reject;
-            }
-            VerticalBox {
-                for label[index] in root.add-choices: Button {
-                    text: label.label;
-                    enabled: label.enabled;
-                    accessible-description: root.add-reason;
-                    triggered => {
-                        root.add-component(root.component-menu-document,index);
-                        component-menu.close();
-                    }
-                }
-                Button {
-                    text: Terms.action-close;
-                    triggered => { component-menu.close(); }
                 }
             }
         }

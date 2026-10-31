@@ -10,8 +10,7 @@ macro_rules! chrome {
 }
 chrome! {
     Action {
-        ShowMonitor => ("action-show-monitor", "Show monitor"),
-        HideMonitor => ("action-hide-monitor", "Hide monitor"),
+        Monitor => ("action-monitor", "Monitor"),
         Quit => ("action-quit", "Quit"),
         Licenses => ("action-licenses", "Licenses"),
         PurgeConfirmation => ("action-purge-confirmation", "Permanently delete saved recipe?"),
@@ -39,7 +38,7 @@ chrome! {
             diagnostics snapshot"),
         Close => ("action-close", "Close"),
         CloseFilters => ("action-close-filters", "Close filters"),
-        ActiveFilters => ("action-active-filters", "Active filters…"),
+        ActiveFilters => ("action-active-filters", "Query details…"),
         ShowOutputMonitor => ("action-show-output-monitor", "Show output monitor"),
         ClearRhythmFilters => ("action-clear-rhythm-filters", "Clear rhythm filters"),
         ClearSearch => ("action-clear-search", "Clear search"),
@@ -49,15 +48,13 @@ chrome! {
         ApplyFilters => ("action-apply-filters", "Apply filters"),
         PreviewWaveform => ("action-preview-waveform", "Preview waveform"),
         OpenStudySource => ("action-open-study-source", "Open study source"),
-        ReadSelectableResearchAndRecipeDetailsDialog => ("action-read-selectable-research-and-reci\
-            pe-details-dialog", "Read \
-            selectable research and recipe details…"),
+        FullResearchDetailsDialog => ("action-full-research-details-dialog", "Full research and \
+            recipe details…"),
         ExportSettings => ("action-export-settings", "Export settings"),
         ShowCopiedFromSnapshotInLibrary => ("action-show-copied-from-snapshot-in-library", "Show \
             copied-from snapshot in Library"),
         SavedAudioDurationFadesAndExportRate => ("action-saved-audio-duration-fades-and-export-rat\
-            e", "Saved \
-            audio · duration, fades and export rate"),
+            e", "Saved audio and export"),
         SavedDuration => ("action-saved-duration", "Saved duration"),
         SavedFade => ("action-saved-fade", "Saved fade"),
     }
@@ -81,11 +78,10 @@ chrome! {
     Caption {
         AudioControls => ("caption-audio-controls", "Audio controls"),
         LibraryFilters => ("caption-library-filters", "Filters"),
-        LibraryOptions => ("caption-library-options", "Library options…"),
         WorkspaceNavigation => ("caption-workspace-navigation", "Workspace navigation"),
-        SourceDatesDetails => ("caption-source-dates-details", "Source, dates and technical \
-            details"),
-        ResearchSummary => ("caption-research-summary", "Research summary and limitations"),
+        SourceDatesDetails => ("caption-source-dates-details", "Source and dates"),
+        ExportSound => ("caption-export-sound", "Export"),
+        ResearchSummary => ("caption-research-summary", "What was studied"),
         BrowseRhythm => ("caption-browse-rhythm", "Browse by rhythm"),
         Classification => ("caption-classification", "Classification"),
         NativeFilePanelUnavailable => ("caption-native-file-panel-unavailable", "Cannot display a \
@@ -121,11 +117,10 @@ chrome! {
         SamplesCommonSymmetricScale => ("caption-samples-common-symmetric-scale", " samples, \
             common symmetric scale ±"),
         DetailsDialog => ("caption-details-dialog", "Details…"),
+        AudioDetailsDialog => ("caption-audio-details-dialog", "Audio details…"),
         FullAudioDiagnosticsAndCaptureSource => ("caption-full-audio-diagnostics-and-capture-sourc\
             e", "Full \
             audio diagnostics and capture source"),
-        Expanded => ("caption-expanded", " · expanded"),
-        Collapsed => ("caption-collapsed", " · collapsed"),
         Slider => ("caption-slider", " slider"),
         File => ("caption-file", "File"),
         Help => ("caption-help", "Help"),
@@ -140,14 +135,8 @@ chrome! {
         LibraryPaneWidth => ("caption-library-pane-width", "Library pane width"),
         LibraryStorageAndRecovery => ("caption-library-storage-and-recovery", "Library storage \
             and recovery"),
-        ResearchCitationAndSoundAdaptations => ("caption-research-citation-and-sound-adaptations",
-            "Research, \
-            citation and sound adaptations"),
         WaveformPattern => ("caption-waveform-pattern", "Waveform pattern"),
         CalculatedPattern => ("caption-calculated-pattern", " calculated pattern"),
-        RoutingModulationAndComponentOptions => ("caption-routing-modulation-and-component-options",
-            "Routing, \
-            modulation and component options"),
         SourcePulseWidth => ("caption-source-pulse-width", "Source pulse width"),
         SourcePulseShape => ("caption-source-pulse-shape", "Source pulse shape"),
         ModulationPulseWidth => ("caption-mod-width", "Modulation pulse width"),
@@ -155,11 +144,9 @@ chrome! {
         ChannelRoutingSuffix => ("caption-channel-routing-suffix", ": route"),
         CarrierSuffix => ("caption-carrier-suffix", ": carrier"),
         ModulationSuffix => ("caption-modulation-suffix", ": modulation"),
-        SoundSettingsNotesAndSavedExportedAudio => ("caption-sound-settings-notes-and-saved-export\
-            ed-audio", "Sound \
-            settings · notes and saved/exported audio"),
-        YourNotesAboutThisSound => ("caption-your-notes-about-this-sound", "Your notes about this \
-            sound"),
+        ChooseComponent => ("caption-choose-component", "Start with"),
+        AddComponent => ("caption-add-component", "Add a component"),
+        DocumentLocation => ("caption-document-location", "Location"),
         CustomRecipeNotes => ("caption-custom-recipe-notes", "Custom recipe notes"),
         SavedAudioHelp => ("caption-saved-audio-help", "Live playback continues until Stop. These \
             settings affect saved recipes and WAV export."),

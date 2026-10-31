@@ -890,29 +890,12 @@ fn a_removed_component_returns_through_undo_remove() {
 }
 
 #[test]
-fn component_options_are_sized_to_their_content() {
+fn component_options_are_visible_and_sized_to_their_content() {
     let h = Harness::new();
     let ui = h.ui();
     h.workbench();
     ui.invoke_add_component(ui.get_document(), 0);
     h.settle();
-    let options = labelled(ui, "Routing, modulation and component options");
-    // The disclosure follows the editor fields in a scrolling document; font
-    // metrics determine whether it starts inside the viewport.
-    WindowInner::from_pub(ui.window()).set_focus_item(&options, true, FocusReason::Programmatic);
-    h.settle();
-    let position = centre(&options);
-    let size = ui.window().size().to_logical(ui.window().scale_factor());
-    assert!(position.x >= 0.0 && position.x < size.width);
-    assert!(position.y >= 0.0 && position.y < size.height);
-    drag(ui, position, position);
-    h.settle();
-    assert!(
-        options
-            .accessible_string_property(AccessibleStringProperty::Label)
-            .unwrap()
-            .ends_with(" · expanded")
-    );
     let name = ui.get_components().row_data(0).unwrap().name;
     let width = ui
         .window()
@@ -942,7 +925,10 @@ fn component_options_are_sized_to_their_content() {
         "choices are {:?} of {width}",
         choices[0]
     );
-    assert_eq!(remove_x, choices[0].0, "Remove aligns with the choices");
+    assert!(
+        remove_x > choices[0].0,
+        "Remove sits in the component header, right of the choices"
+    );
 }
 
 /// The first item whose accessible label starts with `prefix`.
@@ -1180,6 +1166,94 @@ fn action_button(ui: &MainWindow, label: &str) -> ItemRc {
     .unwrap_or_else(|| panic!("visible accessible action {label:?}"))
 }
 
+#[test]
+fn toolbar_controls_share_one_height_and_centre_line() {
+    use slint::private_unstable_api::re_exports::AccessibleRole;
+    let h = Harness::new();
+    let ui = h.ui();
+    ui.set_monitor_open(false);
+    ui.window().set_size(slint::LogicalSize::new(1280.0, 900.0));
+    for text_size in [13.0, 26.0] {
+        ui.set_ui_size(text_size);
+        for tab in [0, 1] {
+            ui.invoke_tab_changed(tab);
+            h.settle();
+            let bounds = |item: &ItemRc| {
+                let geometry = item.geometry();
+                let origin = item.map_to_window(geometry.origin);
+                (origin.y, geometry.size.height)
+            };
+            let (tab_y, tab_height) = bounds(&labelled(ui, "Library"));
+            let window = WindowInner::from_pub(ui.window());
+            let mut row = Vec::new();
+            let _ = window.window_item_rc().unwrap().visit_descendants(|item| {
+                if item.is_visible()
+                    && item.is_accessible()
+                    && matches!(
+                        item.accessible_role(),
+                        AccessibleRole::Button | AccessibleRole::Tab
+                    )
+                {
+                    let (y, height) = bounds(item);
+                    if y < tab_y + tab_height && y + height > tab_y {
+                        let label = item
+                            .accessible_string_property(AccessibleStringProperty::Label)
+                            .unwrap_or_default();
+                        row.push((label, y, height));
+                    }
+                }
+                ControlFlow::<()>::Continue(())
+            });
+            assert!(
+                row.len() >= 3,
+                "tabs and page actions share the row: {row:?}"
+            );
+            for (label, y, height) in &row {
+                assert!(
+                    (height - tab_height).abs() < 0.5 && (y - tab_y).abs() < 0.5,
+                    "{label:?} at y={y} h={height}; tabs at y={tab_y} h={tab_height} \
+                     (text {text_size}, tab {tab})"
+                );
+            }
+        }
+        // Workbench document actions centre on the taller title heading field.
+        ui.invoke_tab_changed(1);
+        h.settle();
+        let centre_y = |item: &ItemRc| {
+            let geometry = item.geometry();
+            item.map_to_window(geometry.origin).y + geometry.size.height / 2.0
+        };
+        let title = centre_y(&labelled(ui, "Sound title"));
+        for action in ["Save sound", "New sound"] {
+            let centre = centre_y(&action_button(ui, action));
+            assert!(
+                (centre - title).abs() < 1.0,
+                "{action} centre {centre}, title centre {title} (text {text_size})"
+            );
+        }
+    }
+}
+
+#[test]
+fn applied_filters_show_beside_results_without_opening_a_popup() {
+    use slint::private_unstable_api::re_exports::AccessibilityAction;
+    let h = Harness::new();
+    let ui = h.ui();
+    ui.set_monitor_open(false);
+    ui.window().set_size(slint::LogicalSize::new(1280.0, 900.0));
+    assert_eq!(ui.get_library_restrictions(), "");
+    ui.set_query("binaural".into());
+    ui.invoke_search("binaural".into());
+    h.settle();
+    assert!(ui.get_has_results());
+    assert!(!ui.get_library_query_open());
+    assert!(labelled(ui, "Search: ").is_visible());
+    action_button(ui, "Clear all filters").accessible_action(&AccessibilityAction::Default);
+    h.settle();
+    assert_eq!(ui.get_library_restrictions(), "");
+    assert!(h.adapter.inspect(|w| w.catalog_query().search.is_empty()));
+}
+
 fn assert_library_play_during_file(save: bool) {
     let (h, dir) = controlled_harness();
     let ui = h.ui();
@@ -1278,13 +1352,9 @@ fn library_play_command_obeys_unavailable_playback_capability() {
 
 #[test]
 fn notes_return_stages_newlines_and_save_preserves_exact_multiline_text() {
-    use slint::private_unstable_api::re_exports::AccessibilityAction;
-
     let h = Harness::new();
     let ui = h.ui();
     h.workbench();
-    labelled(ui, "Sound settings").accessible_action(&AccessibilityAction::Default);
-    ui.set_notes(true);
     h.settle();
     let input = h.field("Custom recipe notes");
     let inner = WindowInner::from_pub(ui.window());
@@ -2096,7 +2166,8 @@ fn reveal_library_control(h: &Harness, prefix: &str) -> ItemRc {
         h.ui()
             .window()
             .dispatch_event(WindowEvent::PointerScrolled {
-                position: slint::LogicalPosition::new(780.0, 400.0),
+                // Scroll the view that holds the control: the list or the details.
+                position: slint::LogicalPosition::new(position.x, 400.0),
                 delta_x: 0.0,
                 delta_y: 400.0 - position.y,
             });
@@ -2192,8 +2263,6 @@ fn compact_empty_filters_and_recovery_remain_reachable_through_real_controls() {
 
 #[test]
 fn compact_unavailable_root_keeps_recovery_and_non_authoritative_counts_visible() {
-    use slint::private_unstable_api::re_exports::AccessibilityAction;
-
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("library");
     let root = auditorylab_app::services::library::Library::at_path(path.clone()).unwrap();
@@ -2231,13 +2300,40 @@ fn compact_unavailable_root_keeps_recovery_and_non_authoritative_counts_visible(
         ui.get_library_empty_message()
             .contains("Incomplete inventory")
     );
-    action_button(ui, "Library options…").accessible_action(&AccessibilityAction::Default);
-    h.settle();
-    assert!(action_button(ui, "Refresh").is_visible());
-    assert!(action_button(ui, "Clear all filters").is_visible());
-    labelled(ui, "Library storage and recovery").accessible_action(&AccessibilityAction::Default);
-    h.settle();
+    assert!(reveal_library_control(&h, "Refresh").is_visible());
+    assert!(reveal_library_control(&h, "Clear all filters").is_visible());
     assert!(reveal_library_control(&h, "Initialize configured library").is_visible());
+}
+
+#[test]
+fn first_selected_row_keeps_the_results_note_in_view_after_launch() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("library");
+    std::fs::create_dir(&path).unwrap();
+    let store = auditorylab_app::services::library::Library::at_path(path).unwrap();
+    let h = Harness::with_workspace(
+        Workspace::with_library(
+            auditorylab_app::services::catalog().unwrap(),
+            Capabilities::no_device_playback(),
+            store,
+        )
+        .unwrap(),
+    );
+    h.wait_for_files();
+    let ui = h.ui();
+    ui.window().set_size(slint::LogicalSize::new(1280.0, 932.0));
+    for _ in 0..3 {
+        h.settle();
+        std::thread::sleep(Duration::from_millis(15));
+    }
+    h.settle();
+    assert!(ui.get_library_alert().contains("incomplete"));
+    assert_eq!(ui.get_selected(), 0);
+    assert!(
+        ui.get_library_scroll_y().abs() < 1.0,
+        "the note above the selected first row must stay in view, got {}",
+        ui.get_library_scroll_y()
+    );
 }
 
 #[test]
@@ -2381,11 +2477,8 @@ fn local_dates_expose_exact_utc_and_reset_sort_preserves_committed_filters() {
     h.settle();
     let key = LibraryKey::User(id).to_string();
     assert_eq!(ui.get_library_key(), key);
-    action_button(ui, "Library options…").accessible_action(&AccessibilityAction::Default);
+    reveal_library_control(&h, "Reset sort").accessible_action(&AccessibilityAction::Default);
     h.settle();
-    action_button(ui, "Reset sort").accessible_action(&AccessibilityAction::Default);
-    h.settle();
-    h.key(Key::Escape);
     h.adapter.inspect(|w| {
         let q = w.catalog_query();
         assert_eq!(q.scope, auditorylab_app::discovery::query::Scope::User);
@@ -2393,11 +2486,7 @@ fn local_dates_expose_exact_utc_and_reset_sort_preserves_committed_filters() {
         assert!(q.direction.is_none());
         assert_eq!(q.search, "2");
     });
-    reveal_library_control(&h, "Source, dates and technical details")
-        .accessible_action(&AccessibilityAction::Default);
-    h.settle();
-    reveal_library_control(&h, "Exact UTC dates").accessible_action(&AccessibilityAction::Default);
-    h.settle();
+    reveal_library_control(&h, "Exact UTC recipe and membership dates");
     let exact = field(ui, "Exact UTC recipe and membership dates");
     assert!(
         exact.geometry().size.height >= ui.get_ui_size() * 3.0,
@@ -2788,6 +2877,7 @@ fn desktop_review_screenshots() {
     std::fs::create_dir_all(&destination).unwrap();
     render_library_review(&h, &destination);
     render_learning_review(&h, &destination);
+    render_workbench_review(&h, &destination);
     assert!(!h.adapter.inspect(|w| w.audio_busy() || w.file_busy()));
 }
 
@@ -2830,6 +2920,31 @@ fn render_library_review(h: &Harness, destination: &std::path::Path) {
         h.settle();
         save_desktop_review_frame(ui, destination, name);
     }
+}
+
+fn render_workbench_review(h: &Harness, destination: &std::path::Path) {
+    use slint::private_unstable_api::re_exports::ColorScheme;
+    let ui = h.ui();
+    ui.set_monitor_open(false);
+    WindowInner::from_pub(ui.window())
+        .context()
+        .set_color_scheme(ColorScheme::Light);
+    ui.set_ui_size(13.0);
+    ui.window().set_size(slint::LogicalSize::new(1280.0, 900.0));
+    h.workbench();
+    save_desktop_review_frame(ui, destination, "workbench-empty");
+    ui.invoke_open_learning(3);
+    h.settle();
+    ui.invoke_create_learning_example();
+    h.settle();
+    save_desktop_review_frame(ui, destination, "workbench-example");
+    ui.set_ui_size(26.0);
+    ui.window().set_size(slint::LogicalSize::new(800.0, 600.0));
+    h.settle();
+    save_desktop_review_frame(ui, destination, "workbench-example-large");
+    ui.set_ui_size(13.0);
+    ui.invoke_tab_changed(0);
+    h.settle();
 }
 
 fn render_learning_review(h: &Harness, destination: &std::path::Path) {
@@ -3136,7 +3251,7 @@ fn library_ux_preview_reveals_monitor_and_quiet_rows_preserve_identity() {
         .is_none()
     );
     let preview = action_button(ui, "Preview waveform");
-    assert!(centre(&preview).y < centre(&labelled(ui, "Research summary and limitations")).y);
+    assert!(centre(&preview).y < centre(&labelled(ui, "What was studied")).y);
     preview.accessible_action(&AccessibilityAction::Default);
     h.settle();
     assert!(ui.get_monitor_open());
@@ -3199,7 +3314,7 @@ fn library_ux_filters_overlay_keeps_selection_and_geometry_and_escape_closes_it(
 }
 
 #[test]
-fn library_ux_component_menu_adds_every_kind_and_retains_its_document() {
+fn library_ux_visible_component_choices_add_every_kind_to_the_current_document() {
     use slint::private_unstable_api::re_exports::AccessibilityAction;
 
     let h = Harness::new();
@@ -3215,15 +3330,11 @@ fn library_ux_component_menu_adds_every_kind_and_retains_its_document() {
     .into_iter()
     .enumerate()
     {
-        action_button(ui, "Add component…").accessible_action(&AccessibilityAction::Default);
-        h.settle();
-        action_button(ui, label).accessible_action(&AccessibilityAction::Default);
+        reveal_library_control(&h, label).accessible_action(&AccessibilityAction::Default);
         h.settle();
         assert_eq!(ui.get_components().row_count(), index + 1);
     }
     let previous = ui.get_document();
-    action_button(ui, "Add component…").accessible_action(&AccessibilityAction::Default);
-    h.settle();
     ui.invoke_new_draft();
     let [Request::Unsaved(prompt)] = h.take()[..] else {
         panic!("dirty draft must be protected");
@@ -3231,12 +3342,16 @@ fn library_ux_component_menu_adds_every_kind_and_retains_its_document() {
     h.adapter.respond(prompt, PromptAnswer::Discard);
     h.settle();
     assert_ne!(ui.get_document(), previous);
+    // A late add addressed to the replaced document is refused.
+    ui.invoke_add_component(previous, 0);
+    h.settle();
+    assert_eq!(ui.get_components().row_count(), 0);
     action_button(ui, "Add steady tone").accessible_action(&AccessibilityAction::Default);
     h.settle();
     assert_eq!(
         ui.get_components().row_count(),
-        0,
-        "an already-open component menu cannot retarget the replacement document"
+        1,
+        "the visible choice targets the current document"
     );
     assert!(!h.adapter.inspect(|w| w.audio_busy()));
 }
@@ -3869,17 +3984,8 @@ fn assert_empty_scope_recovery(h: &Harness) {
         ui.invoke_collection_filter(scope, sort_choice(ui, SortBy::Title));
         h.settle();
         assert_eq!(ui.get_catalog().row_count(), 0);
-        action_button(ui, "Library options…").accessible_action(&AccessibilityAction::Default);
-        h.settle();
-        if !ui.get_storage_open() {
-            reveal_library_control(h, "Library storage and recovery")
-                .accessible_action(&AccessibilityAction::Default);
-        }
-        h.settle();
         assert!(reveal_library_control(h, "Initialize configured library").is_visible());
-        ui.invoke_close_library_filters();
-        h.settle();
-        let refresh = centre(&action_button(ui, "Refresh"));
+        let refresh = centre(&reveal_library_control(h, "Refresh"));
         drag(ui, refresh, refresh);
         h.wait_for_files();
         assert_eq!(
@@ -3904,13 +4010,13 @@ fn assert_unavailable_root_sizes(h: &Harness) {
         h.settle();
         for name in [
             "Filters",
-            "Library options…",
+            "Refresh",
             "Clear all filters",
             "Open recipe…",
             "Create sound",
             "Play selected sound",
         ] {
-            let item = if matches!(name, "Clear all filters" | "Open recipe…" | "Create sound") {
+            let item = if matches!(name, "Clear all filters" | "Refresh" | "Create sound") {
                 find_control(ui, |item| {
                     item.is_accessible()
                         && item
@@ -3922,7 +4028,7 @@ fn assert_unavailable_root_sizes(h: &Harness) {
             } else {
                 action_button(ui, name)
             };
-            if matches!(name, "Clear all filters" | "Open recipe…" | "Create sound") {
+            if matches!(name, "Clear all filters" | "Refresh" | "Create sound") {
                 let owns_focus = || {
                     let focused = WindowInner::from_pub(ui.window())
                         .focus_item
@@ -4223,11 +4329,21 @@ fn assert_reordered_sort_and_clear(h: &Harness) {
         "Title is deliberately at a formerly date-specific position"
     );
     assert!(!ui.get_show_built_in_dates());
+    // Built-in rows omit dates unless the sort is by a date; the selected
+    // sound's own Source and dates section still names them.
     assert!(
-        find_control(ui, |item| item
-            .accessible_string_property(AccessibleStringProperty::Label)
-            .is_some_and(|label| label.starts_with("Created:")))
-        .is_none()
+        labelled(ui, "Library results")
+            .visit_descendants(|item| {
+                if item
+                    .accessible_string_property(AccessibleStringProperty::Label)
+                    .is_some_and(|label| label.starts_with("Created:"))
+                {
+                    ControlFlow::Break(())
+                } else {
+                    ControlFlow::Continue(())
+                }
+            })
+            .is_none()
     );
     let added = ui
         .get_sort_labels()
@@ -4511,32 +4627,52 @@ fn closed_monitor_commands_refresh_calculated_models_without_a_redraw_tick() {
 }
 
 #[test]
-fn pulse_sections_use_open_headings_instead_of_collapsed_controls() {
+fn workbench_and_library_show_every_section_without_disclosures() {
+    use slint::private_unstable_api::re_exports::AccessibleRole;
     let h = Harness::new();
     let ui = h.ui();
+    let disclosures = || {
+        let window = WindowInner::from_pub(ui.window());
+        let mut found = Vec::new();
+        let _ = window.window_item_rc().unwrap().visit_descendants(|item| {
+            let label = item
+                .accessible_string_property(AccessibleStringProperty::Label)
+                .unwrap_or_default();
+            if item.is_visible()
+                && (item.accessible_role() == AccessibleRole::Button
+                    && (label.ends_with(" · collapsed") || label.ends_with(" · expanded")))
+            {
+                found.push(label);
+            }
+            ControlFlow::<()>::Continue(())
+        });
+        found
+    };
+    assert_eq!(disclosures(), Vec::<slint::SharedString>::new(), "Library");
+    for label in [
+        "Export WAV…",
+        "Open study source",
+        "Exact UTC recipe and membership dates",
+    ] {
+        assert!(
+            reveal_library_control(&h, label).is_visible(),
+            "{label} shows without a toggle"
+        );
+    }
     h.workbench();
     ui.invoke_add_component(ui.get_document(), 4);
     h.settle();
-    // Pulse sections stay open with their controls; static headings must not
-    // announce a collapsed disclosure while showing its content.
-    assert!(
-        find_control(ui, |item| {
-            item.is_visible()
-                && item
-                    .accessible_string_property(AccessibleStringProperty::Label)
-                    .as_deref()
-                    == Some("Waveform pattern")
-        })
-        .is_some()
+    assert_eq!(
+        disclosures(),
+        Vec::<slint::SharedString>::new(),
+        "Workbench"
     );
-    assert!(
-        find_control(ui, |item| {
-            item.accessible_string_property(AccessibleStringProperty::Label)
-                .as_deref()
-                == Some("Routing, modulation and component options · collapsed")
-        })
-        .is_none()
-    );
+    for label in ["Custom recipe notes", "Saved duration", "Add steady tone"] {
+        assert!(
+            reveal_library_control(&h, label).is_visible(),
+            "{label} shows without a toggle"
+        );
+    }
     assert!(!h.adapter.inspect(|w| w.audio_busy()));
 }
 
@@ -4679,7 +4815,7 @@ fn learning_keyboard_navigation_uses_visible_topics_and_returns_to_retained_work
     h.key(Key::DownArrow);
     assert_eq!(ui.get_learning_topic(), 2);
     assert_eq!(
-        labelled(ui, "Pitch and rhythm")
+        labelled(ui, "Pitch & rhythm")
             .accessible_string_property(AccessibleStringProperty::ItemSelected)
             .as_deref(),
         Some("true")
@@ -4892,26 +5028,24 @@ fn learning_construction_picker_projects_real_sound_and_envelope_without_documen
     ]) {
         ui.invoke_select_learning_construction(i32::try_from(construction.index()).unwrap());
         h.settle();
-        assert_eq!(
-            construction_picker(ui)
-                .accessible_string_property(AccessibleStringProperty::Value)
-                .as_deref(),
-            Some(title)
-        );
+        assert_eq!(selected_construction(ui).as_deref(), Some(title));
         let traces = ui.get_learning_traces();
         assert!(traces.iter().all(|lane| !lane.trace.is_empty()));
         let waveforms = traces
             .iter()
             .filter(|lane| !lane.unipolar)
             .collect::<Vec<_>>();
+        assert_eq!(waveforms.len(), 1, "stereo is shown in one plot");
         if construction == Construction::BinauralPair {
-            assert_eq!(waveforms.len(), 2);
-            assert!(waveforms[0].label.contains("Left"));
-            assert!(waveforms[1].label.contains("Right"));
-            assert_ne!(waveforms[0].trace, waveforms[1].trace);
+            assert!(waveforms[0].label.contains("Left") && waveforms[0].label.contains("Right"));
+            assert!(
+                !waveforms[0].overlay.is_empty(),
+                "the right channel is drawn over the left"
+            );
+            assert_ne!(waveforms[0].trace, waveforms[0].overlay);
         } else {
-            assert_eq!(waveforms.len(), 1, "identical stereo traces are shown once");
             assert!(waveforms[0].label.contains("Both channels"));
+            assert!(waveforms[0].overlay.is_empty());
         }
         if matches!(
             construction,
@@ -4928,7 +5062,7 @@ fn learning_construction_picker_projects_real_sound_and_envelope_without_documen
             assert!(
                 traces
                     .iter()
-                    .any(|lane| lane.label.contains("Pulse source on/off timing"))
+                    .any(|lane| lane.label.contains("When each source pulse is on"))
             );
         }
         assert!(!ui.get_learning_example_summary().is_empty());
@@ -4943,12 +5077,7 @@ fn learning_construction_picker_projects_real_sound_and_envelope_without_documen
     ui.invoke_open_learning(i32::try_from(Topic::Overview.index()).unwrap());
     ui.invoke_open_learning(i32::try_from(Topic::SoundTypes.index()).unwrap());
     h.settle();
-    assert_eq!(
-        construction_picker(ui)
-            .accessible_string_property(AccessibleStringProperty::Value)
-            .as_deref(),
-        Some("Pulse train")
-    );
+    assert_eq!(selected_construction(ui).as_deref(), Some("Pulse train"));
 }
 
 #[test]
@@ -4977,7 +5106,7 @@ fn onboarding_publication_notice_uses_shared_prose_and_does_not_block_work() {
     );
     assert!(notice.contains("continue working"), "{notice}");
     assert!(!notice.contains("file.read_limit"), "{notice}");
-    assert!(labelled(ui, "Start here preference needs attention.").is_visible());
+    assert!(labelled(ui, "Couldn't save that you've seen Start here").is_visible());
     ui.invoke_show_onboarding_notice();
     h.settle();
     assert_eq!(
@@ -5093,9 +5222,7 @@ fn empty_workbench_first_action_opens_real_component_creation() {
     h.workbench();
     let ui = h.ui();
     assert_eq!(ui.get_components().row_count(), 0);
-    assert!(labelled(ui, "Build your sound").is_visible());
-    action_button(ui, "Add component…").accessible_action(&AccessibilityAction::Default);
-    h.settle();
+    assert!(labelled(ui, "Build a sound").is_visible());
     action_button(ui, "Add steady tone").accessible_action(&AccessibilityAction::Default);
     h.settle();
     assert_eq!(ui.get_components().row_count(), 1);
@@ -5107,17 +5234,14 @@ fn empty_workbench_first_action_opens_real_component_creation() {
 }
 
 #[test]
-fn library_export_disclosure_reveals_real_export_actions() {
+fn library_export_actions_are_visible_and_open_the_real_path_flow() {
     use slint::private_unstable_api::re_exports::AccessibilityAction;
     let h = Harness::new();
     let ui = h.ui();
     ui.set_monitor_open(false);
     let key = ui.get_library_key();
-    assert!(!ui.get_export_settings());
-    labelled(ui, "Export sound · collapsed").accessible_action(&AccessibilityAction::Default);
-    h.settle();
-    assert!(ui.get_export_settings());
-    action_button(ui, "Export WAV…").accessible_action(&AccessibilityAction::Default);
+    // Font metrics decide whether the Export section starts below the fold.
+    reveal_library_control(&h, "Export WAV…").accessible_action(&AccessibilityAction::Default);
     h.settle();
     let [Request::Path(prompt, PathPurpose::ExportWav, _)] = h.take()[..] else {
         panic!("the native export action must open its real path flow");
@@ -5126,7 +5250,7 @@ fn library_export_disclosure_reveals_real_export_actions() {
     h.settle();
     assert_eq!(ui.get_library_key(), key);
     assert!(!h.adapter.inspect(|w| w.audio_busy() || w.file_busy()));
-    assert!(action_button(ui, "Export portable recipe…").is_visible());
+    assert!(reveal_library_control(&h, "Export portable recipe…").is_visible());
 }
 
 #[test]
@@ -5633,16 +5757,12 @@ fn exercise_preference_notice_popup(h: &Harness) -> String {
 #[test]
 fn guide_sources_are_named_and_separate_from_application_documentation() {
     use auditorylab_app::learning::LearningSource;
-    use slint::private_unstable_api::re_exports::AccessibilityAction;
     let h = Harness::new();
     let ui = h.ui();
     ui.set_monitor_open(false);
     ui.invoke_open_learning(4);
     h.settle();
     assert_eq!(ui.get_learning_sources().row_count(), 3);
-    action_button(ui, "Technical details and sources · collapsed")
-        .accessible_action(&AccessibilityAction::Default);
-    h.settle();
     for label in [
         "IFCN EEG glossary",
         "Memory study (PubMed)",
@@ -5751,18 +5871,34 @@ fn preference_popup_stop_targets_audio_and_a_late_stop_never_starts_the_workbenc
     );
 }
 
-fn construction_picker(ui: &MainWindow) -> ItemRc {
-    find_control(ui, |item| {
-        item.is_visible()
-            && item
-                .accessible_string_property(AccessibleStringProperty::Label)
-                .as_deref()
-                == Some("Sound construction")
-            && item
-                .accessible_string_property(AccessibleStringProperty::Value)
-                .is_some()
+/// The label of the checked choice in the visible construction group.
+fn selected_construction(ui: &MainWindow) -> Option<String> {
+    let group = find_control(ui, |item| {
+        item.accessible_string_property(AccessibleStringProperty::Label)
+            .as_deref()
+            == Some("Sound construction")
     })
-    .expect("the exact construction picker exposes its value")
+    .expect("the construction choices form one group");
+    let mut checked = Vec::new();
+    let _ = group.visit_descendants(|item| {
+        if item.is_visible()
+            && item
+                .accessible_string_property(AccessibleStringProperty::Checked)
+                .as_deref()
+                == Some("true")
+        {
+            checked.extend(
+                item.accessible_string_property(AccessibleStringProperty::Label)
+                    .map(|label| label.to_string()),
+            );
+        }
+        ControlFlow::<()>::Continue(())
+    });
+    assert!(
+        checked.len() <= 1,
+        "one construction is checked: {checked:?}"
+    );
+    checked.pop()
 }
 
 fn reveal_lesson_control(h: &Harness, label: &str) -> ItemRc {

@@ -29,7 +29,8 @@ pub const fn navigation_label(topic: Topic) -> &'static str {
     match topic {
         Topic::Overview => "Overview",
         Topic::Library => "Library guide",
-        Topic::PitchAndRhythm => "Pitch and rhythm",
+        // Short enough to stay on one line in the three-column compact list.
+        Topic::PitchAndRhythm => "Pitch & rhythm",
         Topic::SoundTypes => "Sound types",
         Topic::RhythmBands => "Rhythm ranges",
     }
@@ -223,13 +224,13 @@ pub fn example_summary(construction: Construction) -> String {
 
 pub fn carrier_caption(visual: &auditorylab_app::learning::TeachingVisual) -> String {
     format!(
-        "Tone before pulsing · {} ms close-up · fitted signed amplitude",
+        "The tone before pulsing · first {} ms",
         crate::compact_number(visual.carrier_seconds * 1000.0)
     )
 }
 pub fn waveform_caption(visual: &auditorylab_app::learning::TeachingVisual) -> String {
     format!(
-        "Resulting sound · {} ms close-up · fitted signed amplitude",
+        "What you hear · first {} ms",
         crate::compact_number(visual.waveform_seconds * 1000.0)
     )
 }
@@ -240,15 +241,15 @@ pub fn timing_caption(
 ) -> String {
     use auditorylab_app::core::timing::ModelKind;
     let meaning = match kind {
-        ModelKind::Steady => "Tone source gain",
-        ModelKind::PulseTrain => "Pulse source on/off timing",
-        ModelKind::Pulsed => "Pulse modulation gain",
-        ModelKind::Envelope => "Smooth amplitude modulation gain",
+        ModelKind::Steady => "Tone level",
+        ModelKind::PulseTrain => "When each source pulse is on",
+        ModelKind::Pulsed => "How the pulses switch the tone on and off",
+        ModelKind::Envelope => "How the tone's level rises and falls",
     };
     let scale = if kind == ModelKind::PulseTrain {
-        "0 off · 1 on"
+        "bottom off, top on"
     } else {
-        "0 off · 1 original source level"
+        "bottom silent, top the tone's full level"
     };
     format!(
         "{meaning} · {} ms · {scale}",
@@ -268,16 +269,19 @@ mod tests {
         );
         assert!(example_summary(Construction::PulseTrain).contains("40 source pulses/s"));
         assert!(example_summary(Construction::MonauralPair).contains("200 Hz and 206 Hz tones"));
-        assert!(timing_caption(pulsed, ModelKind::Pulsed).contains("Pulse modulation gain"));
+        assert!(
+            timing_caption(pulsed, ModelKind::Pulsed)
+                .contains("How the pulses switch the tone on and off")
+        );
         assert!(
             timing_caption(Construction::PulseTrain.visual(), ModelKind::PulseTrain)
-                .contains("Pulse source on/off timing")
+                .contains("When each source pulse is on")
         );
         assert!(
             timing_caption(Construction::SinusoidalAm.visual(), ModelKind::Envelope)
-                .contains("Smooth amplitude modulation gain")
+                .contains("How the tone's level rises and falls")
         );
-        assert!(waveform_caption(pulsed).contains("fitted signed amplitude"));
+        assert!(waveform_caption(pulsed).starts_with("What you hear"));
         assert!(!construction_details(Construction::PulseTrain).contains("carrier close-up"));
         assert_eq!(navigation_label(Topic::Library), "Library guide");
         for source in auditorylab_app::learning::LearningSource::ALL {

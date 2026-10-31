@@ -231,15 +231,15 @@ fn every_kind_of_component_renders_the_same_bits_on_every_platform() {
 // Levels/routes sum before shared modulation. The changed AM association and new
 // shaped/pair cases are checked by independent order/Fourier controls in component_oracles.
 const PINNED: [&str; 9] = [
-    "independent channel tones 0x923b526697b0dfc0",
-    "summed tones 0x125945695a8a70c5",
-    "modulated tone 0x12ebfc668ba52241",
-    "gated tone 0x524d4e9fc6e3c2e5",
+    "independent channel tones 0x5b853fb0775f8d78",
+    "summed tones 0x84203345c16839f9",
+    "modulated tone 0x00b6979df739e6fc",
+    "gated tone 0x7de0fa6eae5ddf99",
     "rectangular pulse train 0xff6d3c57217ac3dd",
-    "shaped pulsed tone 0xe27fcfda09f00f41",
-    "shared monaural pulse 0x7a7aab618ab71de9",
-    "shaped pulse source AM 0x0acf59bf8dc626d1",
-    "shared binaural AM 0x64ace313ab7b800b",
+    "shaped pulsed tone 0xfeb9ff613918e8c5",
+    "shared monaural pulse 0x4392cbf9da3bfb29",
+    "shaped pulse source AM 0x338508cbc5bd1a01",
+    "shared binaural AM 0xa5de5506f7462b43",
 ];
 
 #[test]

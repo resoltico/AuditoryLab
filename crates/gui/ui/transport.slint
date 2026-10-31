@@ -1,25 +1,27 @@
 import { ViewCaptions } from "view-captions.slint";
 import { Button } from "button.slint";
 import { RunningTaskActions } from "running-task-actions.slint";
-
-
 import { Terms } from "vocabulary.slint";
 import {
     Palette,
     VerticalBox,
     HorizontalBox,
 } from "std-widgets.slint";
-
 import { StableButton } from "editor.slint";
 
-
+// The player: what plays, its state and time, listening advice, the output
+// monitor and audio details. One row at ordinary widths.
 export component TransportBar inherits Rectangle {
     in property <bool> learning;
     in property <bool> exporting;
     in property <float> export-progress;
+    in property <bool> compact;
+    in-out property <bool> monitor-open;
+    callback monitor-toggled();
     callback cancel-export();
     private property <bool> quiet-guide: root.learning && !root.playback-busy && !root.exporting &&
-        root.auxiliary-error == "" && root.operation-summary == "" && root.operation-outcome == "";
+        !root.monitor-open && root.auxiliary-error == "" && root.operation-summary == "" &&
+        root.operation-outcome == "";
     in property <string> auxiliary-error;
     in property <string> elapsed;
     in property <string> generated;
@@ -29,6 +31,8 @@ export component TransportBar inherits Rectangle {
     callback play-stop();
     callback stop-audio();
     in property <string> play-target;
+    // Why Play is unavailable; shown in place of the generated line meanwhile.
+    in property <string> play-reason;
     in property <bool> playback-busy;
     in property <string> player-title;
     callback show-diagnostics();
@@ -37,7 +41,7 @@ export component TransportBar inherits Rectangle {
     in property <[string]> transport-labels;
     in property <length> ui-size;
     callback update-monitor-layout();
-
+    public function focus-monitor() { monitor.focus(); }
     accessible-role: groupbox;
     accessible-label: ViewCaptions.playback-transport;
     changed preferred-height => { root.update-monitor-layout(); }
@@ -47,25 +51,33 @@ export component TransportBar inherits Rectangle {
     min-height: self.preferred-height;
     max-height: self.preferred-height;
     vertical-stretch: 0;
-    background: Palette.control-background;
-    border-width: 1px;
-    border-color: Palette.border;
+    background: Palette.background;
+    Rectangle {
+        y: 0px;
+        height: 1px;
+        background: Palette.border;
+    }
+
     content := VerticalBox {
         padding: 8px;
-        spacing: 3px;
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 4px;
         HorizontalBox {
             vertical-stretch: 0;
             padding: 0px;
+            spacing: 12px;
+            alignment: stretch;
             if !root.learning: StableButton {
                 text: root.transport-action;
                 labels: root.transport-labels;
                 primary: true;
                 enabled: root.transport-enabled;
+                description: root.transport-enabled ? "" : root.play-reason;
                 accessible-name: root.transport-action + (root.playback-busy || root.play-target ==
                     "" ? "" : " · " + root.play-target);
                 clicked => { root.play-stop(); }
             }
-
             if root.learning: RunningTaskActions {
                 audio-busy: root.playback-busy;
                 exporting: root.exporting;
@@ -73,38 +85,65 @@ export component TransportBar inherits Rectangle {
                 stop-audio() => { root.stop-audio(); }
                 cancel-export() => { root.cancel-export(); }
             }
-            VerticalBox {
-                padding: 0px;
-                spacing: 2px;
+            // One line each; Audio details has the full text. Task outcomes join
+            // the same column, so they never add a row under the controls.
+            VerticalLayout {
                 horizontal-stretch: 1;
-                        // One line each: the transport keeps its height; Details has the full text.
-                        Text {
+                alignment: center;
+                Text {
                     min-width: 0px;
                     text: root.player-title + (root.playback-busy || root.play-target == "" ? "" :
                         Terms.caption-next-play-prefix + root.play-target);
+                    font-weight: 600;
                     wrap: no-wrap;
                     overflow: elide;
                 }
 
                 if !root.learning: Text {
                     min-width: 0px;
-                    text: root.generated;
+                    text: !root.transport-enabled && root.play-reason != "" ? root.play-reason :
+                        root.generated;
+                    color: Palette.foreground.with-alpha(0.72);
                     wrap: no-wrap;
                     overflow: elide;
                 }
+                if !root.learning && root.compact: Text {
+                    min-width: 0px;
+                    text: root.elapsed;
+                    color: Palette.foreground.with-alpha(0.72);
+                    wrap: no-wrap;
+                    overflow: elide;
+                }
+                if root.auxiliary-error != "" || root.operation-summary != "": Text {
+                    min-width: 0px;
+                    text: root.auxiliary-error != "" ? root.auxiliary-error :
+                        root.operation-summary;
+                    wrap: no-wrap;
+                    overflow: elide;
+                    accessible-label: self.text;
+                    accessible-live-region: polite;
+                }
+                if root.operation-outcome != "": Text {
+                    min-width: 0px;
+                    text: root.operation-outcome;
+                    wrap: no-wrap;
+                    overflow: elide;
+                    accessible-label: self.text;
+                    accessible-live-region: polite;
+                }
             }
-                    // Sized for the longest clock, so ticking never reflows the row.
-                    if !root.learning: Rectangle {
+
+            // Sized for the longest clock, so ticking never reflows the row.
+            if !root.learning && !root.compact: Rectangle {
                 horizontal-stretch: 0;
                 min-width: elapsed-template.preferred-width;
                 preferred-width: elapsed-template.preferred-width;
-                min-height: elapsed-text.preferred-height;
                 elapsed-template := Text {
                     visible: false;
                     text: "00:00:00 / 00:00:00";
                 }
 
-                elapsed-text := Text {
+                Text {
                     width: parent.width;
                     height: parent.height;
                     text: root.elapsed;
@@ -112,47 +151,42 @@ export component TransportBar inherits Rectangle {
                     vertical-alignment: center;
                 }
             }
+            if !root.learning && !root.compact: Text {
+                text: root.guidance;
+                min-width: 0px;
+                max-width: root.ui-size * 26;
+                horizontal-stretch: 1;
+                wrap: word-wrap;
+                vertical-alignment: center;
+                font-size: root.ui-size * 0.92;
+                color: Palette.foreground.with-alpha(0.72);
+            }
+            monitor := Button {
+                text: Terms.action-monitor;
+                checked: root.monitor-open;
+                horizontal-stretch: 0;
+                accessible-label: root.monitor-open ? Terms.action-hide-output-monitor :
+                    Terms.action-show-output-monitor;
+                accessible-expanded: root.monitor-open;
+                triggered => {
+                    root.monitor-open = !root.monitor-open;
+                    root.monitor-toggled();
+                }
+            }
 
             Button {
-                text: Terms.caption-details-dialog;
+                text: Terms.caption-audio-details-dialog;
                 horizontal-stretch: 0;
                 accessible-label: ViewCaptions.audio-details;
                 triggered => { root.show-diagnostics(); }
             }
         }
 
-        if root.auxiliary-error != "" || root.operation-summary != "" || root.operation-outcome !=
-            "": VerticalBox {
-            padding: 0px;
-            spacing: 0px;
-            min-height: root.ui-size * 2.5;
-            max-height: root.ui-size * 2.5;
-            vertical-stretch: 0;
-            Text {
-                min-width: 0px;
-                min-height: root.ui-size * 1.25;
-                max-height: root.ui-size * 1.25;
-                text: root.auxiliary-error != "" ? root.auxiliary-error : root.operation-summary;
-                wrap: no-wrap;
-                overflow: elide;
-                accessible-label: self.text;
-                accessible-live-region: polite;
-            }
-
-            Text {
-                min-width: 0px;
-                min-height: root.ui-size * 1.25;
-                max-height: root.ui-size * 1.25;
-                text: root.operation-outcome;
-                wrap: no-wrap;
-                overflow: elide;
-                accessible-label: self.text;
-                accessible-live-region: polite;
-            }
-        }
-        if !root.learning: Text {
+        if !root.learning && root.compact: Text {
             min-width: 0px;
             text: root.guidance;
+            font-size: root.ui-size * 0.92;
+            color: Palette.foreground.with-alpha(0.72);
             wrap: word-wrap;
             vertical-stretch: 0;
         }

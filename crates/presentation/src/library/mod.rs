@@ -210,6 +210,58 @@ pub(crate) fn overview(query: &CatalogQuery, visible: usize, complete: bool) -> 
         format!("{count} · Filters active")
     }
 }
+/// One line per committed restriction, in the order the query applies them.
+#[must_use]
+pub fn restrictions(q: &CatalogQuery) -> Vec<String> {
+    let mut restrictions = Vec::new();
+    if !q.search.is_empty() {
+        restrictions.push(format!("Search: {}", crate::display_scalar(&(q.search))));
+    }
+    if q.include_external {
+        restrictions.push("Include temporary Open files".into());
+    }
+    for band in &q.rhythm.bands {
+        restrictions.push(format!("Band: {band} · {}", band.interval()));
+    }
+    for method in &q.rhythm.methods {
+        restrictions.push(format!("Method: {}", method.label()));
+    }
+    if let Some(state) = q.rhythm.state {
+        let label = state.label();
+        restrictions.push(format!("Rhythm state: {label}"));
+    }
+    for study in &q.studies {
+        restrictions.push(format!("Study: {}", crate::display_scalar(study)));
+    }
+    for population in &q.populations {
+        restrictions.push(format!("Population: {}", population.label()));
+    }
+    for role in &q.roles {
+        restrictions.push(format!("Condition role: {}", role.label()));
+    }
+    if let Some(analysis) = q.analysis {
+        restrictions.push(format!("Analysis: {}", analysis.label()));
+    }
+    for (name, range) in [
+        (CalendarField::Created.label(), &q.created),
+        (auditorylab_core::vocabulary::EDITED.label, &q.modified),
+        (CalendarField::Added.label(), &q.added),
+    ] {
+        for (label, value) in [
+            ("from inclusive", range.from),
+            ("before exclusive", range.before),
+        ] {
+            if let Some(value) = value {
+                restrictions.push(format!(
+                    "{name} {label}: {} · UTC {value}",
+                    crate::library::calendar::local_timestamp(value)
+                ));
+            }
+        }
+    }
+    restrictions
+}
+
 pub(crate) fn count(query: &CatalogQuery, visible: usize, complete: bool) -> String {
     {
         let q = query;
@@ -222,52 +274,7 @@ pub(crate) fn count(query: &CatalogQuery, visible: usize, complete: bool) -> Str
             direction.label(),
             q.group_by.label()
         )];
-        let mut restrictions = Vec::new();
-        if !q.search.is_empty() {
-            restrictions.push(format!("Search: {}", crate::display_scalar(&(q.search))));
-        }
-        if q.include_external {
-            restrictions.push("Include temporary Open files".into());
-        }
-        for band in &q.rhythm.bands {
-            restrictions.push(format!("Band: {band} · {}", band.interval()));
-        }
-        for method in &q.rhythm.methods {
-            restrictions.push(format!("Method: {}", method.label()));
-        }
-        if let Some(state) = q.rhythm.state {
-            let label = state.label();
-            restrictions.push(format!("Rhythm state: {label}"));
-        }
-        for study in &q.studies {
-            restrictions.push(format!("Study: {}", crate::display_scalar(study)));
-        }
-        for population in &q.populations {
-            restrictions.push(format!("Population: {}", population.label()));
-        }
-        for role in &q.roles {
-            restrictions.push(format!("Condition role: {}", role.label()));
-        }
-        if let Some(analysis) = q.analysis {
-            restrictions.push(format!("Analysis: {}", analysis.label()));
-        }
-        for (name, range) in [
-            (CalendarField::Created.label(), &q.created),
-            (auditorylab_core::vocabulary::EDITED.label, &q.modified),
-            (CalendarField::Added.label(), &q.added),
-        ] {
-            for (label, value) in [
-                ("from inclusive", range.from),
-                ("before exclusive", range.before),
-            ] {
-                if let Some(value) = value {
-                    restrictions.push(format!(
-                        "{name} {label}: {} · UTC {value}",
-                        crate::library::calendar::local_timestamp(value)
-                    ));
-                }
-            }
-        }
+        let restrictions = restrictions(q);
         if restrictions.is_empty() {
             lines.push("Applied filters: None".into());
         } else {
@@ -528,6 +535,11 @@ pub fn workspace_library_overview(value: &auditorylab_app::workspace::Workspace)
 pub fn workspace_library_count(value: &auditorylab_app::workspace::Workspace) -> String {
     let d = value.library_data();
     count(d.query, d.visible, d.inventory.complete)
+}
+pub fn workspace_library_restrictions(
+    value: &auditorylab_app::workspace::Workspace,
+) -> Vec<String> {
+    restrictions(value.library_data().query)
 }
 pub fn workspace_library_empty_message(
     value: &auditorylab_app::workspace::Workspace,

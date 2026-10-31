@@ -2,12 +2,12 @@
 //! row removal and auxiliary-window handoff, with the production bindings.
 use crate::adapter::hide_monitor_window;
 use crate::adapter_tests::Harness;
-use crate::generated::MonitorWindow;
+use crate::generated::{MainWindow, MonitorWindow};
 use auditorylab_app::core::ParameterId;
 use auditorylab_app::document::editing::EditingField;
 use slint::platform::{Key, WindowEvent};
 use slint::private_unstable_api::re_exports::{
-    Flickable, FocusReason, ItemRc, TextInput, WindowInner,
+    AccessibleStringProperty, Flickable, FocusReason, ItemRc, TextInput, WindowInner,
 };
 use slint::{ComponentHandle, Model};
 use std::ops::ControlFlow;
@@ -149,7 +149,11 @@ fn monitor_handoff_and_deactivation_preserve_numeric_entry() {
     ui.invoke_add_component(ui.get_document(), 0);
     let staged = || field_state(&h, ParameterId::ToneFrequency).0;
     let committed = || field_state(&h, ParameterId::ToneFrequency).1;
-    ui.invoke_focus_monitor_opener();
+    WindowInner::from_pub(ui.window()).set_focus_item(
+        &h.field("Sound title"),
+        true,
+        FocusReason::Programmatic,
+    );
     // Navigate the real component tree, proving the target by its staged field.
     for _ in 0..60 {
         h.key(Key::Tab);
@@ -299,9 +303,11 @@ fn assert_clipped_keyboard_and_pointer(h: &Harness, input: &ItemRc, overflow: f3
     // Escape is the first input after clipping: no pointer event or refocus.
     assert_eq!(inner.focus_item.borrow().upgrade().as_ref(), Some(input));
     h.key(Key::Escape);
+    let focused = inner.focus_item.borrow().upgrade();
     assert!(
-        inner.focus_item.borrow().upgrade().as_ref() == Some(input),
-        "no-pointer Escape must retain the clipped editor's focus"
+        focused.as_ref() == Some(input),
+        "no-pointer Escape must retain the clipped editor's focus: {}",
+        escape_focus_report(h, focused.as_ref(), input, overflow)
     );
     assert_eq!(
         field_state(h, ParameterId::SourcePulseRate),
@@ -310,8 +316,9 @@ fn assert_clipped_keyboard_and_pointer(h: &Harness, input: &ItemRc, overflow: f3
     );
     assert_eq!(text(input), "40");
     assert!(
-        input.is_visible(),
-        "no-pointer Escape must reveal its restored editor"
+        input.is_visible() && fully_in_viewport(ui, input),
+        "no-pointer Escape must reveal its restored editor: {}",
+        escape_focus_report(h, Some(input), input, overflow)
     );
     for _ in 0..4 {
         h.key(Key::RightArrow);
@@ -351,6 +358,95 @@ fn assert_clipped_keyboard_and_pointer(h: &Harness, input: &ItemRc, overflow: f3
     assert_eq!(inner.focus_item.borrow().upgrade().as_ref(), Some(input));
     h.key(Key::Escape);
     assert_pointer_blur_commit(h);
+}
+
+/// Whether the whole item lies within its nearest scroll view's viewport.
+fn fully_in_viewport(ui: &MainWindow, input: &ItemRc) -> bool {
+    let inner = WindowInner::from_pub(ui.window());
+    let bounds = |item: &ItemRc| {
+        let geometry = item.geometry();
+        let origin = item.map_to_window(geometry.origin);
+        (origin.y, origin.y + geometry.size.height)
+    };
+    let (top, bottom) = bounds(input);
+    inner
+        .window_item_rc()
+        .unwrap()
+        .visit_descendants(|item| {
+            let holds_input = item
+                .visit_descendants(|child| {
+                    if child == input {
+                        ControlFlow::Break(())
+                    } else {
+                        ControlFlow::Continue(())
+                    }
+                })
+                .is_some();
+            if item.downcast::<Flickable>().is_some() && holds_input {
+                let (view_top, view_bottom) = bounds(item);
+                ControlFlow::Break(top >= view_top && bottom <= view_bottom)
+            } else {
+                ControlFlow::Continue(())
+            }
+        })
+        .unwrap_or(false)
+}
+
+/// Where the editor, its viewport and focus are after a failed focus check.
+fn escape_focus_report(
+    h: &Harness,
+    focused: Option<&ItemRc>,
+    input: &ItemRc,
+    overflow: f32,
+) -> String {
+    let ui = h.ui();
+    let inner = WindowInner::from_pub(ui.window());
+    let describe = |item: &ItemRc| {
+        let geometry = item.geometry();
+        format!(
+            "{:?} {:?} at {:?} size {:?} visible={}",
+            item.accessible_role(),
+            item.accessible_string_property(AccessibleStringProperty::Label),
+            item.map_to_window(geometry.origin),
+            geometry.size,
+            item.is_visible()
+        )
+    };
+    let in_tree = inner
+        .window_item_rc()
+        .unwrap()
+        .visit_descendants(|item| {
+            if item == input {
+                ControlFlow::Break(())
+            } else {
+                ControlFlow::Continue(())
+            }
+        })
+        .is_some();
+    let viewport = inner.window_item_rc().unwrap().visit_descendants(|item| {
+        let holds_input = item
+            .visit_descendants(|child| {
+                if child == input {
+                    ControlFlow::Break(())
+                } else {
+                    ControlFlow::Continue(())
+                }
+            })
+            .is_some();
+        if item.downcast::<Flickable>().is_some() && holds_input {
+            ControlFlow::Break(describe(item))
+        } else {
+            ControlFlow::Continue(())
+        }
+    });
+    format!(
+        "focused={:?}, input={} in_tree={in_tree} scroll={} overflow={overflow} \
+         viewport={viewport:?} window={:?}",
+        focused.map(describe),
+        describe(input),
+        ui.get_editor_scroll_y(),
+        ui.window().size()
+    )
 }
 
 fn clip_pending_entry(h: &Harness) -> (ItemRc, f32) {

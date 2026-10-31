@@ -90,3 +90,48 @@ impl ResolvedPulse {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::finite;
+
+    #[test]
+    fn errors_have_distinct_stable_keys_and_explanations() {
+        let errors = [
+            (PulseError::Rate, "rate"),
+            (PulseError::Width, "width"),
+            (PulseError::Duty, "duty"),
+            (PulseError::ClosedFrame, "closed_frame"),
+            (PulseError::Edges, "edges"),
+        ];
+        let mut messages = alloc::vec::Vec::new();
+        for (error, key) in errors {
+            assert_eq!(error.key(), key);
+            let message = alloc::string::ToString::to_string(&error);
+            assert!(message.starts_with("pulse") || message.starts_with("positive pulse"));
+            assert!(
+                !messages.contains(&message),
+                "{key} repeats another message"
+            );
+            messages.push(message);
+        }
+    }
+
+    #[test]
+    fn resolved_duty_and_width_come_from_the_generated_frames() {
+        let rate = crate::SampleRate::DEFAULT;
+        let resolved = PulseSpec {
+            rate_hz: finite(4.0),
+            width: crate::PulseWidth::DutyCycle {
+                fraction: finite(0.25),
+            },
+            shape: crate::PulseShape::Rectangular {},
+        }
+        .resolve(rate)
+        .unwrap();
+        assert_eq!(resolved.width_frames(), 3_000);
+        assert_eq!(resolved.width_seconds(), 0.0625);
+        assert_eq!(resolved.nominal_duty(), 0.25);
+    }
+}
