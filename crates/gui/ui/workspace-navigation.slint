@@ -38,7 +38,9 @@ export component WorkspaceNavigation inherits FocusScope {
         spacing: 4px;
         for label[index] in root.destinations: Rectangle {
             min-width: caption.preferred-width + 24px;
-            min-height: max(root.text-size * 2.5,caption.preferred-height + 12px);
+            // The Button height, so tabs and toolbar actions share one row line.
+            min-height: max(32px, 2.5rem);
+            max-height: self.min-height;
             border-radius: 5px;
             background: root.current == index ? Palette.accent-background.with-alpha(0.12) :
                 Palette.background;

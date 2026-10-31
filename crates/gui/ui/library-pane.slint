@@ -20,7 +20,7 @@ import {
     LibraryFacet,
     ModelLane,
 } from "models.slint";
-import { Disclosure, ExportRate } from "editor.slint";
+import { Section, ExportRate } from "editor.slint";
 
 
 export component LibraryPane inherits Rectangle {
@@ -61,7 +61,6 @@ export component LibraryPane inherits Rectangle {
     callback edit-saved(EntryAddress);
     in property <[string]> export-rates;
     callback export-recipe();
-    in-out property <bool> export-settings;
     callback export-wav();
     in property <string> file-activity;
     in-out property <string> focused-library-key;
@@ -79,6 +78,12 @@ export component LibraryPane inherits Rectangle {
     in property <string> library-overview;
     in property <string> library-ownership;
     in property <bool> library-query-open;
+    in property <string> library-restrictions;
+    in property <string> library-status;
+    callback refresh-library();
+    callback reset-library-sort();
+    callback show-saved();
+    callback initialize-library();
     private property <bool> library-restore-ready: false;
     private property <bool> library-restoring: false;
     in-out property <length> library-scroll-y;
@@ -101,7 +106,6 @@ export component LibraryPane inherits Rectangle {
     callback rate-changed(int);
     in-out property <int> rate-index;
     in property <string> recipe-timing;
-    in-out property <bool> research;
     callback resize-library-pane(float);
     callback rhythm-filter(int, int);
     callback search(string);
@@ -245,6 +249,17 @@ export component LibraryPane inherits Rectangle {
                         }
                         if root.compact: ComboBox {
                             min-width: 0px;
+                            model: root.sort-labels;
+                            current-index <=> root.sort-choice;
+                            accessible-label: Terms.facet-sort-library;
+                            selected(value) => {
+                                root.collection-filter(root.collection-choice,
+                                root.sort-choice);
+                            }
+                        }
+
+                        if root.compact: ComboBox {
+                            min-width: 0px;
                             model: root.band-labels;
                             current-index <=> root.band-choice;
                             accessible-label: ViewCaptions.nominal-rhythm-reference-band;
@@ -343,6 +358,27 @@ export component LibraryPane inherits Rectangle {
                     }
                 }
 
+                // What narrows these results, always in view while any filter applies.
+                if root.library-restrictions != "" || root.library-filters-active: HorizontalBox {
+                    padding: 0px;
+                    vertical-stretch: 0;
+                    Text {
+                        text: root.library-restrictions;
+                        min-width: 0px;
+                        horizontal-stretch: 1;
+                        wrap: word-wrap;
+                        vertical-alignment: center;
+                        color: Palette.foreground.with-alpha(0.72);
+                    }
+
+                    // With no results, the empty list offers this action itself.
+                    if root.library-filters-active && root.has-results: Button {
+                        text: Terms.action-clear-all-filters;
+                        horizontal-stretch: 0;
+                        triggered => { root.clear-applied-filters(); }
+                    }
+                }
+
                 entries := ScrollView {
                     min-height: max(64px,root.ui-size * 3);
                     content-y: root.library-scroll-y;
@@ -384,15 +420,6 @@ export component LibraryPane inherits Rectangle {
                             vertical-stretch: 0;
                             Button {
                                 horizontal-stretch: 0;
-                                text: (Actions.open-recipe.label + "…");
-                                enabled: Actions.open-recipe.enabled;
-                                triggered => {
-                                    root.open-recipe();
-                                }
-                            }
-
-                            Button {
-                                horizontal-stretch: 0;
                                 text: Terms.caption-create-sound;
                                 enabled: root.can-new;
                                 triggered => { root.new-draft(); }
@@ -419,7 +446,13 @@ export component LibraryPane inherits Rectangle {
 
                             function reveal() {
                                 if self.selected-row && !root.library-restoring {
-                                    if self.y + entries.content-y < 0px {
+                                    // The first row keeps the notes above it in view, even
+                                    // after a reveal during an earlier, unsettled layout.
+                                    if index == 0 && self.y + self.height <=
+                                        entries.visible-height {
+                                        entries.content-y = 0px;
+                                    }
+                                    else if self.y + entries.content-y < 0px {
                                         entries.content-y = -self.y;
                                     }
                                     else if self.y + self.height + entries.content-y >
@@ -457,13 +490,26 @@ export component LibraryPane inherits Rectangle {
                                 width: parent.width - 20px;
                                 height: parent.height - 16px;
                                 spacing: 4px;
-                                Text {
-                                    text: item.title;
-                                    font-size: root.ui-size * 1.08;
-                                    font-weight: 600;
-                                    min-width: 0px;
-                                    wrap: word-wrap;
-                                    color: Palette.control-foreground;
+                                // Title and length on one line; what it is and what it
+                                // was studied for on the next.
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Text {
+                                        text: item.title;
+                                        font-size: root.ui-size * 1.08;
+                                        font-weight: 600;
+                                        min-width: 0px;
+                                        horizontal-stretch: 1;
+                                        wrap: word-wrap;
+                                        color: Palette.control-foreground;
+                                    }
+
+                                    if item.duration != "": Text {
+                                        text: item.duration;
+                                        horizontal-stretch: 0;
+                                        horizontal-alignment: right;
+                                        color: Palette.control-foreground.with-alpha(0.72);
+                                    }
                                 }
 
                                 if !item.built-in && item.collection != "": Text {
@@ -473,23 +519,12 @@ export component LibraryPane inherits Rectangle {
                                     color: Palette.control-foreground;
                                 }
 
-                                if item.summary != "": Text {
-                                    text: item.summary;
+                                if item.summary != "" || item.studied-for != "": Text {
+                                    text: item.summary + (item.summary != "" &&
+                                        item.studied-for != "" ? " · " : "") + item.studied-for;
                                     min-width: 0px;
                                     wrap: word-wrap;
-                                    color: Palette.control-foreground;
-                                }
-                                if item.studied-for != "": Text {
-                                    text: item.studied-for;
-                                    min-width: 0px;
-                                    wrap: word-wrap;
-                                    color: Palette.control-foreground;
-                                }
-                                if item.duration != "": Text {
-                                    text: item.duration;
-                                    min-width: 0px;
-                                    wrap: word-wrap;
-                                    color: Palette.control-foreground;
+                                    color: Palette.control-foreground.with-alpha(0.72);
                                 }
                                 if item.dates != "" && (!item.built-in ||
                                     root.show-built-in-dates): Text {
@@ -547,6 +582,62 @@ export component LibraryPane inherits Rectangle {
                                 }
                             }
                         }
+                        // Library-wide tools and storage state, at the end of the
+                        // results so they never hide behind a menu.
+                        Section {
+                            title: Terms.caption-library-storage-and-recovery;
+                            ui-size: root.ui-size;
+                            Text {
+                                text: root.library-status;
+                                wrap: word-wrap;
+                                min-width: 0px;
+                                vertical-stretch: 0;
+                            }
+
+                            HorizontalBox {
+                                padding: 0px;
+                                vertical-stretch: 0;
+                                Button {
+                                    enabled: Actions.library-refresh.enabled;
+                                    text: Actions.library-refresh.label;
+                                    horizontal-stretch: 0;
+                                    triggered => { root.refresh-library(); }
+                                }
+
+                                Button {
+                                    enabled: Actions.show-saved.enabled;
+                                    text: Actions.show-saved.label;
+                                    horizontal-stretch: 0;
+                                    triggered => { root.show-saved(); }
+                                }
+
+                                Rectangle {
+                                    horizontal-stretch: 1;
+                                }
+                            }
+
+                            HorizontalBox {
+                                padding: 0px;
+                                vertical-stretch: 0;
+                                Button {
+                                    text: Terms.action-reset-sort;
+                                    horizontal-stretch: 0;
+                                    triggered => { root.reset-library-sort(); }
+                                }
+
+                                Button {
+                                    enabled: Actions.library-init.enabled;
+                                    text: Actions.library-init.label;
+                                    horizontal-stretch: 0;
+                                    triggered => { root.initialize-library(); }
+                                }
+
+                                Rectangle {
+                                    horizontal-stretch: 1;
+                                }
+                            }
+                        }
+
                         Rectangle {
                             vertical-stretch: 1;
                         }
@@ -566,10 +657,17 @@ export component LibraryPane inherits Rectangle {
                     }
                 }
             }
+            // A hairline divider with a wider grab area; it highlights while
+            // pointed at or focused.
             if !root.compact && root.has-results: Rectangle {
-                width: 6px;
-                background: resize-touch.has-hover || resize-focus.has-focus ?
-                    Palette.accent-background : Palette.border;
+                width: 8px;
+                Rectangle {
+                    x: (parent.width - self.width) / 2;
+                    width: resize-touch.has-hover || resize-focus.has-focus ? 3px : 1px;
+                    background: resize-touch.has-hover || resize-focus.has-focus ?
+                        Palette.accent-background : Palette.border;
+                }
+
                 accessible-role: slider;
                 accessible-label: Terms.caption-library-pane-width;
                 accessible-value: root.sidebar-width / 1px;
@@ -692,84 +790,7 @@ export component LibraryPane inherits Rectangle {
                                 horizontal-stretch: 1;
                             }
                         }
-                                // A custom recipe has no study or summary to show.
-                                if root.studied != "": Text {
-                            min-width: 0px;
-                            text: root.studied;
-                            wrap: word-wrap;
-                            vertical-stretch: 0;
-                        }
-                        if root.summary != "": VerticalBox {
-                            padding: 0px;
-                            vertical-stretch: 0;
-                            summary-disclosure := Disclosure {
-                                label: Terms.caption-research-summary;
-                            }
 
-                            if summary-disclosure.expanded: Text {
-                                min-width: 0px;
-                                text: root.summary;
-                                wrap: word-wrap;
-                                vertical-stretch: 0;
-                            }
-                        }
-                        Rectangle {
-                            height: 1px;
-                            background: Palette.border;
-                            vertical-stretch: 0;
-                        }
-
-                        Text {
-                            text: Terms.caption-classification;
-                            font-weight: 600;
-                            vertical-stretch: 0;
-                        }
-
-                        Text {
-                            text: root.library-classification;
-                            wrap: word-wrap;
-                            min-width: 0px;
-                            vertical-stretch: 0;
-                        }
-
-                        metadata-disclosure := Disclosure {
-                            label: Terms.caption-source-dates-details;
-                        }
-
-                        if metadata-disclosure.expanded: VerticalBox {
-                            vertical-stretch: 0;
-                            Rectangle {
-                                height: 1px;
-                                background: Palette.border;
-                                vertical-stretch: 0;
-                            }
-
-                            if root.library-dates != "": Text {
-                                text: root.library-dates;
-                                wrap: word-wrap;
-                                vertical-stretch: 0;
-                                min-width: 0px;
-                            }
-                            utc-dates := Disclosure {
-                                label: ViewCaptions.exact-utc-dates;
-                            }
-
-                            if utc-dates.expanded: TextEdit {
-                                text: root.library-dates-utc;
-                                read-only: true;
-                                wrap: word-wrap;
-                                accessible-label: ViewCaptions.exact-utc-dates-description;
-                                min-width: 0px;
-                                height: root.ui-size * 8;
-                                vertical-stretch: 0;
-                            }
-                            if root.library-key != "": Text {
-                                text: root.library-key;
-                                wrap: word-wrap;
-                                vertical-stretch: 0;
-                                min-width: 0px;
-                            }
-                        }
                         if root.library-token != "" && !root.library-trashed: BoundButton {
                             enabled: Actions.edit-saved-recipe.enabled;
                             text: Actions.edit-saved-recipe.label;
@@ -828,25 +849,9 @@ export component LibraryPane inherits Rectangle {
                                 }
                             }
                         }
-                        Disclosure {
-                            label: Terms.caption-research-citation-and-sound-adaptations;
-                            expanded <=> root.research;
-                        }
-
-                        if root.research && root.can-open-study: Button {
-                            text: Terms.action-open-study-source;
-                            triggered => { root.open-study(); }
-                        }
-                        if root.research: Button {
-                            text: Terms.action-read-selectable-research-and-recipe-details-dialog;
-                            triggered => { root.show-research(); }
-                        }
-                        library-pattern := Disclosure {
-                            label: Terms.caption-waveform-pattern;
-                        }
-
-                        if library-pattern.expanded: VerticalBox {
-                            vertical-stretch: 0;
+                        Section {
+                            title: Terms.caption-waveform-pattern;
+                            ui-size: root.ui-size;
                             Text {
                                 min-width: 0px;
                                 text: root.model-caption;
@@ -855,6 +860,8 @@ export component LibraryPane inherits Rectangle {
                             }
 
                             for lane in root.model-lanes: VerticalBox {
+                                padding: 0px;
+                                spacing: 4px;
                                 vertical-stretch: 0;
                                 Text {
                                     min-width: 0px;
@@ -864,12 +871,14 @@ export component LibraryPane inherits Rectangle {
                                 }
 
                                 Rectangle {
-                                    height: 30px;
+                                    height: root.ui-size * 2.5;
+                                    border-radius: 4px;
                                     background: Palette.control-background;
                                     accessible-role: image;
                                     accessible-label: lane.label + Terms.caption-calculated-pattern;
                                     Path {
-                                        width: parent.width;
+                                        x: 4px;
+                                        width: parent.width - 8px;
                                         height: parent.height;
                                         viewbox-width: 1024;
                                         viewbox-height: 100;
@@ -881,33 +890,122 @@ export component LibraryPane inherits Rectangle {
                                 }
                             }
                         }
-                        Disclosure {
-                            label: "Export sound";
-                            expanded <=> root.export-settings;
+
+                        // A custom recipe has no study or summary to show.
+                        if root.studied != "" || root.summary != "" ||
+                            root.can-open-study: Section {
+                            title: Terms.caption-research-summary;
+                            ui-size: root.ui-size;
+                            if root.studied != "": Text {
+                                min-width: 0px;
+                                text: root.studied;
+                                font-weight: 600;
+                                wrap: word-wrap;
+                                vertical-stretch: 0;
+                            }
+                            if root.summary != "": Text {
+                                min-width: 0px;
+                                text: root.summary;
+                                wrap: word-wrap;
+                                vertical-stretch: 0;
+                            }
+                            HorizontalBox {
+                                padding: 0px;
+                                vertical-stretch: 0;
+                                if root.can-open-study: Button {
+                                    text: Terms.action-open-study-source;
+                                    horizontal-stretch: 0;
+                                    triggered => { root.open-study(); }
+                                }
+                                Button {
+                                    text: Terms.action-full-research-details-dialog;
+                                    horizontal-stretch: 0;
+                                    triggered => { root.show-research(); }
+                                }
+
+                                Rectangle {
+                                    horizontal-stretch: 1;
+                                }
+                            }
                         }
 
-                        if root.export-settings: VerticalBox {
-                            vertical-stretch: 0;
-                            spacing: 10px;
-                            ExportRate {
-                                choices: root.export-rates;
-                                selected <=> root.rate-index;
-                                edit-enabled: true;
-                                changed(i) => { root.rate-changed(i); }
+                        Section {
+                            title: Terms.caption-classification;
+                            ui-size: root.ui-size;
+                            Text {
+                                text: root.library-classification;
+                                wrap: word-wrap;
+                                min-width: 0px;
+                                vertical-stretch: 0;
+                            }
+                        }
+
+                        Section {
+                            title: Terms.caption-export-sound;
+                            ui-size: root.ui-size;
+                            HorizontalBox {
+                                padding: 0px;
+                                vertical-stretch: 0;
+                                ExportRate {
+                                    horizontal-stretch: 0;
+                                    choices: root.export-rates;
+                                    selected <=> root.rate-index;
+                                    edit-enabled: true;
+                                    changed(i) => { root.rate-changed(i); }
+                                }
+
+                                Rectangle {
+                                    horizontal-stretch: 1;
+                                }
                             }
 
-                            Button {
-                                text: Actions.export.label + "…";
-                                enabled: Actions.export.enabled;
-                                max-width: self.preferred-width;
-                                triggered => { root.export-wav(); }
+                            HorizontalBox {
+                                padding: 0px;
+                                vertical-stretch: 0;
+                                Button {
+                                    text: Actions.export.label + "…";
+                                    enabled: Actions.export.enabled;
+                                    horizontal-stretch: 0;
+                                    triggered => { root.export-wav(); }
+                                }
+
+                                Button {
+                                    text: Actions.export-recipe.label + "…";
+                                    enabled: Actions.export-recipe.enabled;
+                                    horizontal-stretch: 0;
+                                    triggered => { root.export-recipe(); }
+                                }
+
+                                Rectangle {
+                                    horizontal-stretch: 1;
+                                }
+                            }
+                        }
+
+                        Section {
+                            title: Terms.caption-source-dates-details;
+                            ui-size: root.ui-size;
+                            if root.library-dates != "": Text {
+                                text: root.library-dates;
+                                wrap: word-wrap;
+                                vertical-stretch: 0;
+                                min-width: 0px;
+                            }
+                            TextEdit {
+                                text: root.library-dates-utc;
+                                read-only: true;
+                                wrap: word-wrap;
+                                accessible-label: ViewCaptions.exact-utc-dates-description;
+                                min-width: 0px;
+                                height: root.ui-size * 6;
+                                vertical-stretch: 0;
                             }
 
-                            Button {
-                                text: Actions.export-recipe.label + "…";
-                                enabled: Actions.export-recipe.enabled;
-                                max-width: self.preferred-width;
-                                triggered => { root.export-recipe(); }
+                            if root.library-key != "": Text {
+                                text: root.library-key;
+                                wrap: word-wrap;
+                                vertical-stretch: 0;
+                                min-width: 0px;
                             }
                         }
                     }

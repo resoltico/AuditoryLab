@@ -84,8 +84,6 @@ export component MainWindow inherits Window {
     in property <[string]> pulse-shape-choices;
     in property <[string]> carrier-choices;
     in property <[ControlOption]> add-choices;
-    in property <string> add-binaural-label;
-    in property <string> add-monaural-label;
     in property <[string]> modulation-choices;
     in property <[string]> span-choices;
     in property <[string]> scale-choices;
@@ -103,7 +101,6 @@ export component MainWindow inherits Window {
     callback remove-component(string);
     callback restore-component(string);
     callback add-component(string, int);
-    function open-component-menu() { dialogs.open-component-menu(); }
 
     in property <string> output-state;
     in property <string> receipt-age;
@@ -152,7 +149,7 @@ export component MainWindow inherits Window {
         if root.learning-visible && !root.monitor-open {
             root.focus-learning();
         } else {
-            monitor-opener.focus-button();
+            transport.focus-monitor();
         }
     }
     in property <bool> can-change-waveform;
@@ -340,13 +337,9 @@ export component MainWindow inherits Window {
     in property <int> tab-index: 0;
     in-out property <int> window-index;
     in-out property <int> rate-index: 1;
-    in-out property <bool> research: false;
     in-out property <bool> held: false;
-    in-out property <bool> notes: false;
-    in-out property <bool> saved-audio: false;
     in-out property <bool> library-detail: false;
     in-out property <length> library-scroll-y: 0px;
-    in-out property <bool> export-settings: false;
     in-out property <length> sidebar-width: 330px;
     public function resize-library-pane(pixels: float) {
         root.sidebar-width = max(230px,min(500px,pixels * 1px));
@@ -373,9 +366,10 @@ export component MainWindow inherits Window {
     in property <bool> library-trashed;
     in property <string> library-status;
     in property <string> library-alert;
-    in-out property <bool> storage-open:false;
     callback collection-filter(int, int);
     in property <string> library-count;
+    // Committed restrictions, shown beside the results instead of in a popup.
+    in property <string> library-restrictions;
     in property <string> calendar-context;
     in property <[string]> band-labels;
     in property <[string]> method-labels;
@@ -443,19 +437,12 @@ export component MainWindow inherits Window {
         window-width: root.width;
         window-height: root.height;
         toolbar-height: toolbar.height;
-        add-choices: root.add-choices;
-        add-binaural-label: root.add-binaural-label;
-        add-monaural-label: root.add-monaural-label;
-        add-component(arg0, arg1) => { root.add-component(arg0, arg1); }
-        add-reason: root.add-reason;
         added-from <=> root.added-from;
         added-through <=> root.added-through;
         analysis-choice <=> root.analysis-choice;
         analysis-labels: root.analysis-labels;
         band-choice <=> root.band-choice;
         calendar-context: root.calendar-context;
-        can-add-component: root.can-add-component;
-        can-add-pair: root.can-add-pair;
         can-import: root.can-import;
         can-manage-library: root.can-manage-library;
         clear-library-filters() => { root.clear-library-filters(); }
@@ -466,13 +453,10 @@ export component MainWindow inherits Window {
         created-through <=> root.created-through;
         direction-choice <=> root.direction-choice;
         direction-labels: root.direction-labels;
-        document: root.document;
         group-choice <=> root.group-choice;
         group-labels: root.group-labels;
-        initialize-library() => { root.initialize-library(); }
         library-alert: root.library-alert;
         library-count: root.library-count;
-        library-status: root.library-status;
         method-choice <=> root.method-choice;
         method-labels: root.method-labels;
         modified-from <=> root.modified-from;
@@ -480,20 +464,12 @@ export component MainWindow inherits Window {
         more-filters(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) => {
             root.more-filters(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
         }
-        open-recipe() => { root.open-recipe(); }
-        pair-add-reason: root.pair-add-reason;
         population-choice <=> root.population-choice;
         population-labels: root.population-labels;
         query <=> root.query;
-        refresh-library() => { root.refresh-library(); }
-        reset-library-sort() => { root.reset-library-sort(); }
         rhythm-filter(arg0, arg1) => { root.rhythm-filter(arg0, arg1); }
         role-choice <=> root.role-choice;
         role-labels: root.role-labels;
-        show-saved() => { root.show-saved(); }
-        sort-choice <=> root.sort-choice;
-        sort-labels: root.sort-labels;
-        storage-open <=> root.storage-open;
         study-query <=> root.study-query;
         ui-size: root.ui-size;
     }
@@ -618,11 +594,12 @@ export component MainWindow inherits Window {
         }
     }
 
+    // Centred and sized for a short explanation; the text scrolls if it is longer.
     preference-popup := PopupWindow {
-        x: 16px;
-        y: 16px;
-        width: min(720px,root.width - 32px);
-        height: min(560px,max(280px,root.height - transport.preferred-height - 32px));
+        width: min(root.ui-size * 40, root.width - 32px);
+        height: min(root.ui-size * 20, max(240px, root.height - 32px));
+        x: (root.width - self.width) / 2;
+        y: max(16px, (root.height - self.height) / 3);
         close-policy: close-on-click-outside;
         forward-focus: preference-focus;
         Rectangle {
@@ -644,7 +621,7 @@ export component MainWindow inherits Window {
                 padding: 16px;
                 spacing: 12px;
                 Text {
-                    text: "Start here preference notice";
+                    text: "Couldn't save the Start here preference";
                     color: Palette.foreground;
                     font-weight: 600;
                     wrap: word-wrap;
@@ -701,7 +678,8 @@ export component MainWindow inherits Window {
                 height: parent.height;
                 padding: 4px;
                 Text {
-                    text: "Start here preference needs attention.";
+                    text: "Couldn't save that you've seen Start here; it may open again " +
+                        "next time. Everything else works.";
                     color: Palette.foreground;
                     wrap: no-wrap;
                     overflow: elide;
@@ -720,8 +698,7 @@ export component MainWindow inherits Window {
         toolbar := HorizontalBox {
             changed preferred-height => { root.update-monitor-layout(); }
             vertical-stretch: 0;
-            min-height: root.ui-size * 3;
-            padding: 4px;
+            padding: 8px;
             workspace-navigation := WorkspaceNavigation {
                 current: root.learning-visible ? 2 : root.tab-index;
                 text-size: root.ui-size;
@@ -736,8 +713,9 @@ export component MainWindow inherits Window {
             }
 
             if !root.learning-visible && root.tab-index == 0: Button {
-                text: Terms.caption-library-options;
-                triggered => { dialogs.open-library-options(); }
+                text: Actions.open-recipe.label + "…";
+                enabled: Actions.open-recipe.enabled;
+                triggered => { root.open-recipe(); }
             }
             // Left of the lasting controls, so a late press on Cancel export
             // lands in the space it leaves rather than on another control.
@@ -757,31 +735,6 @@ export component MainWindow inherits Window {
                 (root.status != "" || root.auxiliary-error != ""): Button {
                 text: Terms.caption-task-details-dialog;
                 triggered => { root.show-diagnostics(); }
-            }
-            if !root.learning-visible && root.tab-index == 1: Button {
-                text: Actions.save.label;
-                enabled: Actions.save.enabled;
-                accessible-description: root.save-reason;
-                triggered => { root.save-recipe(); }
-            }
-            Rectangle {
-                preferred-width: monitor-opener.visible ? monitor-opener.preferred-width : 0px;
-                min-width: self.preferred-width;
-                max-width: self.preferred-width;
-                preferred-height: monitor-opener.visible ? monitor-opener.preferred-height : 0px;
-                min-height: self.preferred-height;
-                max-height: self.preferred-height;
-                monitor-opener := StableButton {
-                    x: 0px;
-                    y: 0px;
-                    visible: !root.learning-visible || root.monitor-open;
-                    text: root.monitor-open ? Terms.action-hide-monitor : Terms.action-show-monitor;
-                    labels: [Terms.action-hide-monitor, Terms.action-show-monitor];
-                    accessible-name: (root.monitor-open ? Terms.action-hide-output-monitor :
-                        Terms.action-show-output-monitor);
-                    expanded: root.monitor-open;
-                    clicked => { root.monitor-open = !root.monitor-open; root.window-changed(); }
-                }
             }
         }
 
@@ -821,7 +774,6 @@ export component MainWindow inherits Window {
                 edit-saved(arg0) => { root.edit-saved(arg0); }
                 export-rates: root.export-rates;
                 export-recipe() => { root.export-recipe(); }
-                export-settings <=> root.export-settings;
                 export-wav() => { root.export-wav(); }
                 file-activity: root.file-activity;
                 focused-library-key <=> root.focused-library-key;
@@ -839,6 +791,12 @@ export component MainWindow inherits Window {
                 library-overview: root.library-overview;
                 library-ownership: root.library-ownership;
                 library-query-open: root.library-query-open;
+                library-restrictions: root.library-restrictions;
+                library-status: root.library-status;
+                refresh-library() => { root.refresh-library(); }
+                reset-library-sort() => { root.reset-library-sort(); }
+                show-saved() => { root.show-saved(); }
+                initialize-library() => { root.initialize-library(); }
                 library-scroll-y <=> root.library-scroll-y;
                 library-token: root.library-token;
                 library-trashed: root.library-trashed;
@@ -859,7 +817,6 @@ export component MainWindow inherits Window {
                 rate-changed(arg0) => { root.rate-changed(arg0); }
                 rate-index <=> root.rate-index;
                 recipe-timing: root.recipe-timing;
-                research <=> root.research;
                 resize-library-pane(arg0) => { root.resize-library-pane(arg0); }
                 rhythm-filter(arg0, arg1) => { root.rhythm-filter(arg0, arg1); }
                 search(arg0) => { root.search(arg0); }
@@ -899,7 +856,6 @@ export component MainWindow inherits Window {
                 document: root.document;
                 document-reset: root.document-reset;
                 draft-brief: root.draft-brief;
-                draft-location: root.draft-location;
                 draft-location-details: root.draft-location-details;
                 duration-field: root.duration-field;
                 routing-choices: root.routing-choices;
@@ -918,8 +874,6 @@ export component MainWindow inherits Window {
                 model-lanes: root.model-lanes;
                 modulation-choices: root.modulation-choices;
                 new-draft() => { root.new-draft(); }
-                notes <=> root.notes;
-                open-component-menu() => { root.open-component-menu(); }
                 pair-add-reason: root.pair-add-reason;
                 peak: root.peak;
                 rate-changed(arg0) => { root.rate-changed(arg0); }
@@ -931,7 +885,9 @@ export component MainWindow inherits Window {
                 restore-parameter(arg0) => { root.restore-parameter(arg0); }
                 retained-warning: root.retained-warning;
                 save-reason: root.save-reason;
-                saved-audio <=> root.saved-audio;
+                save-recipe() => { root.save-recipe(); }
+                add-choices: root.add-choices;
+                add-component(arg0, arg1) => { root.add-component(arg0, arg1); }
                 set-carrier(arg0, arg1) => { root.set-carrier(arg0, arg1); }
                 set-pulse-option(arg0, arg1, arg2) => { root.set-pulse-option(arg0, arg1, arg2); }
                 set-routing(arg0, arg1) => { root.set-routing(arg0, arg1); }
@@ -1042,6 +998,7 @@ export component MainWindow inherits Window {
                 }
 
                 MonitorPanel {
+                    embedded: true;
                     data: root.monitor-data;
                     ui-size: root.ui-size;
                     span-choices: root.span-choices;
@@ -1062,6 +1019,9 @@ export component MainWindow inherits Window {
 
         transport := TransportBar {
             learning: root.learning-visible;
+            compact: root.compact;
+            monitor-open <=> root.monitor-open;
+            monitor-toggled => { root.window-changed(); }
             exporting: root.exporting;
             export-progress: root.progress;
             cancel-export() => { root.cancel-file(); }
@@ -1074,6 +1034,7 @@ export component MainWindow inherits Window {
             play-stop() => { root.play-stop(); }
             stop-audio() => { root.stop-audio(); }
             play-target: root.play-target;
+            play-reason: root.play-reason;
             playback-busy: root.playback-busy;
             player-title: root.player-title;
             show-diagnostics() => { root.show-diagnostics(); }

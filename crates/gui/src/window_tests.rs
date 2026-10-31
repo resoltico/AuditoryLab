@@ -281,7 +281,8 @@ fn assert_monitor_lane_geometry(
             lane_settle(ui.window());
             if ui.get_drawer_fits() {
                 drawer_cases += 1;
-                lane_check(ui.window(), size, "drawer", 7);
+                // The player row, not the drawer, holds Hide and Audio details.
+                lane_check(ui.window(), size, "drawer", 5);
             } else {
                 assert!(
                     ui.get_monitor_open(),
@@ -1114,7 +1115,8 @@ slint::slint! {
         in property <string> family;
         in property <length> size;
         default-font-family:root.family;default-font-size:root.size;
-        out property <length> natural-height:max(measure.min-height,measure.preferred-height);
+        // The application's single control height: 2.5 times the text size, at least 32px.
+        out property <length> natural-height:max(32px, 2.5rem);
         out property <length> widget-minimum-height:measure.min-height;
         out property <length> widget-preferred-height:measure.preferred-height;
         measure := Button {text:"Details…";}
@@ -1596,4 +1598,60 @@ fn diagnose_monitor_focus(root: &ItemRc, focused: &ItemRc, item: &ItemRc) {
         }
         ControlFlow::<()>::Continue(())
     });
+}
+
+slint::slint! {
+    export component PartlyScrolledEditor inherits Window {
+        width: 200px;
+        height: 100px;
+        in-out property <length> scroll <=> flickable.content-y;
+        flickable := Flickable {
+            y: 20px;
+            height: 60px;
+            content-height: 400px;
+            // A clip shorter than its editor, as inside a padded line edit.
+            Rectangle {
+                y: 100px;
+                height: 10px;
+                clip: true;
+                editor := TextInput {
+                    height: 40px;
+                    text: "40";
+                }
+            }
+        }
+        public function focus-editor() { editor.focus(); }
+        out property <bool> editor-focused: editor.has-focus;
+    }
+}
+
+/// A key reaches an editor whose own clip has scrolled out while the editor
+/// still overlaps the viewport: the scroll view, not a hidden parent, hides it.
+#[test]
+fn partly_scrolled_editor_keeps_focus_through_keys() {
+    install();
+    let window = PartlyScrolledEditor::new().unwrap();
+    window.show().unwrap();
+    window.invoke_focus_editor();
+    // Clip spans 100..110 and the editor 100..140 in content; the viewport
+    // starts at window y 20. At -112 the clip lies at 8..18, above it; at -110
+    // it ends exactly at its edge. Either way the editor's lower part remains.
+    for scroll in [-112.0, -110.0] {
+        window.set_scroll(scroll);
+        crate::test_platform::settle(window.window());
+        assert!(window.get_editor_focused());
+        for key in [slint::SharedString::from(Key::Escape), "5".into()] {
+            window
+                .window()
+                .dispatch_event(WindowEvent::KeyPressed { text: key.clone() });
+            window
+                .window()
+                .dispatch_event(WindowEvent::KeyReleased { text: key });
+            crate::test_platform::settle(window.window());
+            assert!(
+                window.get_editor_focused(),
+                "a key at scroll {scroll} must not drop focus"
+            );
+        }
+    }
 }

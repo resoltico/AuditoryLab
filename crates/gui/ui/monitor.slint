@@ -116,6 +116,9 @@ export component MonitorPanel inherits VerticalBox {
     in property <[string]> span-choices;
     in property <[string]> scale-choices;
     in property <length> ui-size:13px;
+    // Below the player, whose Monitor and Audio details buttons already
+    // close the drawer and open diagnostics.
+    in property <bool> embedded: false;
     callback span(int);
     callback scale(int);
     callback hold();
@@ -151,13 +154,13 @@ export component MonitorPanel inherits VerticalBox {
             accessible-label: root.data.age;
         }
 
-        Button {
+        if !root.embedded: Button {
             text: Terms.caption-details-dialog;
             accessible-label: Terms.caption-full-audio-diagnostics-and-capture-source;
             triggered => { root.details(); }
         }
 
-        Button {
+        if !root.embedded: Button {
             text: Terms.action-hide;
             accessible-label: Terms.action-hide-output-monitor;
             triggered => { root.collapse(); }

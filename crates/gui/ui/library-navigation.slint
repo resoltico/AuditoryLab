@@ -13,7 +13,8 @@ export component LibraryNavigationItem inherits Rectangle {
     accessible-checked: root.selected;
     accessible-action-default => { root.activated(); }
     height: max(root.text-size * 3, content.preferred-height + 20px);
-    background: root.selected ? Palette.selection-background : Palette.background;
+    // The same selection as Library results: a soft accent fill and an accent edge.
+    background: root.selected ? Palette.accent-background.with-alpha(0.12) : Palette.background;
     border-width: focus.has-focus ? 2px : 0px;
     border-color: Palette.accent-background;
     border-radius: 5px;
@@ -36,16 +37,20 @@ export component LibraryNavigationItem inherits Rectangle {
             Text {
                 text: root.label;
                 min-width: 0px;
+                horizontal-stretch: 1;
                 wrap: word-wrap;
                 font-weight: root.selected ? 700 : 500;
-                color: root.selected ? Palette.selection-foreground : Palette.control-foreground;
+                color: Palette.control-foreground;
             }
 
+            // Counts form one right-aligned column down the rail.
             Text {
                 text: root.count;
                 horizontal-stretch: 0;
+                min-width: root.text-size * 2;
+                horizontal-alignment: right;
                 vertical-alignment: center;
-                color: root.selected ? Palette.selection-foreground : Palette.control-foreground;
+                color: Palette.control-foreground;
             }
         }
 
@@ -54,7 +59,7 @@ export component LibraryNavigationItem inherits Rectangle {
             min-width: 0px;
             wrap: word-wrap;
             font-size: root.text-size * 0.9;
-            color: root.selected ? Palette.selection-foreground : Palette.control-foreground;
+            color: Palette.control-foreground.with-alpha(0.72);
         }
     }
 

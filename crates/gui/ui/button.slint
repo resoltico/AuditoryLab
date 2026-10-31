@@ -2,7 +2,11 @@
 import { Button as ToolkitButton } from "std-widgets.slint";
 
 // Toolkit input is forwarded to application actions only while enabled.
+// Every button has one height, scaled from the window's font size, so a row
+// of controls never mixes stretched and natural heights.
 export component Button inherits ToolkitButton {
     callback triggered();
+    min-height: max(32px, 2.5rem);
+    max-height: self.min-height;
     clicked => { if root.enabled { root.triggered(); } }
 }

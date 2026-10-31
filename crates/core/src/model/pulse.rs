@@ -184,3 +184,71 @@ impl PulseSpec {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ParameterId as P;
+    use crate::test_support::finite;
+
+    fn shaped() -> PulseSpec {
+        PulseSpec {
+            rate_hz: finite(4.0),
+            width: PulseWidth::DutyCycle {
+                fraction: finite(0.25),
+            },
+            shape: PulseShape::RaisedCosine {
+                rise_seconds: finite(0.002),
+                fall_seconds: finite(0.001),
+            },
+        }
+    }
+
+    #[test]
+    fn duty_and_edges_are_addressed_by_their_owner_only() {
+        for (modulation, duty, rise, fall, other) in [
+            (
+                false,
+                P::SourceDuty,
+                P::SourceRise,
+                P::SourceFall,
+                P::ModulationDuty,
+            ),
+            (
+                true,
+                P::ModulationDuty,
+                P::ModulationRise,
+                P::ModulationFall,
+                P::SourceDuty,
+            ),
+        ] {
+            let mut spec = shaped();
+            assert_eq!(spec.get(duty, modulation), Some(finite(0.25)));
+            assert_eq!(spec.get(rise, modulation), Some(finite(0.002)));
+            assert_eq!(spec.get(fall, modulation), Some(finite(0.001)));
+            assert_eq!(spec.get(other, modulation), None);
+            assert!(spec.set(duty, finite(0.5), modulation));
+            assert!(spec.set(rise, finite(0.003), modulation));
+            assert!(spec.set(fall, finite(0.004), modulation));
+            assert!(!spec.set(other, finite(0.5), modulation));
+            assert_eq!(
+                spec.width,
+                PulseWidth::DutyCycle {
+                    fraction: finite(0.5)
+                }
+            );
+            assert_eq!(
+                spec.shape,
+                PulseShape::RaisedCosine {
+                    rise_seconds: finite(0.003),
+                    fall_seconds: finite(0.004),
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn duty_width_requests_fraction_of_one_period() {
+        assert_eq!(shaped().requested_seconds(), 0.0625);
+    }
+}

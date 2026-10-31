@@ -259,17 +259,39 @@ jobs:
         # keeps one worker/build directory, rather than competing for disk/CPU.
         include:
           - source: render/synthesis
-            shard: 0/2
+            shard: 0/12
           - source: render/synthesis
-            shard: 1/2
+            shard: 1/12
+          - source: render/synthesis
+            shard: 2/12
+          - source: render/synthesis
+            shard: 3/12
+          - source: render/synthesis
+            shard: 4/12
+          - source: render/synthesis
+            shard: 5/12
+          - source: render/synthesis
+            shard: 6/12
+          - source: render/synthesis
+            shard: 7/12
+          - source: render/synthesis
+            shard: 8/12
+          - source: render/synthesis
+            shard: 9/12
+          - source: render/synthesis
+            shard: 10/12
+          - source: render/synthesis
+            shard: 11/12
           - source: render/live
             shard: 0/2
           - source: render/live
             shard: 1/2
           - source: analysis/timing
-            shard: 0/2
+            shard: 0/3
           - source: analysis/timing
-            shard: 1/2
+            shard: 1/3
+          - source: analysis/timing
+            shard: 2/3
           - source: model/authored
             shard: 0/2
           - source: model/authored
@@ -279,9 +301,11 @@ jobs:
           - source: analysis/facts
             shard: 0/1
           - source: analysis/rhythm
-            shard: 0/2
+            shard: 0/3
           - source: analysis/rhythm
-            shard: 1/2
+            shard: 1/3
+          - source: analysis/rhythm
+            shard: 2/3
           - source: model/validity
             shard: 0/1
           - source: model/finite
@@ -340,6 +364,13 @@ jobs:
             # Operator/function exclusions keep the other guards mutated.
             args+=(--exclude-re 'replace \| with \^ in parts$'
                    --exclude-re 'replace < with <= in times_at_most$')
+          fi
+          if [[ "$MUTATION_SOURCE" == render/live ]]; then
+            # Silent sources yield +0.0 with or without the shared gain; the
+            # guard only skips that work. Extra ramp snapshots are overwritten
+            # by the call's final one; the other && in render is a let chain.
+            args+=(--exclude-re 'replace match guard silent with false in Slot::frame$'
+                   --exclude-re 'replace && with \|\| in Engine::render$')
           fi
           if [[ "$MUTATION_SOURCE" == render/finite_source ]]; then
             # Reachable non-ended sources have cursor < total; ended sources are

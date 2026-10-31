@@ -1348,6 +1348,7 @@ impl WindowInner {
         // Editing a scroll-clipped control needs its context back, but captured
         // shortcuts and pointer movement must leave the user's viewport alone.
         let current_focus = self.focus_item.borrow().upgrade();
+        let mut revealed = None;
         if internal_key_event.event_type == KeyEventType::KeyPressed
             && !is_modifier_event
             && let Some(focus_item) = item.as_ref()
@@ -1355,6 +1356,7 @@ impl WindowInner {
             && !focus_item.is_visible()
         {
             focus_item.try_scroll_into_visible();
+            revealed = Some(focus_item.clone());
         }
 
         // Deliver key_event (to focused item, going up towards the window):
@@ -1366,6 +1368,14 @@ impl WindowInner {
             ) == crate::input::KeyEventResult::EventAccepted
             {
                 self.ensure_tree_instantiated();
+                // The handler may move the editor, for example when a restored
+                // value shortens text above it; reveal it again in the new
+                // layout. Revealing moves only as far as needed.
+                if let Some(revealed) = revealed
+                    && self.focus_item.borrow().upgrade().as_ref() == Some(&revealed)
+                {
+                    revealed.try_scroll_into_visible();
+                }
                 return crate::input::KeyEventResult::EventAccepted;
             }
             item = focus_item.parent_item(ParentItemTraversalMode::StopAtPopups);

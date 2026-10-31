@@ -577,4 +577,46 @@ mod heading_tests {
             "Steady tone"
         );
     }
+
+    #[test]
+    fn pair_level_issues_name_the_lane_that_carries_each_level() {
+        use crate::{Component, Lane, ParameterId, Sound};
+        let id = crate::ComponentId::new(3).unwrap();
+        let pair = |first: f64, second: f64| {
+            Sound::new(alloc::vec![Component {
+                id,
+                form: ComponentForm {
+                    source: SoundSource::BinauralPair {
+                        first_hz: finite(200.0),
+                        offset_hz: finite(6.0),
+                        first_peak_dbfs: finite(first),
+                        second_peak_dbfs: finite(second),
+                    },
+                    modulation: None,
+                },
+            }])
+            .unwrap()
+        };
+        let owner = |sound: &Sound| {
+            let analysis = super::nominal(sound);
+            let owners: alloc::vec::Vec<_> = analysis
+                .diagnostics
+                .iter()
+                .filter_map(|issue| match issue {
+                    super::Issue::Value { owner, issue } => Some((*owner, issue.parameter)),
+                    super::Issue::Pair(_) => None,
+                })
+                .collect();
+            assert_eq!(owners.len(), 1, "{owners:?}");
+            owners[0]
+        };
+        assert_eq!(
+            owner(&pair(-30.0, 3.0)),
+            (id.with_lane(Lane::Secondary), ParameterId::PairSecondLevel)
+        );
+        assert_eq!(
+            owner(&pair(3.0, -30.0)),
+            (id.with_lane(Lane::Primary), ParameterId::PairFirstLevel)
+        );
+    }
 }
