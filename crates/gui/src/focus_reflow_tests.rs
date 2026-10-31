@@ -304,35 +304,10 @@ fn assert_clipped_keyboard_and_pointer(h: &Harness, input: &ItemRc, overflow: f3
     assert_eq!(inner.focus_item.borrow().upgrade().as_ref(), Some(input));
     h.key(Key::Escape);
     let focused = inner.focus_item.borrow().upgrade();
-    let describe = |item: &ItemRc| {
-        let geometry = item.geometry();
-        format!(
-            "{:?} {:?} at {:?} size {:?} visible={}",
-            item.accessible_role(),
-            item.accessible_string_property(AccessibleStringProperty::Label),
-            item.map_to_window(geometry.origin),
-            geometry.size,
-            item.is_visible()
-        )
-    };
-    let in_tree = inner
-        .window_item_rc()
-        .unwrap()
-        .visit_descendants(|item| {
-            if item == input {
-                ControlFlow::Break(())
-            } else {
-                ControlFlow::Continue(())
-            }
-        })
-        .is_some();
     assert!(
         focused.as_ref() == Some(input),
-        "no-pointer Escape must retain the clipped editor's focus: focused={:?}, \
-         input={} in_tree={in_tree} scroll={} overflow={overflow}",
-        focused.as_ref().map(describe),
-        describe(input),
-        ui.get_editor_scroll_y()
+        "no-pointer Escape must retain the clipped editor's focus: {}",
+        escape_focus_report(h, focused.as_ref(), input, overflow)
     );
     assert_eq!(
         field_state(h, ParameterId::SourcePulseRate),
@@ -382,6 +357,63 @@ fn assert_clipped_keyboard_and_pointer(h: &Harness, input: &ItemRc, overflow: f3
     assert_eq!(inner.focus_item.borrow().upgrade().as_ref(), Some(input));
     h.key(Key::Escape);
     assert_pointer_blur_commit(h);
+}
+
+/// Where the editor, its viewport and focus are after a failed focus check.
+fn escape_focus_report(
+    h: &Harness,
+    focused: Option<&ItemRc>,
+    input: &ItemRc,
+    overflow: f32,
+) -> String {
+    let ui = h.ui();
+    let inner = WindowInner::from_pub(ui.window());
+    let describe = |item: &ItemRc| {
+        let geometry = item.geometry();
+        format!(
+            "{:?} {:?} at {:?} size {:?} visible={}",
+            item.accessible_role(),
+            item.accessible_string_property(AccessibleStringProperty::Label),
+            item.map_to_window(geometry.origin),
+            geometry.size,
+            item.is_visible()
+        )
+    };
+    let in_tree = inner
+        .window_item_rc()
+        .unwrap()
+        .visit_descendants(|item| {
+            if item == input {
+                ControlFlow::Break(())
+            } else {
+                ControlFlow::Continue(())
+            }
+        })
+        .is_some();
+    let viewport = inner.window_item_rc().unwrap().visit_descendants(|item| {
+        let holds_input = item
+            .visit_descendants(|child| {
+                if child == input {
+                    ControlFlow::Break(())
+                } else {
+                    ControlFlow::Continue(())
+                }
+            })
+            .is_some();
+        if item.downcast::<Flickable>().is_some() && holds_input {
+            ControlFlow::Break(describe(item))
+        } else {
+            ControlFlow::Continue(())
+        }
+    });
+    format!(
+        "focused={:?}, input={} in_tree={in_tree} scroll={} overflow={overflow} \
+         viewport={viewport:?} window={:?}",
+        focused.map(describe),
+        describe(input),
+        ui.get_editor_scroll_y(),
+        ui.window().size()
+    )
 }
 
 fn clip_pending_entry(h: &Harness) -> (ItemRc, f32) {

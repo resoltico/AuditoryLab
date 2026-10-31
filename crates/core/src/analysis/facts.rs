@@ -230,3 +230,35 @@ crate::vocabulary::vocabulary! { SlotRole,"slot_role" {
     Outgoing => ("outgoing","Outgoing","outgoing"),
     Incoming => ("incoming","Incoming","incoming"),
 }}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::finite;
+
+    #[test]
+    fn equal_carriers_report_a_positive_zero_pair_rate() {
+        let rate = SampleRate::DEFAULT;
+        let step = 1_u64 << 40;
+        assert!(pair_rate(step, step, rate).is_sign_positive());
+        assert!(pair_rate(step, step + 1, rate) > 0.0);
+        assert!(pair_rate(step + 1, step, rate) < 0.0);
+    }
+
+    #[test]
+    fn nominal_duty_uses_the_realized_window_and_requested_rate() {
+        let facts = PulseFacts {
+            rate_hz: 10.0,
+            requested_width_seconds: 0.05,
+            width_frames: 2_400,
+            sample_rate: SampleRate::DEFAULT,
+            width: crate::PulseWidth::DutyCycle {
+                fraction: finite(0.5),
+            },
+            shape: crate::PulseShape::Rectangular {},
+            edge_frames: [0, 0],
+        };
+        assert_eq!(facts.realized_width_seconds(), 0.05);
+        assert_eq!(facts.nominal_duty(), 0.5);
+    }
+}

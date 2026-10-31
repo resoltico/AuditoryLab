@@ -341,6 +341,13 @@ jobs:
             args+=(--exclude-re 'replace \| with \^ in parts$'
                    --exclude-re 'replace < with <= in times_at_most$')
           fi
+          if [[ "$MUTATION_SOURCE" == render/live ]]; then
+            # Silent sources yield +0.0 with or without the shared gain; the
+            # guard only skips that work. Extra ramp snapshots are overwritten
+            # by the call's final one; the other && in render is a let chain.
+            args+=(--exclude-re 'replace match guard silent with false in Slot::frame$'
+                   --exclude-re 'replace && with \|\| in Engine::render$')
+          fi
           if [[ "$MUTATION_SOURCE" == render/finite_source ]]; then
             # Reachable non-ended sources have cursor < total; ended sources are
             # rejected by the preceding !self.ended guard in begin_buffer.

@@ -1344,4 +1344,38 @@ mod tests {
         assert_eq!(engine.render(&mut out), engine.ramp_frames() as usize);
         assert!(engine.is_finished());
     }
+
+    #[test]
+    fn an_unchanged_value_stays_exact_through_a_ramp() {
+        // Interpolating equal endpoints is not exact: 0.1·0.7 + 0.1·0.3 ≠ 0.1.
+        assert_eq!(between(0.1, 0.1, 0.3).to_bits(), 0.1_f64.to_bits());
+        assert_eq!(glide(7, 7, 0.3), 7);
+    }
+
+    #[test]
+    fn live_pair_observations_report_their_realized_offset() {
+        let pair = ComponentForm {
+            source: crate::SoundSource::BinauralPair {
+                first_hz: crate::test_support::finite(200.0),
+                offset_hz: crate::test_support::finite(6.0),
+                first_peak_dbfs: crate::test_support::finite(-30.0),
+                second_peak_dbfs: crate::test_support::finite(-30.0),
+            },
+            modulation: None,
+        };
+        let mut engine = Engine::new(rate());
+        assert!(engine.set(&crate::test_support::target(rate(), &[(id(1), pair)]).unwrap()));
+        render(&mut engine, 64);
+        let observation = engine.observation().unwrap();
+        let offsets: Vec<_> = observation
+            .voices
+            .iter()
+            .flatten()
+            .map(|voice| voice.facts.pair.unwrap().realized_offset_hz.unwrap())
+            .collect();
+        assert_eq!(offsets.len(), 2);
+        for offset in offsets {
+            assert!((offset - 6.0).abs() < 1e-6, "{offset}");
+        }
+    }
 }
