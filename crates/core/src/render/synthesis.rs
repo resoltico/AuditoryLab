@@ -181,36 +181,25 @@ impl Pulse {
         }
         // Frame x has reached period k's onset exactly when periods(x) ≥ k, so
         // edge membership needs no onset division; only edge frames locate it.
-        let in_rise = n < self.rise_frames || self.periods(n - self.rise_frames) < k;
-        let fall_start = self.frames - self.fall_frames;
-        let in_fall = !in_rise && n >= fall_start && self.periods(n - fall_start) >= k;
-        #[cfg(debug_assertions)]
-        {
-            let local = self.local_in(n, k);
-            debug_assert_eq!(in_rise, local < self.rise_frames);
-            debug_assert_eq!(
-                in_rise || in_fall,
-                local < self.rise_frames || self.frames - 1 - local < self.fall_frames
-            );
-        }
+        let in_rise = n
+            .checked_sub(self.rise_frames)
+            .is_none_or(|earlier| self.periods(earlier) < k);
+        let in_fall = !in_rise
+            && n.checked_sub(self.frames - self.fall_frames)
+                .is_some_and(|earlier| self.periods(earlier) >= k);
         if !in_rise && !in_fall {
             return 1.0;
         }
         let local = self.local_in(n, k);
-        let remaining = self.frames - 1 - local;
-        let edge = if local < self.rise_frames {
-            Some((local, self.rise_frames))
-        } else if remaining < self.fall_frames {
-            Some((remaining, self.fall_frames))
+        let (index, length) = if in_rise {
+            (local, self.rise_frames)
         } else {
-            None
+            (self.frames - 1 - local, self.fall_frames)
         };
-        edge.map_or(1.0, |(index, length)| {
-            (1.0 - libm::cos(
-                core::f64::consts::PI * crate::conversion::frames_to_f64(index)
-                    / crate::conversion::frames_to_f64(length),
-            )) / 2.0
-        })
+        (1.0 - libm::cos(
+            core::f64::consts::PI * crate::conversion::frames_to_f64(index)
+                / crate::conversion::frames_to_f64(length),
+        )) / 2.0
     }
 }
 #[cfg(test)]
@@ -361,6 +350,67 @@ impl GeneratorLane {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Shaped samples equal the original rule that locates every open frame
+    /// by its onset division before choosing an edge.
+    #[test]
+    fn shaped_edges_match_the_located_frame_reference() {
+        fn reference(pulse: Pulse, n: u64) -> f64 {
+            let open = n < pulse.frames
+                || pulse.periods(n) * u64::from(pulse.fs) > pulse.rate_product(n - pulse.frames);
+            if !open {
+                return 0.0;
+            }
+            let local = pulse.local(n);
+            let remaining = pulse.frames - 1 - local;
+            let edge = if local < pulse.rise_frames {
+                Some((local, pulse.rise_frames))
+            } else if remaining < pulse.fall_frames {
+                Some((remaining, pulse.fall_frames))
+            } else {
+                None
+            };
+            edge.map_or(1.0, |(index, length)| {
+                (1.0 - libm::cos(
+                    core::f64::consts::PI * crate::conversion::frames_to_f64(index)
+                        / crate::conversion::frames_to_f64(length),
+                )) / 2.0
+            })
+        }
+        let finite = |value| crate::Finite::new(value).unwrap();
+        for fs in [44_100, 48_000] {
+            for (rate, fraction, rise, fall) in [
+                (40.0, 0.5, 0.002, 0.001),
+                (37.3, 0.25, 0.0005, 0.003),
+                (1_000.7, 0.6, 0.0003, 0.0002),
+                // Edges filling the window, so rise and fall meet.
+                (100.0, 0.5, 0.0025, 0.002_45),
+            ] {
+                let pulse = pulse_spec(
+                    crate::PulseSpec {
+                        rate_hz: finite(rate),
+                        width: crate::PulseWidth::DutyCycle {
+                            fraction: finite(fraction),
+                        },
+                        shape: crate::PulseShape::RaisedCosine {
+                            rise_seconds: finite(rise),
+                            fall_seconds: finite(fall),
+                        },
+                    },
+                    fs,
+                )
+                .unwrap();
+                let far = 1_u64 << 33;
+                for n in (0..u64::from(fs) / 4).chain(far..far + u64::from(fs) / 20) {
+                    assert_eq!(
+                        pulse.sample(n).to_bits(),
+                        reference(pulse, n).to_bits(),
+                        "{rate} Hz at {fs}: frame {n}"
+                    );
+                }
+            }
+        }
+    }
 
     /// Exact reference: round(p/q * 2^64) for rational hz = p/q.
     fn reference_step(p: u128, q: u128, rate: u128) -> u64 {
