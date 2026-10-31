@@ -455,10 +455,8 @@ export component MainWindow inherits Window {
         direction-labels: root.direction-labels;
         group-choice <=> root.group-choice;
         group-labels: root.group-labels;
-        initialize-library() => { root.initialize-library(); }
         library-alert: root.library-alert;
         library-count: root.library-count;
-        library-status: root.library-status;
         method-choice <=> root.method-choice;
         method-labels: root.method-labels;
         modified-from <=> root.modified-from;
@@ -466,18 +464,12 @@ export component MainWindow inherits Window {
         more-filters(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) => {
             root.more-filters(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
         }
-        open-recipe() => { root.open-recipe(); }
         population-choice <=> root.population-choice;
         population-labels: root.population-labels;
         query <=> root.query;
-        refresh-library() => { root.refresh-library(); }
-        reset-library-sort() => { root.reset-library-sort(); }
         rhythm-filter(arg0, arg1) => { root.rhythm-filter(arg0, arg1); }
         role-choice <=> root.role-choice;
         role-labels: root.role-labels;
-        show-saved() => { root.show-saved(); }
-        sort-choice <=> root.sort-choice;
-        sort-labels: root.sort-labels;
         study-query <=> root.study-query;
         ui-size: root.ui-size;
     }
@@ -719,8 +711,9 @@ export component MainWindow inherits Window {
             }
 
             if !root.learning-visible && root.tab-index == 0: Button {
-                text: Terms.caption-library-options;
-                triggered => { dialogs.open-library-options(); }
+                text: Actions.open-recipe.label + "…";
+                enabled: Actions.open-recipe.enabled;
+                triggered => { root.open-recipe(); }
             }
             // Left of the lasting controls, so a late press on Cancel export
             // lands in the space it leaves rather than on another control.
@@ -797,6 +790,11 @@ export component MainWindow inherits Window {
                 library-ownership: root.library-ownership;
                 library-query-open: root.library-query-open;
                 library-restrictions: root.library-restrictions;
+                library-status: root.library-status;
+                refresh-library() => { root.refresh-library(); }
+                reset-library-sort() => { root.reset-library-sort(); }
+                show-saved() => { root.show-saved(); }
+                initialize-library() => { root.initialize-library(); }
                 library-scroll-y <=> root.library-scroll-y;
                 library-token: root.library-token;
                 library-trashed: root.library-trashed;

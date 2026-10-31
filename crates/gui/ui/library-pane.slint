@@ -79,6 +79,11 @@ export component LibraryPane inherits Rectangle {
     in property <string> library-ownership;
     in property <bool> library-query-open;
     in property <string> library-restrictions;
+    in property <string> library-status;
+    callback refresh-library();
+    callback reset-library-sort();
+    callback show-saved();
+    callback initialize-library();
     private property <bool> library-restore-ready: false;
     private property <bool> library-restoring: false;
     in-out property <length> library-scroll-y;
@@ -244,6 +249,17 @@ export component LibraryPane inherits Rectangle {
                         }
                         if root.compact: ComboBox {
                             min-width: 0px;
+                            model: root.sort-labels;
+                            current-index <=> root.sort-choice;
+                            accessible-label: Terms.facet-sort-library;
+                            selected(value) => {
+                                root.collection-filter(root.collection-choice,
+                                root.sort-choice);
+                            }
+                        }
+
+                        if root.compact: ComboBox {
+                            min-width: 0px;
                             model: root.band-labels;
                             current-index <=> root.band-choice;
                             accessible-label: ViewCaptions.nominal-rhythm-reference-band;
@@ -404,15 +420,6 @@ export component LibraryPane inherits Rectangle {
                             vertical-stretch: 0;
                             Button {
                                 horizontal-stretch: 0;
-                                text: (Actions.open-recipe.label + "…");
-                                enabled: Actions.open-recipe.enabled;
-                                triggered => {
-                                    root.open-recipe();
-                                }
-                            }
-
-                            Button {
-                                horizontal-stretch: 0;
                                 text: Terms.caption-create-sound;
                                 enabled: root.can-new;
                                 triggered => { root.new-draft(); }
@@ -569,6 +576,61 @@ export component LibraryPane inherits Rectangle {
                                 }
                             }
                         }
+                        // Library-wide tools and storage state, at the end of the
+                        // results so they never hide behind a menu.
+                        Section {
+                            title: Terms.caption-library-storage-and-recovery;
+                            ui-size: root.ui-size;
+                            Text {
+                                text: root.library-status;
+                                wrap: word-wrap;
+                                min-width: 0px;
+                                vertical-stretch: 0;
+                            }
+
+                            HorizontalBox {
+                                padding: 0px;
+                                vertical-stretch: 0;
+                                Button {
+                                    enabled: Actions.library-refresh.enabled;
+                                    text: Actions.library-refresh.label;
+                                    horizontal-stretch: 0;
+                                    triggered => { root.refresh-library(); }
+                                }
+
+                                Button {
+                                    enabled: Actions.show-saved.enabled;
+                                    text: Actions.show-saved.label;
+                                    horizontal-stretch: 0;
+                                    triggered => { root.show-saved(); }
+                                }
+
+                                Rectangle {
+                                    horizontal-stretch: 1;
+                                }
+                            }
+
+                            HorizontalBox {
+                                padding: 0px;
+                                vertical-stretch: 0;
+                                Button {
+                                    text: Terms.action-reset-sort;
+                                    horizontal-stretch: 0;
+                                    triggered => { root.reset-library-sort(); }
+                                }
+
+                                Button {
+                                    enabled: Actions.library-init.enabled;
+                                    text: Actions.library-init.label;
+                                    horizontal-stretch: 0;
+                                    triggered => { root.initialize-library(); }
+                                }
+                                Rectangle {
+                                    horizontal-stretch: 1;
+                                }
+                            }
+                        }
+
                         Rectangle {
                             vertical-stretch: 1;
                         }

@@ -78,7 +78,6 @@ chrome! {
     Caption {
         AudioControls => ("caption-audio-controls", "Audio controls"),
         LibraryFilters => ("caption-library-filters", "Filters"),
-        LibraryOptions => ("caption-library-options", "Library options…"),
         WorkspaceNavigation => ("caption-workspace-navigation", "Workspace navigation"),
         SourceDatesDetails => ("caption-source-dates-details", "Source and dates"),
         ExportSound => ("caption-export-sound", "Export"),

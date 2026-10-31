@@ -2151,7 +2151,8 @@ fn reveal_library_control(h: &Harness, prefix: &str) -> ItemRc {
         h.ui()
             .window()
             .dispatch_event(WindowEvent::PointerScrolled {
-                position: slint::LogicalPosition::new(780.0, 400.0),
+                // Scroll the view that holds the control: the list or the details.
+                position: slint::LogicalPosition::new(position.x, 400.0),
                 delta_x: 0.0,
                 delta_y: 400.0 - position.y,
             });
@@ -2286,12 +2287,8 @@ fn compact_unavailable_root_keeps_recovery_and_non_authoritative_counts_visible(
         ui.get_library_empty_message()
             .contains("Incomplete inventory")
     );
-    action_button(ui, "Library options…").accessible_action(&AccessibilityAction::Default);
-    h.settle();
-    assert!(action_button(ui, "Refresh").is_visible());
-    assert!(action_button(ui, "Clear all filters").is_visible());
-    labelled(ui, "Library storage and recovery").accessible_action(&AccessibilityAction::Default);
-    h.settle();
+    assert!(reveal_library_control(&h, "Refresh").is_visible());
+    assert!(reveal_library_control(&h, "Clear all filters").is_visible());
     assert!(reveal_library_control(&h, "Initialize configured library").is_visible());
 }
 
@@ -2436,11 +2433,8 @@ fn local_dates_expose_exact_utc_and_reset_sort_preserves_committed_filters() {
     h.settle();
     let key = LibraryKey::User(id).to_string();
     assert_eq!(ui.get_library_key(), key);
-    action_button(ui, "Library options…").accessible_action(&AccessibilityAction::Default);
+    reveal_library_control(&h, "Reset sort").accessible_action(&AccessibilityAction::Default);
     h.settle();
-    action_button(ui, "Reset sort").accessible_action(&AccessibilityAction::Default);
-    h.settle();
-    h.key(Key::Escape);
     h.adapter.inspect(|w| {
         let q = w.catalog_query();
         assert_eq!(q.scope, auditorylab_app::discovery::query::Scope::User);
@@ -3946,12 +3940,8 @@ fn assert_empty_scope_recovery(h: &Harness) {
         ui.invoke_collection_filter(scope, sort_choice(ui, SortBy::Title));
         h.settle();
         assert_eq!(ui.get_catalog().row_count(), 0);
-        action_button(ui, "Library options…").accessible_action(&AccessibilityAction::Default);
-        h.settle();
         assert!(reveal_library_control(h, "Initialize configured library").is_visible());
-        ui.invoke_close_library_filters();
-        h.settle();
-        let refresh = centre(&action_button(ui, "Refresh"));
+        let refresh = centre(&reveal_library_control(h, "Refresh"));
         drag(ui, refresh, refresh);
         h.wait_for_files();
         assert_eq!(
@@ -3976,13 +3966,13 @@ fn assert_unavailable_root_sizes(h: &Harness) {
         h.settle();
         for name in [
             "Filters",
-            "Library options…",
+            "Refresh",
             "Clear all filters",
             "Open recipe…",
             "Create sound",
             "Play selected sound",
         ] {
-            let item = if matches!(name, "Clear all filters" | "Open recipe…" | "Create sound") {
+            let item = if matches!(name, "Clear all filters" | "Refresh" | "Create sound") {
                 find_control(ui, |item| {
                     item.is_accessible()
                         && item
@@ -3994,7 +3984,7 @@ fn assert_unavailable_root_sizes(h: &Harness) {
             } else {
                 action_button(ui, name)
             };
-            if matches!(name, "Clear all filters" | "Open recipe…" | "Create sound") {
+            if matches!(name, "Clear all filters" | "Refresh" | "Create sound") {
                 let owns_focus = || {
                     let focused = WindowInner::from_pub(ui.window())
                         .focus_item

@@ -34,27 +34,19 @@ export component Dialogs inherits Rectangle {
     in property <[string]> direction-labels;
     in-out property <int> group-choice;
     in property <[string]> group-labels;
-    callback initialize-library();
     in property <string> library-alert;
     in property <string> library-count;
-    in property <string> library-status;
     in-out property <int> method-choice;
     in property <[string]> method-labels;
     in-out property <string> modified-from;
     in-out property <string> modified-through;
     callback more-filters(string, int, int, int, int, int, DateInput, DateInput, DateInput);
-    callback open-recipe();
     in-out property <int> population-choice;
     in property <[string]> population-labels;
     in-out property <string> query;
-    callback refresh-library();
-    callback reset-library-sort();
     callback rhythm-filter(int, int);
     in-out property <int> role-choice;
     in property <[string]> role-labels;
-    callback show-saved();
-    in-out property <int> sort-choice;
-    in property <[string]> sort-labels;
     in-out property <string> study-query;
     in property <length> ui-size;
     in property <length> window-width;
@@ -66,7 +58,6 @@ export component Dialogs inherits Rectangle {
     public function close-query-details() { query-popup.close(); }
     public function open-library-filters() { filters-popup.show(); }
     public function close-library-filters() { filters-popup.close(); }
-    public function open-library-options() { library-options.show(); }
 
     public function clear-applied-filters() {
         root.clear-library-filters();
@@ -304,96 +295,4 @@ export component Dialogs inherits Rectangle {
         }
     }
 
-    library-options := PopupWindow {
-        x: max(8px,root.window-width - self.width - 12px);
-        y: root.toolbar-height + 8px;
-        width: min(450px,root.window-width - 24px);
-        height: min(480px,root.window-height - root.toolbar-height - 24px);
-        close-policy: close-on-click-outside;
-        Rectangle {
-            background: Palette.background;
-            border-width: 1px;
-            border-color: Palette.border;
-            border-radius: 6px;
-        }
-
-        FocusScope {
-            key-pressed(event) => {
-                if event.text == Key.Escape {
-                    library-options.close();
-                    return accept;
-                }
-                return reject;
-            }
-            options-scroll := ScrollView {
-                VerticalBox {
-                    width: options-scroll.visible-width;
-                    Text {
-                        text: Terms.caption-library-options;
-                        font-weight: 600;
-                        vertical-stretch: 0;
-                    }
-
-                    if root.compact: ComboBox {
-                        model: root.sort-labels;
-                        current-index <=> root.sort-choice;
-                        accessible-label: Terms.facet-sort-library;
-                        selected(value) => {
-                            root.collection-filter(root.collection-choice,
-                            root.sort-choice);
-                        }
-                    }
-                    Button {
-                        text: (Actions.open-recipe.label + "…");
-                        enabled: Actions.open-recipe.enabled;
-                        triggered => { root.open-recipe(); library-options.close(); }
-                    }
-
-                    Button {
-                        enabled: Actions.library-refresh.enabled;
-                        text: Actions.library-refresh.label;
-                        triggered => { root.refresh-library(); }
-                    }
-
-                    Button {
-                        enabled: Actions.show-saved.enabled;
-                        text: Actions.show-saved.label;
-                        triggered => { root.show-saved(); library-options.close(); }
-                    }
-
-                    Button {
-                        text: Terms.action-reset-sort;
-                        triggered => { root.reset-library-sort(); }
-                    }
-
-                    Button {
-                        text: Terms.action-clear-all-filters;
-                        triggered => { root.clear-applied-filters(); }
-                    }
-
-                    Section {
-                        title: Terms.caption-library-storage-and-recovery;
-                        ui-size: root.ui-size;
-                        Text {
-                            text: root.library-status;
-                            wrap: word-wrap;
-                            min-width: 0px;
-                            vertical-stretch: 0;
-                        }
-
-                        Button {
-                            enabled: Actions.library-init.enabled;
-                            text: Actions.library-init.label;
-                            triggered => { root.initialize-library(); }
-                        }
-                    }
-
-                    Button {
-                        text: Terms.action-close;
-                        triggered => { library-options.close(); }
-                    }
-                }
-            }
-        }
-    }
 }
