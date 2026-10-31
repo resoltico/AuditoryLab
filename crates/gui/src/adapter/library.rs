@@ -286,6 +286,11 @@ impl SlintAdapter {
             ui.set_library_count(read_only(
                 &auditorylab_presentation::library::workspace_library_count(w),
             ));
+            ui.set_library_restrictions(
+                auditorylab_presentation::library::workspace_library_restrictions(w)
+                    .join(" · ")
+                    .into(),
+            );
             ui.set_library_overview(read_only(
                 &auditorylab_presentation::library::workspace_library_overview(w),
             ));

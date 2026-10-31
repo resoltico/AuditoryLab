@@ -1219,6 +1219,26 @@ fn toolbar_controls_share_one_height_and_centre_line() {
     }
 }
 
+#[test]
+fn applied_filters_show_beside_results_without_opening_a_popup() {
+    use slint::private_unstable_api::re_exports::AccessibilityAction;
+    let h = Harness::new();
+    let ui = h.ui();
+    ui.set_monitor_open(false);
+    ui.window().set_size(slint::LogicalSize::new(1280.0, 900.0));
+    assert_eq!(ui.get_library_restrictions(), "");
+    ui.set_query("binaural".into());
+    ui.invoke_search("binaural".into());
+    h.settle();
+    assert!(ui.get_has_results());
+    assert!(!ui.get_library_query_open());
+    assert!(labelled(ui, "Search: ").is_visible());
+    action_button(ui, "Clear all filters").accessible_action(&AccessibilityAction::Default);
+    h.settle();
+    assert_eq!(ui.get_library_restrictions(), "");
+    assert!(h.adapter.inspect(|w| w.catalog_query().search.is_empty()));
+}
+
 fn assert_library_play_during_file(save: bool) {
     let (h, dir) = controlled_harness();
     let ui = h.ui();

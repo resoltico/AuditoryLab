@@ -38,7 +38,7 @@ chrome! {
             diagnostics snapshot"),
         Close => ("action-close", "Close"),
         CloseFilters => ("action-close-filters", "Close filters"),
-        ActiveFilters => ("action-active-filters", "Active filters…"),
+        ActiveFilters => ("action-active-filters", "Query details…"),
         ShowOutputMonitor => ("action-show-output-monitor", "Show output monitor"),
         ClearRhythmFilters => ("action-clear-rhythm-filters", "Clear rhythm filters"),
         ClearSearch => ("action-clear-search", "Clear search"),

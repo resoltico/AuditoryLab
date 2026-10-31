@@ -78,6 +78,7 @@ export component LibraryPane inherits Rectangle {
     in property <string> library-overview;
     in property <string> library-ownership;
     in property <bool> library-query-open;
+    in property <string> library-restrictions;
     private property <bool> library-restore-ready: false;
     private property <bool> library-restoring: false;
     in-out property <length> library-scroll-y;
@@ -338,6 +339,27 @@ export component LibraryPane inherits Rectangle {
                         accessible-label: ViewCaptions.applied-library-filters;
                         accessible-expanded: root.library-query-open;
                         triggered => { root.open-query-details(); }
+                    }
+                }
+
+                // What narrows these results, always in view while any filter applies.
+                if root.library-restrictions != "" || root.library-filters-active: HorizontalBox {
+                    padding: 0px;
+                    vertical-stretch: 0;
+                    Text {
+                        text: root.library-restrictions;
+                        min-width: 0px;
+                        horizontal-stretch: 1;
+                        wrap: word-wrap;
+                        vertical-alignment: center;
+                        color: Palette.foreground.with-alpha(0.72);
+                    }
+
+                    // With no results, the empty list offers this action itself.
+                    if root.library-filters-active && root.has-results: Button {
+                        text: Terms.action-clear-all-filters;
+                        horizontal-stretch: 0;
+                        triggered => { root.clear-applied-filters(); }
                     }
                 }
 

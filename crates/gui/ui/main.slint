@@ -368,6 +368,8 @@ export component MainWindow inherits Window {
     in property <string> library-alert;
     callback collection-filter(int, int);
     in property <string> library-count;
+    // Committed restrictions, shown beside the results instead of in a popup.
+    in property <string> library-restrictions;
     in property <string> calendar-context;
     in property <[string]> band-labels;
     in property <[string]> method-labels;
@@ -794,6 +796,7 @@ export component MainWindow inherits Window {
                 library-overview: root.library-overview;
                 library-ownership: root.library-ownership;
                 library-query-open: root.library-query-open;
+                library-restrictions: root.library-restrictions;
                 library-scroll-y <=> root.library-scroll-y;
                 library-token: root.library-token;
                 library-trashed: root.library-trashed;
