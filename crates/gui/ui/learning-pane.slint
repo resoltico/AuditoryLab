@@ -13,6 +13,7 @@ import { LearningTrace, LearningBand, LearningSource } from "models.slint";
 // A visible contents item. Text wraps and follows the native application font.
 component LessonTab inherits Rectangle {
     in property <string> label;
+    in property <bool> compact;
     in property <bool> selected;
     in property <bool> focused;
     in property <length> ui-size;
@@ -30,8 +31,8 @@ component LessonTab inherits Rectangle {
         border-width: root.focused ? 2px : 0px;
         border-color: Palette.accent-background;
         Text {
-            x: 12px;
-            width: parent.width - 24px;
+            x: root.compact ? 6px : 12px;
+            width: parent.width - 2 * self.x;
             height: parent.height;
             text: root.label;
             font-size: root.ui-size;
@@ -290,6 +291,7 @@ export component LearningPane inherits Rectangle {
                     width: root.compact ? (navigation.width - 16px) / 3 : navigation.width;
                     height: root.compact ? root.ui-size * 2.5 : root.ui-size * 3.6;
                     label: title;
+                    compact: root.compact;
                     accessible-item-index: index;
                     selected: root.topic == index;
                     focused: navigation.has-focus && root.topic == index;

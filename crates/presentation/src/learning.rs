@@ -29,7 +29,8 @@ pub const fn navigation_label(topic: Topic) -> &'static str {
     match topic {
         Topic::Overview => "Overview",
         Topic::Library => "Library guide",
-        Topic::PitchAndRhythm => "Pitch and rhythm",
+        // Short enough to stay on one line in the three-column compact list.
+        Topic::PitchAndRhythm => "Pitch & rhythm",
         Topic::SoundTypes => "Sound types",
         Topic::RhythmBands => "Rhythm ranges",
     }

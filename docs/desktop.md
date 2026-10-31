@@ -10,7 +10,7 @@ Open **Auditory Lab.app**, `auditorylab-gui.exe`, or `auditorylab-gui`. Start wi
 | --- | --- |
 | Overview | Routes to the real Library or a pulsed-tone starter in Workbench. |
 | Library guide | Explains built-ins, saved sounds and research context. |
-| Pitch and rhythm | Compares a carrier, its pulse-modulation gain and the resulting sound, with actual example rates and labeled time windows. |
+| Pitch & rhythm | Compares a carrier, its pulse-modulation gain and the resulting sound, with actual example rates and labeled time windows. |
 | Sound types | Six constructions shown as choices at once, and **Open this example in Workbench**. |
 | Rhythm ranges | A combined five-band spectrum, selected-band detail, observed EEG/MEG contexts and source links. |
 

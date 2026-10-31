@@ -4771,7 +4771,7 @@ fn learning_keyboard_navigation_uses_visible_topics_and_returns_to_retained_work
     h.key(Key::DownArrow);
     assert_eq!(ui.get_learning_topic(), 2);
     assert_eq!(
-        labelled(ui, "Pitch and rhythm")
+        labelled(ui, "Pitch & rhythm")
             .accessible_string_property(AccessibleStringProperty::ItemSelected)
             .as_deref(),
         Some("true")
