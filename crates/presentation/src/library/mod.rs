@@ -202,7 +202,7 @@ pub(crate) fn overview(query: &CatalogQuery, visible: usize, complete: bool) -> 
     let count = if complete {
         format!("{visible} {sounds}")
     } else {
-        format!("{visible} observed {sounds} · Inventory incomplete")
+        format!("{visible} {sounds} · some saved sounds could not be read")
     };
     if *q == q.cleared_filters() {
         count
@@ -337,8 +337,8 @@ pub(crate) fn alert(
     }
     if !complete {
         notices.push(
-            "Library inventory incomplete · previous unseen rows are last observed \
-            snapshots. Refresh before acting; no empty-library claim is implied."
+            "Some saved sounds could not be read, so this list may be incomplete or out of \
+            date. Press Refresh below before changing them."
                 .into(),
         );
     }
@@ -519,22 +519,27 @@ pub fn workspace_library_status(value: &auditorylab_app::workspace::Workspace) -
             .unwrap_or_default(),
     }
 }
+/// A folder that was never set up holds nothing, so it reads as complete
+/// rather than as having unreadable entries; its setup notice is separate.
+fn known_complete(inventory: &auditorylab_app::workspace::status::InventoryStatus) -> bool {
+    inventory.complete || inventory.not_initialized
+}
 pub fn workspace_library_alert(value: &auditorylab_app::workspace::Workspace) -> String {
     let d = value.library_data();
     alert(
         d.problem,
         d.filter_error,
         d.read_failure,
-        d.inventory.complete,
+        known_complete(d.inventory),
     )
 }
 pub fn workspace_library_overview(value: &auditorylab_app::workspace::Workspace) -> String {
     let d = value.library_data();
-    overview(d.query, d.visible, d.inventory.complete)
+    overview(d.query, d.visible, known_complete(d.inventory))
 }
 pub fn workspace_library_count(value: &auditorylab_app::workspace::Workspace) -> String {
     let d = value.library_data();
-    count(d.query, d.visible, d.inventory.complete)
+    count(d.query, d.visible, known_complete(d.inventory))
 }
 pub fn workspace_library_restrictions(
     value: &auditorylab_app::workspace::Workspace,
@@ -545,7 +550,7 @@ pub fn workspace_library_empty_message(
     value: &auditorylab_app::workspace::Workspace,
 ) -> &'static str {
     let d = value.library_data();
-    empty_message(d.query, d.entries, d.visible, d.inventory.complete)
+    empty_message(d.query, d.entries, d.visible, known_complete(d.inventory))
 }
 pub fn workspace_library_dates(value: &auditorylab_app::workspace::Workspace) -> String {
     let d = value.library_data();
@@ -679,7 +684,7 @@ mod tests {
             crate::workspace::status::inventory_status_description(
                 &(auditorylab_app::workspace::status::InventoryStatus::default())
             )
-            .contains("incomplete")
+            .contains("could not be read")
         );
     }
 }

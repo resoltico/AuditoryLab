@@ -1291,6 +1291,34 @@ fn applied_filters_show_beside_results_without_opening_a_popup() {
     assert!(h.adapter.inspect(|w| w.catalog_query().search.is_empty()));
 }
 
+#[test]
+fn library_playback_offers_replacing_it_with_the_selected_sound() {
+    use slint::private_unstable_api::re_exports::AccessibilityAction;
+    let h = Harness::with_catalog(
+        auditorylab_app::services::catalog().unwrap(),
+        Capabilities::available(),
+    );
+    let ui = h.ui();
+    ui.set_monitor_open(false);
+    ui.invoke_play_recipe();
+    let first = take_job(&h, JobKind::Audio);
+    h.settle();
+    assert!(h.adapter.inspect(|w| w.audio_busy()));
+    ui.invoke_select(ui.get_catalog().row_data(1).unwrap().entry);
+    h.settle();
+    action_button(ui, "Stop current & play recipe")
+        .accessible_action(&AccessibilityAction::Default);
+    assert_eq!(
+        h.adapter.inspect(|w| w.audio_phase()),
+        Some(auditorylab_app::services::playback::PlaybackPhase::Stopping),
+        "replacing stops the current sound first"
+    );
+    let finished = first.execute(|_| panic!("stopped audio must not prepare a device"));
+    h.adapter.deliver(finished);
+    h.settle();
+    finish_stopped_audio(&h, take_job(&h, JobKind::Audio));
+}
+
 fn assert_library_play_during_file(save: bool) {
     let (h, dir) = controlled_harness();
     let ui = h.ui();
@@ -2331,7 +2359,7 @@ fn compact_unavailable_root_keeps_recovery_and_non_authoritative_counts_visible(
     ui.window().set_size(slint::LogicalSize::new(800.0, 900.0));
     h.settle();
 
-    assert!(ui.get_library_count().contains("Inventory incomplete"));
+    assert!(ui.get_library_count().contains("could not be read"));
     assert!(ui.get_library_alert().contains("incomplete"));
     assert!(
         ui.get_library_empty_message()
@@ -2346,8 +2374,12 @@ fn compact_unavailable_root_keeps_recovery_and_non_authoritative_counts_visible(
 fn first_selected_row_keeps_the_results_note_in_view_after_launch() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("library");
-    std::fs::create_dir(&path).unwrap();
-    let store = auditorylab_app::services::library::Library::at_path(path).unwrap();
+    let store = auditorylab_app::services::library::Library::at_path(path.clone()).unwrap();
+    store.initialize().unwrap();
+    // An unreadable records folder makes the inventory incomplete, so a note
+    // sits above the first row.
+    std::fs::remove_dir_all(path.join("recipes")).unwrap();
+    std::fs::write(path.join("recipes"), b"not a folder").unwrap();
     let h = Harness::with_workspace(
         Workspace::with_library(
             auditorylab_app::services::catalog().unwrap(),

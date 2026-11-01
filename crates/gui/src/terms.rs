@@ -96,7 +96,7 @@ chrome! {
             are missing"),
         WavAudio => ("caption-wav-audio", "WAV audio"),
         TomlSound => ("caption-toml-sound", "TOML sound"),
-        AudioSnapshot => ("caption-audio-snapshot", "Audio details · snapshot"),
+        AudioSnapshot => ("caption-audio-snapshot", "Audio and task details · snapshot"),
         NoticesPathError => ("caption-notices-path-error", "Cannot open a non-UTF8 notices path."),
         CalendarRangeError => ("caption-calendar-range-error", "Invalid calendar range. Use \
             ordered YYYY-MM-DD dates with a unique local midnight; prior filters \

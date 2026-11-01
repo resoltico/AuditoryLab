@@ -89,7 +89,8 @@ pub struct InventoryStatus {
     pub complete: bool,
     /// The configured root lacks an initialized supported layout.
     pub not_initialized: bool,
-    /// Readable unique managed records observed in this scan.
+    /// Readable unique managed records observed in this scan, kept current
+    /// with records this workspace writes or removes afterwards.
     pub count: usize,
     /// Typed nonfatal causes retained with their storage context.
     pub diagnostics: Vec<LibraryDiagnostic>,

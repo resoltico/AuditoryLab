@@ -327,6 +327,7 @@ impl LibraryState {
         self.root_unavailable = false;
         self.entries.retain(|e| e.key != record.key);
         self.entries.push(record.summary());
+        self.recount();
         self.refilter();
         if self.selection.as_ref() == Some(&record.key) {
             self.loaded = Some(record);
@@ -337,6 +338,23 @@ impl LibraryState {
         self.binding.problem().map_or(Ok(()), |problem| {
             Err(Refusal::LibraryUnavailable(problem.clone()))
         })
+    }
+    /// Writing a recipe also needs a set-up folder: a configured folder that
+    /// exists without being initialized needs Initialize first, which this
+    /// check leaves available. A missing default root is created by its first save.
+    pub(super) fn record_destination_admission(&self) -> Result<(), Refusal> {
+        use crate::services::library::{DiagnosticDetail, LibraryError};
+        self.save_destination_admission()?;
+        self.inventory
+            .diagnostics
+            .iter()
+            .find(|problem| {
+                matches!(&problem.detail, DiagnosticDetail::Failure(error)
+                    if matches!(**error, LibraryError::NotInitialized))
+            })
+            .map_or(Ok(()), |problem| {
+                Err(Refusal::LibraryUnavailable(problem.clone()))
+            })
     }
     pub(super) fn copy_recipe_admission(recipe: &Recipe) -> Result<(), Refusal> {
         recipe.copy_readiness().map_err(|error| {
@@ -516,8 +534,24 @@ impl LibraryState {
             .unwrap_or_else(|| unreachable!("admitted library binding has a service"));
         Ok(LibraryJob { store, operation })
     }
+    /// Keep the storage count in step with records this workspace wrote,
+    /// so it never contradicts the listed entries between scans.
+    fn recount(&mut self) {
+        let count = self
+            .entries
+            .iter()
+            .filter(|entry| matches!(entry.key, LibraryKey::User(_)))
+            .count();
+        if self.inventory.count != count || self.inventory.not_initialized {
+            let mut inventory = (*self.inventory).clone();
+            inventory.count = count;
+            inventory.not_initialized = false;
+            self.inventory = Arc::new(inventory);
+        }
+    }
     pub(super) fn remove_entry(&mut self, key: &LibraryKey) {
         self.entries.retain(|entry| &entry.key != key);
+        self.recount();
         if self
             .loaded
             .as_ref()

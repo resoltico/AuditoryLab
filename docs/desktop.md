@@ -26,7 +26,7 @@ The `onboarding-seen` flag lives in the native application configuration directo
 
 ## Browse the Library
 
-Each row shows what its study was about. Selecting a row shows its sound description, study context, dates and preview. **Play selected sound** starts the selected captured recipe. The persistent transport keeps naming the actual playing session while you browse. **Stop current & play recipe** deliberately replaces it.
+Each row shows what its study was about. Selecting a row shows its sound description, study context, dates and preview. **Play selected sound** starts the selected captured recipe. The persistent transport keeps naming the actual playing session while you browse; beside **Stop audio**, **Stop current & play recipe** deliberately replaces it with the selection.
 
 Collections separate active **All**, read-only **Built-in**, managed **User**, temporary **Open files** and recoverable **Trash**. Wide windows show navigation, results and details together. Compact windows use list/detail navigation and retain scroll and selection when you return.
 
@@ -46,7 +46,7 @@ Filter resets have distinct scopes:
 
 Clearing rhythm filters is available with the compact/list filter controls. Other resets are available beside the results, in the storage section or in the filter popup. Unapplied advanced input survives unrelated selection and display updates; an explicit full reset or reveal discards it.
 
-The native per-user library can be overridden with an absolute `AUDITORYLAB_LIBRARY_DIR`. Initialize an override through Library storage controls or `auditorylab --library-dir PATH library init`. Built-ins and independent external exports remain available when persistent storage is unavailable. See [library configuration](cli.md#root-and-lifecycle) and [unsupported-file recovery](formats.md#unsupported-and-unreadable-recipes).
+The native per-user library can be overridden with an absolute `AUDITORYLAB_LIBRARY_DIR`. Initialize an override through Library storage controls or `auditorylab --library-dir PATH library init`. Until then Save names the missing setup instead of writing. Opening Library rescans the library, so changes made by the CLI appear without Refresh. Built-ins and independent external exports remain available when persistent storage is unavailable. See [library configuration](cli.md#root-and-lifecycle) and [unsupported-file recovery](formats.md#unsupported-and-unreadable-recipes).
 
 ## Open, copy and manage sounds
 
@@ -60,7 +60,7 @@ Library actions retain an app-issued handle for the rendered listing and capture
 
 ## Build and edit a sound
 
-**New sound** opens an empty, silent Workbench. Its **Start with** choices, and **Add a component** below existing components, offer tones, pulse trains, both explicit pair kinds and pulsed tones as visible buttons. Tone/pulse sources cost one generator lane; pairs cost two within one 16-lane budget. [Fields and limits](formats.md#recipe-schema) define the budgets.
+**New sound** opens an empty, silent Workbench. Its **Start with** choices, and **Add a component** below existing components, offer tones, pulse trains, both explicit pair kinds and pulsed tones as visible buttons. Tone/pulse sources cost one generator lane; pairs cost two within one 16-lane budget. When a sound already uses a new component's default carrier, it starts at the next free step of 1.25×, 1.5×, 2×, 0.75×, 2.5×, 3× or 0.5× so the addition is audible; pulse trains keep their rate. When the budget rules out a choice, the reason shows under the buttons. [Fields and limits](formats.md#recipe-schema) define the budgets.
 
 **Pulsed tone (isochronic)** adds a single tone with shared pulsed modulation. The [recipe guide](recipes.md#sinusoidal-and-pulsed-modulation) explains its waveform and defaults. Pulse trains and pulsed pairs have distinct names.
 

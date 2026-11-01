@@ -27,6 +27,10 @@
 - Routing names digital channels; intended separate-ear delivery is not verified. Small pair differences survive rounded carrier displays.
 - Workbench patterns refresh after edits with the monitor closed.
 - Add-component buttons and setting menus accept clicks while audio plays; live output no longer rebuilds the Workbench on every redraw.
+- Library playback offers **Stop current & play recipe** beside Stop audio; opening Library rescans storage, and its status uses plain words without internal codes.
+- Saving into a configured folder that was never initialized names the missing setup (`library.not_initialized`) instead of an I/O failure.
+- Adding a component whose default carrier is already used starts at the next free interval step; voice-budget reasons show under the Add buttons.
+- The player row keeps its listening advice readable beside a long sound summary instead of growing several lines tall.
 - `describe` states each research fact once (studied for, summary, measured, study, adaptation, citation, link); `inspect` text shows technical facts only.
 - `list` rows and desktop Library rows show what each sound's study was about; built-in CLI rows show dates only while sorting by a date.
 - CLI help describes every command and option in plain language; `export --output` and other options gained help.

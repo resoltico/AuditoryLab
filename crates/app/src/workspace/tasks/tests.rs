@@ -498,6 +498,38 @@ fn later_document_preparation_keeps_current_document_unbound() {
     workspace.respond(job.execute(|_| {}));
 }
 #[test]
+fn saving_into_an_uninitialized_folder_names_setup_instead_of_an_io_failure() {
+    let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp");
+    std::fs::create_dir_all(&base).unwrap();
+    let directory = tempfile::tempdir_in(base).unwrap();
+    let root = directory.path().join("library");
+    std::fs::create_dir(&root).unwrap();
+    let store = crate::services::library::Library::at_path(root.clone()).unwrap();
+    let mut workspace = Workspace::with_library(
+        crate::services::catalog().unwrap(),
+        Capabilities::available(),
+        store,
+    )
+    .unwrap();
+    idle_files(&mut workspace);
+    tone(&mut workspace, "440");
+    let refusal = workspace.save().unwrap_err();
+    let code = crate::core::diagnostic::Code::code(&refusal);
+    assert_eq!(code, "library.not_initialized", "{refusal:?}");
+    assert_eq!(
+        std::fs::read_dir(&root).unwrap().count(),
+        0,
+        "nothing was written"
+    );
+    // The refusal names Initialize as the remedy, so Initialize stays available.
+    assert!(workspace.action_view().can_manage_library());
+    workspace
+        .apply(Command::Library(LibraryCommand::Initialize))
+        .unwrap();
+    idle_files(&mut workspace);
+    workspace.save().unwrap();
+}
+#[test]
 fn live_monitor_captures_are_telemetry_and_leave_the_revision_unchanged() {
     let (_directory, _store, mut workspace) = fixture();
     tone(&mut workspace, "440");

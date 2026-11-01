@@ -424,6 +424,8 @@ impl LibraryStore {
             result.not_initialized = true;
             return if self.root.missing_is_empty() {
                 Ok(())
+            } else if self.root.path().is_dir() {
+                Err(Error::NotInitialized)
             } else {
                 Err(Error::RootMissing)
             };

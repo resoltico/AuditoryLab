@@ -340,12 +340,12 @@ impl Workspace {
         self.files.idle_admission()
     }
     pub(super) fn prepare_save(&mut self) -> Result<Arc<Recipe>, Refusal> {
-        self.library.save_destination_admission()?;
+        self.library.record_destination_admission()?;
         self.import_admission()?;
         self.editor.prepare_save()
     }
     pub(super) fn prepare_save_copy(&mut self) -> Result<Arc<Recipe>, Refusal> {
-        self.library.save_destination_admission()?;
+        self.library.record_destination_admission()?;
         self.import_admission()?;
         let recipe = self.editor.prepare_recipe()?;
         library::LibraryState::copy_recipe_admission(&recipe)?;
@@ -411,6 +411,7 @@ impl Workspace {
     pub(super) fn prepare_add_to_library(&self) -> Result<Arc<Recipe>, Refusal> {
         let recipe = self.library.prepare_add()?;
         self.library_job_admission()?;
+        self.library.record_destination_admission()?;
         Ok(recipe)
     }
     pub(super) fn trash_request_admission(

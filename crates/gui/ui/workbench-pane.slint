@@ -187,18 +187,6 @@ export component WorkbenchPane inherits Rectangle {
                 }
             }
 
-            if root.pair-add-reason != "" && root.add-reason == "": Text {
-                min-width: 0px;
-                text: root.pair-add-reason;
-                wrap: word-wrap;
-                vertical-stretch: 0;
-            }
-            if root.add-reason != "": Text {
-                min-width: 0px;
-                text: root.add-reason;
-                wrap: word-wrap;
-                vertical-stretch: 0;
-            }
             if root.removed-component != "": HorizontalBox {
                 padding: 0px;
                 vertical-stretch: 0;
@@ -511,6 +499,19 @@ export component WorkbenchPane inherits Rectangle {
                         accessible-description: root.add-reason;
                         triggered => { root.add-component(root.document, index); }
                     }
+                }
+                // Why some choices are unavailable, beside the choices themselves.
+                if root.pair-add-reason != "" && root.add-reason == "": Text {
+                    min-width: 0px;
+                    text: root.pair-add-reason;
+                    wrap: word-wrap;
+                    vertical-stretch: 0;
+                }
+                if root.add-reason != "": Text {
+                    min-width: 0px;
+                    text: root.add-reason;
+                    wrap: word-wrap;
+                    vertical-stretch: 0;
                 }
             }
 

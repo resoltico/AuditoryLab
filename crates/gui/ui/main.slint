@@ -1040,6 +1040,10 @@ export component MainWindow inherits Window {
             show-diagnostics() => { root.show-diagnostics(); }
             transport-action: root.transport-action;
             transport-enabled: root.transport-enabled;
+            replace-visible: root.playback-busy && root.tab-index == 0 &&
+                Actions.play-selected-sound.enabled;
+            replace-label: root.library-play-action;
+            play-recipe() => { root.play-recipe(); }
             transport-labels: root.transport-labels;
             ui-size: root.ui-size;
             update-monitor-layout() => { root.update-monitor-layout(); }

@@ -430,6 +430,10 @@ impl Workspace {
         self.leave_learning();
         if self.view != view {
             self.view = view;
+            // Other processes share the library; arriving in Library rescans it.
+            if view == View::Library {
+                self.library.request_refresh();
+            }
             self.changed();
         }
     }

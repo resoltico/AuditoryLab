@@ -233,10 +233,12 @@ impl LibraryRoot {
         }
         let mut options = read_options();
         options.write(exclusive);
-        let file = dir
-            .open_with(LOCK, &options)
-            .map_err(|e| io(IoOperation::Open, e))?
-            .into_std();
+        let file = match dir.open_with(LOCK, &options) {
+            Ok(file) => file.into_std(),
+            // An existing folder without a lock was never initialized.
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound && !initialize => return Ok(None),
+            Err(e) => return Err(io(IoOperation::Open, e)),
+        };
         if !file
             .metadata()
             .map_err(|e| io(IoOperation::Inspect, e))?

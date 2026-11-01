@@ -38,6 +38,10 @@ export component TransportBar inherits Rectangle {
     callback show-diagnostics();
     in property <string> transport-action;
     in property <bool> transport-enabled;
+    // While audio plays in Library, deliberately replace it with the selection.
+    in property <bool> replace-visible;
+    in property <string> replace-label;
+    callback play-recipe();
     in property <[string]> transport-labels;
     in property <length> ui-size;
     callback update-monitor-layout();
@@ -77,6 +81,10 @@ export component TransportBar inherits Rectangle {
                 accessible-name: root.transport-action + (root.playback-busy || root.play-target ==
                     "" ? "" : " · " + root.play-target);
                 clicked => { root.play-stop(); }
+            }
+            if !root.learning && root.replace-visible: Button {
+                text: root.replace-label;
+                triggered => { root.play-recipe(); }
             }
             if root.learning: RunningTaskActions {
                 audio-busy: root.playback-busy;
@@ -151,9 +159,11 @@ export component TransportBar inherits Rectangle {
                     vertical-alignment: center;
                 }
             }
+            // Wide enough that a long sound summary elides beside it instead of
+            // squeezing this advice into a tall column of single words.
             if !root.learning && !root.compact: Text {
                 text: root.guidance;
-                min-width: 0px;
+                min-width: root.ui-size * 18;
                 max-width: root.ui-size * 26;
                 horizontal-stretch: 1;
                 wrap: word-wrap;

@@ -971,6 +971,38 @@ fn unknown_or_cross_row_field_requests_cannot_acquire_another_lifetime() {
 }
 
 #[test]
+fn repeated_default_carriers_step_to_audibly_distinct_frequencies() {
+    let mut editor = editor_with(&[]);
+    let document = editor.document_key();
+    let carriers: Vec<f64> = (0..4)
+        .map(|_| {
+            let id = editor
+                .add_component(document, controls::default_component(CarrierKind::Tone))
+                .unwrap();
+            let form = *editor.draft().component(id).unwrap();
+            match form.source {
+                auditorylab_core::SoundSource::Tone { frequency_hz, .. } => frequency_hz.get(),
+                _ => unreachable!("a tone was added"),
+            }
+        })
+        .collect();
+    assert_eq!(carriers, [440.0, 550.0, 660.0, 880.0]);
+    // Pulse trains keep their rate: a different rate is a different rhythm.
+    let pulses: Vec<_> = (0..2)
+        .map(|_| {
+            let id = editor
+                .add_component(
+                    document,
+                    controls::default_component(CarrierKind::PulseTrain),
+                )
+                .unwrap();
+            *editor.draft().component(id).unwrap()
+        })
+        .collect();
+    assert_eq!(pulses[0], pulses[1]);
+}
+
+#[test]
 fn row_generation_storage_is_bounded_and_exhaustion_never_wraps_or_drops_undo() {
     let mut editor = editor_with(&[tone(440.0)]);
     let id = editor.draft().components()[0].id;
