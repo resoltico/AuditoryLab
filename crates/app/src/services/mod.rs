@@ -75,6 +75,7 @@ pub fn export_rendition(
     started: impl FnOnce(),
 ) -> Result<Exported, ExportError> {
     publish::publish(path, replace, cancel, |file| {
+        crate::storage::space::admit(file, path, wav_size(sound))?;
         started();
         wav::encode(sound.signal(), file, cancel.flag(), progress).map_err(|error| match error {
             wav::ExportError::Cancelled => FileError::Cancelled {

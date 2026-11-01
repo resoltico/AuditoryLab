@@ -122,6 +122,9 @@ pub fn entry_summary_membership_description(value: &EntrySummary) -> String {
     )
 }
 
+/// Incomplete discovery that found nothing cannot establish an empty library.
+pub const INVENTORY_UNREADABLE: &str = "Incomplete inventory: the library could not be fully \
+    read, so no results does not mean an empty library.";
 /// Incomplete discovery cannot establish an empty library.
 pub const INVENTORY_INCOMPLETE: &str =
     "Incomplete inventory: valid results above do not establish an empty/complete library.";

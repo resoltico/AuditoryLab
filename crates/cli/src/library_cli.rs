@@ -1,5 +1,5 @@
 //! Ordinary CLI discovery, selectors, structured output and managed lifecycle grammar.
-use super::{Source, output, prose, usage};
+use super::{Source, eprose, output, prose, usage};
 use crate::cli_text::CommandProblem;
 use auditorylab_app::core::SampleRate;
 use auditorylab_app::discovery::query::{Direction, GroupBy, Scope, SortBy};
@@ -387,7 +387,7 @@ fn print_list(
                 for diagnostic in listing.diagnostics() {
                     eprintln!(
                         "{}",
-                        prose(
+                        eprose(
                             &auditorylab_presentation::errors::library_diagnostic_message(
                                 diagnostic
                             )
@@ -410,14 +410,18 @@ fn print_list(
             if !listing.complete() {
                 eprintln!(
                     "{}",
-                    auditorylab_presentation::library::INVENTORY_INCOMPLETE
+                    if listing.entries().is_empty() {
+                        auditorylab_presentation::library::INVENTORY_UNREADABLE
+                    } else {
+                        auditorylab_presentation::library::INVENTORY_INCOMPLETE
+                    }
                 );
             }
             for diagnostic in listing.diagnostics() {
                 eprintln!(
                     "{}: {}",
                     auditorylab_presentation::display_scalar(&(diagnostic.storage_id)),
-                    prose(
+                    eprose(
                         &auditorylab_presentation::errors::library_diagnostic_message(diagnostic)
                     )
                 );
@@ -680,7 +684,7 @@ fn check_library(context: &LibraryContext, operation: Operation, format: ReadFor
             eprintln!(
                 "{}: {}",
                 auditorylab_presentation::display_scalar(&(diagnostic.storage_id)),
-                prose(&auditorylab_presentation::errors::library_diagnostic_message(diagnostic))
+                eprose(&auditorylab_presentation::errors::library_diagnostic_message(diagnostic))
             );
         }
         for stage in &inventory.stages {

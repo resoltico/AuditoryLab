@@ -145,17 +145,12 @@ impl Display for VoiceText<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self.0 {
             VoiceError::Pulse {
+                modulation,
+                width,
                 error,
                 rate_hz,
                 sample_rate_hz,
-                ..
-            } => write!(
-                f,
-                "Pulse at {} Hz: {error}; at {sample_rate_hz} Hz the window must fit 1 to {} \
-                    frames",
-                Number(*rate_hz),
-                Signal::MAX_FRAMES
-            ),
+            } => pulse_text(f, *modulation, *width, *error, *rate_hz, *sample_rate_hz),
             VoiceError::Frequency {
                 parameter,
                 hz,
@@ -198,6 +193,64 @@ pub fn voice_reference(id: VoiceId) -> String {
     match id.lane {
         Lane::Primary => format!("Component {}", id.component),
         Lane::Secondary => format!("Component {} · second tone", id.component),
+    }
+}
+
+/// Name the pulse quantity that failed and the bound it must meet, in the
+/// units the editor shows.
+fn pulse_text(
+    f: &mut Formatter<'_>,
+    modulation: bool,
+    width: auditorylab_core::PulseWidth,
+    error: auditorylab_core::PulseError,
+    rate_hz: f64,
+    sample_rate_hz: u32,
+) -> fmt::Result {
+    use auditorylab_core::{PulseError as E, PulseWidth as W};
+    let what = if modulation {
+        "Pulsed modulation"
+    } else {
+        "Pulse"
+    };
+    let rate = Number(rate_hz);
+    let sample_ms = 1000.0 / f64::from(sample_rate_hz);
+    match (error, width) {
+        (E::Rate, _) => write!(
+            f,
+            "{what} rate {rate} Hz must be above 0 Hz and below {} Hz, half the \
+                {sample_rate_hz} Hz sample rate",
+            Number(f64::from(sample_rate_hz) / 2.0)
+        ),
+        (E::Duty, W::DutyCycle { fraction }) => write!(
+            f,
+            "{what} duty cycle {}% must be above 0% and below 100%",
+            Number(fraction.get() * 100.0)
+        ),
+        (E::ClosedFrame, W::Duration { seconds }) => write!(
+            f,
+            "{what} window {} ms must be shorter than the {} ms period at {rate} Hz",
+            Number(seconds.get() * 1000.0),
+            Number(1000.0 / rate_hz)
+        ),
+        (E::ClosedFrame, W::DutyCycle { fraction }) => write!(
+            f,
+            "{what} duty cycle {}% leaves no silent sample between pulses at {rate} Hz and \
+                {sample_rate_hz} Hz; lower the duty cycle",
+            Number(fraction.get() * 100.0)
+        ),
+        (E::Edges, _) => write!(
+            f,
+            "{what} rise and fall must each last at least one sample ({} ms at \
+                {sample_rate_hz} Hz) and fit inside the window",
+            Number(sample_ms)
+        ),
+        (E::Width | E::Duty, _) => write!(
+            f,
+            "{what} window must last from one sample ({} ms) to {} frames at \
+                {sample_rate_hz} Hz",
+            Number(sample_ms),
+            Signal::MAX_FRAMES
+        ),
     }
 }
 
@@ -245,6 +298,28 @@ mod tests {
             message.contains(&auditorylab_core::Signal::MAX_FRAMES.to_string()),
             "{message}"
         );
+    }
+
+    #[test]
+    fn pulse_failures_name_the_quantity_and_its_bound_without_frame_internals() {
+        let window = |seconds: f64, error| {
+            voice_error(&VoiceError::Pulse {
+                modulation: false,
+                width: auditorylab_core::PulseWidth::Duration {
+                    seconds: finite(seconds),
+                },
+                rate_hz: 40.0,
+                sample_rate_hz: 48_000,
+                error,
+            })
+        };
+        assert_eq!(
+            window(0.05, auditorylab_core::PulseError::ClosedFrame),
+            "Pulse window 50 ms must be shorter than the 25 ms period at 40 Hz"
+        );
+        let rate = window(0.001, auditorylab_core::PulseError::Rate);
+        assert!(rate.contains("below 24000 Hz"), "{rate}");
+        assert!(!rate.contains("frames"), "{rate}");
     }
 
     #[test]
