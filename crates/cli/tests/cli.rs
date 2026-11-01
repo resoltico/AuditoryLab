@@ -162,10 +162,8 @@ fn sigint_cancels_a_long_silent_export_and_removes_the_stage() {
     let output = dir.path().join("long.wav");
     fs::write(
         &input,
-        common::silent(1_000_000.0, 0.0)
-            .to_toml()
-            .unwrap()
-            .as_bytes(),
+        // One hour: long enough to interrupt, small enough for the free-space check.
+        common::silent(3_600.0, 0.0).to_toml().unwrap().as_bytes(),
     )
     .unwrap();
     let mut child = Command::new(env!("CARGO_BIN_EXE_auditorylab"))
@@ -691,4 +689,29 @@ fn grouped_schema_three_json_retains_display_labels_and_member_keys() {
             }
         }
     }
+}
+#[test]
+fn piped_messages_keep_paths_whole_and_name_accepted_vocabulary() {
+    let dir = dir();
+    // Long enough that 78-column wrapping would split it at a hyphen.
+    let folder = dir
+        .path()
+        .join("a-hyphenated-folder-name-long-enough-to-cross-any-wrapping-column");
+    fs::create_dir_all(&folder).unwrap();
+    let path = folder.join("route-typo.toml");
+    let template = String::from_utf8(cli(&["new", "tone"]).stdout).unwrap();
+    fs::write(
+        &path,
+        template.replace("route = \"both\"", "route = \"centre\""),
+    )
+    .unwrap();
+    let out = cli(&["inspect", "--file", path.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(2));
+    let text = String::from_utf8(out.stderr).unwrap();
+    assert!(text.contains(path.to_str().unwrap()), "{text}");
+    assert!(
+        text.contains("unknown channel routing \"centre\"; expected one of: both, left, right"),
+        "{text}"
+    );
+    assert!(!text.contains("vocabulary."), "{text}");
 }

@@ -1,6 +1,7 @@
 //! Managed-library operations shared by terminal and interactive jobs.
 use super::Cancel;
 use crate::document::origin::{LibraryKey, VersionToken};
+pub use crate::storage::library::BUSY_WAIT;
 pub use crate::storage::library::LibraryError;
 pub use crate::storage::library::{
     DiagnosticDetail, Initialization, Inventory, LIBRARY_LAYOUT, LibraryDiagnostic, LoadedRecord,

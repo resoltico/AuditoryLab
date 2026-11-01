@@ -233,6 +233,7 @@ For example, an out-of-range rate reports `sample_rate.range` with `hz`, `min_hz
 | `file.cancelled` |
 | `file.changed` |
 | `file.destination_exists` |
+| `file.insufficient_space` |
 | `file.missing_filename` |
 | `file.missing_parent` |
 | `file.not_regular` |
@@ -429,7 +430,7 @@ Directory location owns active/Trash membership. Missing local dates are Unknown
 
 ## Publication and recovery
 
-Managed writes hold the exclusive cooperative lock through read, expected-token/history checks, publication and verification. Recipe bytes are published before membership dates. An interruption can lose a local timestamp while retaining readable content.
+Managed writes hold the exclusive cooperative lock through read, expected-token/history checks, publication and verification. An operation waits up to 2 seconds for another one to release the lock before reporting `library.busy`. Recipe bytes are published before membership dates. An interruption can lose a local timestamp while retaining readable content.
 
 Writers use an exclusive adjacent stage, synchronize it, check cancellation and publish by no-clobber link or confirmed replacement. Before-publication failure preserves previous bytes. After ambiguous I/O, verified candidate bytes mean saved with a warning; verified previous state means not applied; differing or unreadable state is an error naming the path. Confirmed durability/cleanup warnings remain success. The adapter explicitly synchronizes directory entries on Unix; non-Unix adapters perform no separate directory-sync operation.
 

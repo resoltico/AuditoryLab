@@ -31,6 +31,10 @@
 - Saving into a configured folder that was never initialized names the missing setup (`library.not_initialized`) instead of an I/O failure.
 - Adding a component whose default carrier is already used starts at the next free interval step; voice-budget reasons show under the Add buttons.
 - The player row keeps its listening advice readable beside a long sound summary instead of growing several lines tall.
+- CLI messages no longer wrap when piped and never split paths or selectors; unknown recipe values list the accepted ones instead of an internal code.
+- On macOS and Linux, WAV export refuses a file larger than the destination's free space before writing (`file.insufficient_space`, exit 1).
+- Library operations wait up to 2 seconds for another to finish before reporting busy; `library trash`, `restore` and `rename` name what they did.
+- Pulse errors name the window, period or rate bound in milliseconds and hertz instead of internal frame limits.
 - `describe` states each research fact once (studied for, summary, measured, study, adaptation, citation, link); `inspect` text shows technical facts only.
 - `list` rows and desktop Library rows show what each sound's study was about; built-in CLI rows show dates only while sorting by a date.
 - CLI help describes every command and option in plain language; `export --output` and other options gained help.

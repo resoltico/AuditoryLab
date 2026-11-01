@@ -53,6 +53,16 @@ fn file_text(error: &FileError) -> String {
             || "file operation cancelled before publication".into(),
             |path| format!("publication to {} cancelled before commit", path_text(path)),
         ),
+        FileError::InsufficientSpace {
+            path,
+            needed,
+            available,
+        } => format!(
+            "{}: the file needs {} but only {} is free on that volume; nothing was written",
+            path_text(path),
+            crate::numbers::file_size(*needed),
+            crate::numbers::file_size(*available)
+        ),
         FileError::DestinationExists { path, cause } => format!(
             "{}: destination {} and was left untouched",
             path_text(path),
@@ -650,6 +660,10 @@ fn library_layout_text(error: &LibraryError) -> String {
             .into(),
         E::NativeRootUnavailable => "cannot resolve native per-user application data; configure \
             an absolute library directory"
+            .into(),
+        E::RelativeRoot { path } if path.as_os_str().is_empty() => "library directory is set \
+            but empty; give an absolute folder or unset AUDITORYLAB_LIBRARY_DIR; no fallback was \
+            used"
             .into(),
         E::RelativeRoot { path } => format!(
             "library directory {} must be absolute; no fallback \

@@ -264,7 +264,7 @@ fn managed_descendant_symlinks_and_nonregular_entries_never_read_external_conten
     assert!(!store.scan(&Cancel::default()).complete);
 }
 #[test]
-fn lock_contention_is_nonblocking_and_closure_releases_the_same_persistent_lock() {
+fn lock_contention_waits_a_bounded_time_and_closure_releases_the_same_persistent_lock() {
     let (_temp, path, store) = fixture();
     store.initialize().unwrap();
     let lock = fs::OpenOptions::new()
@@ -277,7 +277,9 @@ fn lock_contention_is_nonblocking_and_closure_releases_the_same_persistent_lock(
     let inventory = store.scan(&Cancel::default());
     assert!(!inventory.complete);
     assert_eq!(inventory.failure_kind, Some(Outcome::Busy));
-    assert!(start.elapsed() < std::time::Duration::from_secs(2));
+    let waited = start.elapsed();
+    let bound = auditorylab_app::services::library::BUSY_WAIT;
+    assert!(waited >= bound && waited < bound + std::time::Duration::from_secs(2));
     drop(lock);
     assert!(store.scan(&Cancel::default()).complete);
     assert!(path.join(".library.lock").is_file());

@@ -199,7 +199,22 @@ impl LibraryRoot {
             warnings,
         })
     }
+    /// Acquire the cooperative lock, waiting up to [`BUSY_WAIT`] while another
+    /// operation holds it; each operation holds it for milliseconds.
     pub(super) fn lock(&self, exclusive: bool, initialize: bool) -> Result<Option<Lease>, Error> {
+        let deadline = std::time::Instant::now() + BUSY_WAIT;
+        let mut pause = std::time::Duration::from_millis(5);
+        loop {
+            match self.try_lease(exclusive, initialize) {
+                Err(Error::Busy) if std::time::Instant::now() < deadline => {
+                    std::thread::sleep(pause);
+                    pause = (pause * 2).min(std::time::Duration::from_millis(100));
+                }
+                result => return result,
+            }
+        }
+    }
+    fn try_lease(&self, exclusive: bool, initialize: bool) -> Result<Option<Lease>, Error> {
         let canonical = match std::fs::canonicalize(&self.path) {
             Ok(path) => path,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound && !initialize => return Ok(None),
@@ -419,6 +434,9 @@ impl Drop for Lease {
         self.admission.release();
     }
 }
+/// How long a library operation waits for another one to finish before
+/// reporting Busy.
+pub const BUSY_WAIT: std::time::Duration = std::time::Duration::from_secs(2);
 static ACTIVE: OnceLock<Mutex<HashSet<PathBuf>>> = OnceLock::new();
 struct Admission {
     key: Option<PathBuf>,

@@ -94,7 +94,13 @@ macro_rules! vocabulary {
         impl<'de> serde::Deserialize<'de> for $name {
             fn deserialize<D:serde::Deserializer<'de>>(deserializer:D)->Result<Self,D::Error> {
                 let key=<alloc::string::String as serde::Deserialize>::deserialize(deserializer)?;
-                key.parse().map_err(serde::de::Error::custom)
+                key.parse().map_err(|_:$crate::vocabulary::VocabularyError| {
+                    let accepted=Self::ALL.iter().map(|value| value.key())
+                        .collect::<alloc::vec::Vec<_>>().join(", ");
+                    serde::de::Error::custom(alloc::format!(
+                        "unknown {} \"{}\"; expected one of: {}",
+                        $kind.replace('_'," "),key,accepted))
+                })
             }
         }
         impl core::str::FromStr for $name {
