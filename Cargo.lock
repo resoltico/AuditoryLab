@@ -541,7 +541,7 @@ dependencies = [
 
 [[package]]
 name = "auditorylab-app"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "allocation-counter",
  "auditorylab-core",
@@ -569,7 +569,7 @@ dependencies = [
 
 [[package]]
 name = "auditorylab-cli"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "auditorylab-app",
  "auditorylab-core",
@@ -585,7 +585,7 @@ dependencies = [
 
 [[package]]
 name = "auditorylab-core"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "allocation-counter",
  "auditorylab-core",
@@ -599,7 +599,7 @@ dependencies = [
 
 [[package]]
 name = "auditorylab-gui"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "async-io",
  "auditorylab-app",
@@ -625,7 +625,7 @@ dependencies = [
 
 [[package]]
 name = "auditorylab-presentation"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "auditorylab-app",
  "auditorylab-core",
@@ -6191,7 +6191,7 @@ checksum = "ec7a2a501ed189703dba8b08142f057e887dfc4b2cc4db2d343ac6376ba3e0b9"
 
 [[package]]
 name = "xtask"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "flate2",
  "serde_json",

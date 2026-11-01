@@ -2,10 +2,12 @@
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-01
+
 - Recipe schema 5 replaces schema 4. Recreate old recipes with `new KIND` or updated built-ins; unsupported files remain intact and reported.
 - Update method filters to `pulse_train`, `pulsed` and `sinusoidal`; JSON schema 3/classifier 3 reports source and shared modulation independently.
-- AM and mixtures containing pairs can have different sample bits under component sum-then-modulate order; see [waveforms](docs/recipes.md#waveforms).
-- Tone and AM sine uses a portable quarter-cycle series instead of libm, so their sample bits differ by about one unit; see [waveforms](docs/recipes.md#waveforms).
+- AM and mixtures containing pairs can change sample bits under component sum-then-modulate order; see [waveforms](https://github.com/resoltico/AuditoryLab/blob/v0.9.0/docs/recipes.md#waveforms).
+- Tone and AM sine use a portable quarter-cycle series, not libm; sample bits differ by about one unit ([waveforms](https://github.com/resoltico/AuditoryLab/blob/v0.9.0/docs/recipes.md#waveforms)).
 - Exported WAV and recipe files get ordinary permissions instead of owner-only; a replaced external recipe keeps its permissions.
 - Start here explains Library, six sound constructions and rhythm ranges with native light/dark diagrams, visible details and direct research references.
 - Sound lessons show compiled carrier/rhythm facts, fitted stereo waveforms and source/modulation timing without opening a device.
@@ -19,7 +21,7 @@
 - Library rows are two lines with duration beside the title; rhythm counts align, rail and list share one selection style, and the splitter is a hairline.
 - Library options… is gone: Open recipe… joins the toolbar, storage tools follow the results, and applied filters show above the results with Clear all filters.
 - The player shows why Play is unavailable; the preference notice is a centred, plainly worded popup.
-- Editable onboarding SVGs include transparent light/dark variants and original drawing inputs under [artwork terms](LICENSE); generator and preview software use MPL-2.0.
+- Editable onboarding SVGs add transparent light/dark variants and original drawing inputs under [artwork terms](https://github.com/resoltico/AuditoryLab/blob/v0.9.0/LICENSE); tools use MPL-2.0.
 - Create tone, pulse-train, pair or pulsed-tone (isochronic) templates in the desktop Workbench or `auditorylab new KIND`; `--output` never overwrites.
 - Pairs support shared sinusoidal or shaped pulsed modulation, with atomic component transitions within one 16-generator-lane budget.
 - Pulse widths retain duration or duty intent; raised-cosine edges and calculated previews show requested and sample-quantized timing.
