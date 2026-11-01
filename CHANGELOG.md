@@ -26,6 +26,7 @@
 - Finite duration/overall fades govern Library playback and export independently of live audition and its 30 ms transitions.
 - Routing names digital channels; intended separate-ear delivery is not verified. Small pair differences survive rounded carrier displays.
 - Workbench patterns refresh after edits with the monitor closed.
+- Add-component buttons and setting menus accept clicks while audio plays; live output no longer rebuilds the Workbench on every redraw.
 - `describe` states each research fact once (studied for, summary, measured, study, adaptation, citation, link); `inspect` text shows technical facts only.
 - `list` rows and desktop Library rows show what each sound's study was about; built-in CLI rows show dates only while sorting by a date.
 - CLI help describes every command and option in plain language; `export --output` and other options gained help.

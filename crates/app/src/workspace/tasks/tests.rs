@@ -7,7 +7,7 @@ use crate::core::{CarrierKind, ParameterId, SampleRate};
 use crate::document::editing::{EditingField, FieldHandle};
 use crate::services::library::{Library, Mutation};
 use crate::workspace::status::{AudioStatus, FileStatus};
-use crate::workspace::{AudioCommand, Command, EditorCommand, LibraryCommand};
+use crate::workspace::{AudioCommand, Command, EditorCommand, LibraryCommand, OutputCommand};
 use crate::workspace::{
     Capabilities, Effect, PromptAnswer, ResponseDisposition, View, WorkerFailure,
 };
@@ -133,6 +133,14 @@ fn prepared(
     job: &Job,
     rate: SampleRate,
 ) -> Result<(Response, LiveGenerator), crate::audio::PlaybackError> {
+    prepared_with(job, rate, MonitorDetail::Quantities)
+        .map(|(response, generator, _monitor)| (response, generator))
+}
+fn prepared_with(
+    job: &Job,
+    rate: SampleRate,
+    detail: MonitorDetail,
+) -> Result<(Response, LiveGenerator, PlaybackMonitor), crate::audio::PlaybackError> {
     let Work::Audio {
         session,
         kind,
@@ -183,7 +191,7 @@ fn prepared(
             frames: None,
             target,
         },
-        MonitorDetail::Quantities,
+        detail,
         Arc::clone(session.state()),
         Some(Arc::clone(generator.mailbox())),
     );
@@ -195,6 +203,7 @@ fn prepared(
             live,
         },
         generator,
+        monitor,
     ))
 }
 
@@ -485,6 +494,65 @@ fn later_document_preparation_keeps_current_document_unbound() {
     workspace.respond(response);
     assert!(workspace.live_rate().is_none());
     assert_eq!(workspace.diagnostic_rate(), workspace.export_rate());
+    workspace.apply(Command::Audio(AudioCommand::Stop)).unwrap();
+    workspace.respond(job.execute(|_| {}));
+}
+#[test]
+fn live_monitor_captures_are_telemetry_and_leave_the_revision_unchanged() {
+    let (_directory, _store, mut workspace) = fixture();
+    tone(&mut workspace, "440");
+    workspace.apply(Command::Audio(AudioCommand::Play)).unwrap();
+    let job = take_job(&mut workspace, JobKind::Audio);
+    let (response, _generator, monitor) = prepared_with(
+        &job,
+        SampleRate::new(8000).unwrap(),
+        MonitorDetail::Waveform,
+    )
+    .unwrap();
+    let mut writer = monitor.writer().unwrap();
+    workspace.respond(response);
+    workspace.poll();
+    let mut frame = 0;
+    let mut tick = |workspace: &mut Workspace| {
+        let block: Vec<[f64; 2]> = (0..80u32)
+            .map(|i| {
+                let v = (f64::from(i) * 0.3).sin() * 0.1;
+                [v, -v]
+            })
+            .collect();
+        writer.append(frame, &block);
+        frame += 80;
+        writer.finish(frame, None);
+        workspace.poll()
+    };
+    tick(&mut workspace);
+    for held in [false, true] {
+        let _ = workspace.apply(Command::Output(OutputCommand::SetHold(held)));
+        workspace.poll();
+        let revision = workspace.revision();
+        let first = workspace.output_view().capture;
+        let mut changed = 0;
+        for _ in 0..20 {
+            changed += usize::from(tick(&mut workspace));
+        }
+        assert_eq!(
+            workspace.revision(),
+            revision,
+            "captures must not ask frontends to rebuild document views (held: {held})"
+        );
+        if held {
+            assert!(Arc::ptr_eq(
+                first.as_ref().unwrap(),
+                workspace.output_view().capture.as_ref().unwrap()
+            ));
+        } else {
+            assert!(changed > 0, "poll still reports changed telemetry");
+            assert!(!Arc::ptr_eq(
+                first.as_ref().unwrap(),
+                workspace.output_view().capture.as_ref().unwrap()
+            ));
+        }
+    }
     workspace.apply(Command::Audio(AudioCommand::Stop)).unwrap();
     workspace.respond(job.execute(|_| {}));
 }
