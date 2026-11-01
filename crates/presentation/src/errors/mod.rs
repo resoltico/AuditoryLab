@@ -169,7 +169,9 @@ fn library_text(error: &LibraryError) -> String {
             "document UUID {id} belongs to a built-in; \
             explicitly create a copy"
         ),
-        E::NotInitialized => "library is not initialized".into(),
+        E::NotInitialized => "this library folder is not set up yet; initialize it (Library \
+            storage › Initialize configured library, or `auditorylab library init`) before saving"
+            .into(),
         E::UnknownManaged { id } => format!(
             "unknown \
             managed recipe user:{id}"

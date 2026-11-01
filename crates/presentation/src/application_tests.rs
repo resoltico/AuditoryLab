@@ -191,7 +191,7 @@ fn action_budget_messages_distinguish_components_from_expanded_voices() {
         let view = crate::workspace::action_view(&ws.action_view());
         assert!(!ws.action_view().can_add_pair());
         assert!(view.pair_add_reason.contains(&format!(
-            "{components} authored components and {voices} expanded voices"
+            "uses {voices} of 16 voices in {components} components"
         )));
         assert!(view.pair_add_reason.contains("2 more voices"));
         assert_eq!(
@@ -200,7 +200,7 @@ fn action_budget_messages_distinguish_components_from_expanded_voices() {
         );
         if !ws.action_view().can_add_component() {
             assert!(view.add_component_reason.contains(&format!(
-                "{components} authored components and {voices} expanded voices"
+                "uses {voices} of 16 voices in {components} components"
             )));
             assert!(view.add_component_reason.contains("1 more voice"));
         }

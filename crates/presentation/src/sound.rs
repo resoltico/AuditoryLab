@@ -490,16 +490,20 @@ mod tests {
             });
             assert!(
                 text.starts_with(&format!(
-                    "This sound has {components} authored components and {voices} expanded voices."
+                    "This sound uses {voices} of 16 voices in {components} components."
                 )),
                 "{text}"
             );
             assert!(
-                text.contains(&format!("requires {additional_voices} more ")),
+                text.contains(&format!("needs {additional_voices} more ")),
                 "{text}"
             );
-            assert!(text.contains(&format!("exceed {limit}.")), "{text}");
-            assert!(text.ends_with("Each pair uses two voices."), "{text}");
+            assert!(text.ends_with(&format!("exceed {limit}.")), "{text}");
+            assert_eq!(
+                text.contains("A pair uses two voices"),
+                additional_voices == 2,
+                "{text}"
+            );
         }
     }
 

@@ -152,9 +152,14 @@ pub fn edit_refusal_description(value: auditorylab_app::document::editing::EditR
                 _ => format!("the {}-voice limit", Sound::MAX_VOICES),
             };
             format!(
-                "This sound has {components} authored components and {voices} expanded \
-                    voices. Adding this component requires {additional_voices} more {}; \
-                    it would exceed {limit}. Each pair uses two voices.",
+                "This sound uses {voices} of {} voices in {components} components. {} \
+                    {additional_voices} more {}, which would exceed {limit}.",
+                Sound::MAX_VOICES,
+                if additional_voices == 2 {
+                    "A pair uses two voices, so adding one needs"
+                } else {
+                    "Adding a component needs"
+                },
                 if additional_voices == 1 {
                     "voice"
                 } else {

@@ -9,7 +9,6 @@ use auditorylab_app::workspace::status::{
     AudioStatus, EditStatus, FileAction, FileActivity, FileNotice, FileStatus, InventoryStatus,
     LibraryContext, LibraryStatus, SaveFeedback,
 };
-use auditorylab_core::diagnostic::Code;
 
 pub(crate) fn shutdown_reset_failure(
     error: &auditorylab_app::document::error::EditorError,
@@ -309,25 +308,22 @@ pub fn save_feedback_description(value: &SaveFeedback) -> String {
 }
 
 pub fn inventory_status_description(value: &InventoryStatus) -> String {
-    let mut text = format!(
-        "{} · {} readable User entries{}",
-        if value.complete {
-            "Inventory complete"
-        } else {
-            "Inventory incomplete · unseen previous rows retained; refresh before acting"
-        },
-        value.count,
-        if value.not_initialized {
-            " · Not initialized"
-        } else {
-            ""
-        }
-    );
+    let saved = if value.count == 1 {
+        "1 saved sound".to_owned()
+    } else {
+        format!("{} saved sounds", value.count)
+    };
+    let mut text = if value.not_initialized {
+        "Not set up yet; nothing has been saved here".to_owned()
+    } else if value.complete {
+        saved
+    } else {
+        format!("{saved} read; some could not be read. Press Refresh before changing them.")
+    };
     for problem in &value.diagnostics {
         let _ = write!(
             text,
-            "\n{}: {}",
-            problem.code(),
+            "\n{}",
             crate::errors::library_diagnostic_message(problem)
         );
     }

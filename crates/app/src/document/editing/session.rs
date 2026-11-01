@@ -668,6 +668,7 @@ impl EditorSession {
         form: auditorylab_core::ComponentForm,
     ) -> Result<ComponentId, EditRefusal> {
         self.admit_document(row)?;
+        let form = distinct_carrier(form, self.draft.components());
         let id = self.draft.add_node(form)?;
         self.row_generations.insert(id, 0);
         self.refresh_fields(id, form, 0);
@@ -912,4 +913,46 @@ fn apply_number(
         }
         Err(problem) => problems.push((field, problem)),
     }
+}
+
+/// Carrier multiples tried, in order, for a new component whose carrier an
+/// existing component already uses.
+const CARRIER_STEPS: [f64; 8] = [1.0, 1.25, 1.5, 2.0, 0.75, 2.5, 3.0, 0.5];
+
+/// Move a new component's carrier to the first step no existing component
+/// uses, so an added default is audibly distinct rather than only louder.
+/// Pulse trains keep their rate: changing it would change their rhythm.
+fn distinct_carrier(
+    mut form: auditorylab_core::ComponentForm,
+    existing: &[auditorylab_core::Component],
+) -> auditorylab_core::ComponentForm {
+    fn carrier(
+        source: &mut auditorylab_core::SoundSource,
+    ) -> Option<&mut auditorylab_core::Finite> {
+        use auditorylab_core::SoundSource as S;
+        match source {
+            S::Tone { frequency_hz, .. } => Some(frequency_hz),
+            S::BinauralPair { first_hz, .. } | S::MonauralPair { first_hz, .. } => Some(first_hz),
+            S::PulseTrain { .. } => None,
+        }
+    }
+    let used: Vec<f64> = existing
+        .iter()
+        .filter_map(|component| {
+            let mut source = component.form.source;
+            carrier(&mut source).map(|hz| hz.get())
+        })
+        .collect();
+    if let Some(hz) = carrier(&mut form.source) {
+        let base = hz.get();
+        if let Some(free) = CARRIER_STEPS
+            .iter()
+            .map(|step| base * step)
+            .find(|candidate| !used.contains(candidate))
+            .and_then(auditorylab_core::Finite::new)
+        {
+            *hz = free;
+        }
+    }
+    form
 }
