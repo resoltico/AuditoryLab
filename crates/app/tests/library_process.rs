@@ -182,7 +182,10 @@ fn shared_and_exclusive_locks_exclude_real_other_processes_and_die_with_handles(
             )
             .unwrap_err();
         assert_eq!(error.outcome(), Outcome::Busy);
-        assert!(start.elapsed() < Duration::from_secs(2));
+        // Busy waits a bounded time for the holder, then reports instead of hanging.
+        let waited = start.elapsed();
+        let bound = auditorylab_app::services::library::BUSY_WAIT;
+        assert!(waited >= bound && waited < bound + Duration::from_secs(2));
         if mode == "exclusive" {
             let scan = store.scan(&Cancel::default());
             assert!(!scan.complete);

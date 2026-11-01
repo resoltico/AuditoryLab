@@ -65,14 +65,17 @@ pub(crate) fn pulse_brief(p: PulseFacts) -> String {
 /// Requested and realized carrier and modulation quantities. Brief views
 /// state realized values; detail states both, with the rate.
 pub(crate) fn generator_description(facts: &VoiceFacts, detail: bool) -> String {
+    // Rounding is disclosed where it shows at displayed precision; binary
+    // noise such as 210.00000000000003 stays in JSON facts.
     let phase = |p: PhaseRate| {
-        if detail && p.requested_hz != p.realized_hz {
-            format!(
-                "requested {} Hz; realized {} Hz",
-                p.requested_hz, p.realized_hz
-            )
+        let (requested, realized) = (
+            compact_number(p.requested_hz),
+            compact_number(p.realized_hz),
+        );
+        if detail && requested != realized {
+            format!("requested {requested} Hz; realized {realized} Hz")
         } else {
-            format!("{} Hz", compact_number(p.realized_hz))
+            format!("{realized} Hz")
         }
     };
     let pulse = |p: PulseFacts| {

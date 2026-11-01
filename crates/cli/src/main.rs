@@ -271,14 +271,31 @@ fn exit_code(outcome: Outcome) -> u8 {
     }
 }
 
+/// Text for standard output.
 fn prose(text: &str) -> String {
-    let width = if io::stdout().is_terminal() {
-        textwrap::termwidth().saturating_sub(2).max(1)
-    } else {
-        78
-    };
+    wrapped(text, io::stdout().is_terminal())
+}
+/// Text for standard error.
+fn eprose(text: &str) -> String {
+    wrapped(text, io::stderr().is_terminal())
+}
+/// Wrap for a terminal only, and never inside a word: paths, selectors and
+/// tokens stay whole so they can be copied, searched and parsed.
+fn wrapped(text: &str, terminal: bool) -> String {
+    let width = terminal.then(|| textwrap::termwidth().saturating_sub(2).max(1));
     text.lines()
-        .map(|line| textwrap::fill(&auditorylab_presentation::display_text(line), width))
+        .map(|line| {
+            let line = auditorylab_presentation::display_text(line);
+            match width {
+                Some(width) => textwrap::fill(
+                    &line,
+                    textwrap::Options::new(width)
+                        .break_words(false)
+                        .word_splitter(textwrap::WordSplitter::NoHyphenation),
+                ),
+                None => line,
+            }
+        })
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -355,7 +372,7 @@ fn play(resolved: &lab::services::Resolved) -> Result<Ended, CliError> {
         Preparation::Stopped(report) => {
             eprintln!(
                 "{}",
-                prose(&auditorylab_presentation::playback_report_description(
+                eprose(&auditorylab_presentation::playback_report_description(
                     &(report)
                 ))
             );
@@ -364,7 +381,7 @@ fn play(resolved: &lab::services::Resolved) -> Result<Ended, CliError> {
     };
     eprintln!(
         "{}\n{}",
-        prose(&auditorylab_presentation::snapshot_playback_preamble(
+        eprose(&auditorylab_presentation::snapshot_playback_preamble(
             playback.rendition().snapshot(),
             playback.output(),
             playback.signal()
@@ -374,7 +391,7 @@ fn play(resolved: &lab::services::Resolved) -> Result<Ended, CliError> {
     let sound = playback.rendition();
     eprintln!(
         "{}",
-        prose(&auditorylab_presentation::rendition_description(
+        eprose(&auditorylab_presentation::rendition_description(
             sound, false
         ))
     );
@@ -413,7 +430,7 @@ fn play(resolved: &lab::services::Resolved) -> Result<Ended, CliError> {
     };
     eprintln!(
         "{}",
-        prose(&auditorylab_presentation::playback_report_description(
+        eprose(&auditorylab_presentation::playback_report_description(
             &(report)
         ))
     );
@@ -490,7 +507,7 @@ fn run(cli: Cli) -> Result<Ended, CliError> {
                 || {
                     eprintln!(
                         "{}",
-                        prose(&auditorylab_presentation::rendition_export_preamble(
+                        eprose(&auditorylab_presentation::rendition_export_preamble(
                             sound, &path
                         ))
                     );
@@ -499,7 +516,7 @@ fn run(cli: Cli) -> Result<Ended, CliError> {
             for warning in &result.warnings {
                 eprintln!(
                     "{}",
-                    prose(&auditorylab_presentation::errors::publication::warning(
+                    eprose(&auditorylab_presentation::errors::publication::warning(
                         warning
                     ))
                 );
@@ -567,7 +584,7 @@ fn main() -> ExitCode {
                     );
                 }
             } else {
-                eprintln!("{}", prose(&message));
+                eprintln!("{}", eprose(&message));
             }
             ExitCode::from(code)
         }
@@ -610,7 +627,7 @@ fn export_recipe(
         for warning in saved.warnings {
             eprintln!(
                 "{}",
-                prose(&auditorylab_presentation::errors::publication::warning(
+                eprose(&auditorylab_presentation::errors::publication::warning(
                     &warning
                 ))
             );

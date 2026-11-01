@@ -11,7 +11,7 @@ use crate::core::DocumentUuid;
 
 use crate::storage::library::LibraryError as Error;
 pub(crate) use root::LibraryRoot;
-pub use root::{Initialization, LIBRARY_LAYOUT, RootInfo, RootSource};
+pub use root::{BUSY_WAIT, Initialization, LIBRARY_LAYOUT, RootInfo, RootSource};
 pub(crate) use store::LibraryStore;
 pub use store::{
     DiagnosticDetail, Inventory, LibraryDiagnostic, LoadedRecord, Mutation, MutationKind,

@@ -467,12 +467,18 @@ pub(crate) fn removed_memberships(removed: usize) -> String {
 pub(crate) fn membership_update_failed(
     error: &auditorylab_app::services::library::LibraryError,
 ) -> String {
-    format!("Saved; membership timestamps could not be updated: {error}")
+    format!(
+        "Saved; membership timestamps could not be updated: {}",
+        error.explain()
+    )
 }
 pub(crate) fn membership_read_failed(
     error: &auditorylab_app::services::library::LibraryError,
 ) -> String {
-    format!("Saved; membership dates are Unknown because their state could not be read: {error}")
+    format!(
+        "Saved; membership dates are Unknown because their state could not be read: {}",
+        error.explain()
+    )
 }
 pub(crate) fn recovered_move(name: &std::ffi::OsStr) -> String {
     format!(
@@ -591,7 +597,11 @@ pub fn group_label(label: &auditorylab_app::discovery::collection::GroupLabel) -
 pub fn write_outcome_description(
     value: &auditorylab_app::services::library::WriteOutcome,
 ) -> String {
-    let mut text = format!("{}: {}", value.status.label(), value.key);
+    let mut text = format!(
+        "{}: {}",
+        mutation_label(value.kind, value.status),
+        value.key
+    );
     if let Some(record) = &value.record {
         let _ = write!(text, "\nVersion token: {}", record.version_token);
     }
@@ -600,6 +610,27 @@ pub fn write_outcome_description(
         text.push_str(&crate::errors::publication::warning(diagnostic));
     }
     text
+}
+/// What a confirmed mutation did, named for its kind.
+fn mutation_label(
+    kind: auditorylab_app::services::library::MutationKind,
+    status: auditorylab_app::services::library::MutationStatus,
+) -> String {
+    use auditorylab_app::services::library::{MutationKind as K, MutationStatus as S};
+    let done = match kind {
+        _ if status == S::Unchanged => return status.label().to_owned(),
+        K::Create | K::Add => "Added to User Library",
+        K::Update => "Updated",
+        K::Rename => "Renamed",
+        K::Trash => "Moved to Trash",
+        K::Restore => "Restored from Trash",
+        K::Purge => "Permanently deleted",
+    };
+    if status == S::PublishedWithWarning {
+        format!("{done} with warnings")
+    } else {
+        done.to_owned()
+    }
 }
 /// Confirmed truth retained when completion output fails.
 pub fn write_outcome_completion_failure(
@@ -681,5 +712,26 @@ mod tests {
             )
             .contains("incomplete")
         );
+    }
+}
+
+#[cfg(test)]
+mod mutation_label_tests {
+    use super::mutation_label;
+    use auditorylab_app::services::library::{MutationKind as K, MutationStatus as S};
+
+    #[test]
+    fn each_mutation_reports_what_it_did() {
+        assert_eq!(mutation_label(K::Trash, S::Published), "Moved to Trash");
+        assert_eq!(
+            mutation_label(K::Restore, S::Published),
+            "Restored from Trash"
+        );
+        assert_eq!(mutation_label(K::Rename, S::Published), "Renamed");
+        assert_eq!(
+            mutation_label(K::Add, S::PublishedWithWarning),
+            "Added to User Library with warnings"
+        );
+        assert_eq!(mutation_label(K::Trash, S::Unchanged), "Unchanged");
     }
 }

@@ -111,6 +111,15 @@ pub enum FileError {
         /// Captured destination when applicable.
         path: Option<PathBuf>,
     },
+    /// The destination volume cannot hold the file about to be written.
+    InsufficientSpace {
+        /// Destination path.
+        path: PathBuf,
+        /// Bytes the file needs.
+        needed: u64,
+        /// Bytes available to this user on the destination volume.
+        available: u64,
+    },
     /// An existing destination was preserved.
     DestinationExists {
         /// Destination path.
@@ -162,6 +171,7 @@ impl FileError {
             Self::DestinationExists { .. } => Outcome::DestinationExists,
             Self::Changed { .. } | Self::RelocationExists { .. } => Outcome::Conflict,
             Self::Io(_)
+            | Self::InsufficientSpace { .. }
             | Self::MissingFilename
             | Self::MissingParent
             | Self::Cleanup { .. }
@@ -375,6 +385,7 @@ crate::core::diagnostic_codes! {
             Self::ReadLimit { .. } => "file.read_limit",
             Self::Cancelled { .. } => "file.cancelled",
             Self::DestinationExists { .. } => "file.destination_exists",
+            Self::InsufficientSpace { .. } => "file.insufficient_space",
             Self::Changed { .. } => "file.changed",
             Self::MissingFilename => "file.missing_filename",
             Self::MissingParent => "file.missing_parent",
@@ -392,6 +403,17 @@ crate::core::diagnostic_codes! {
                     crate::core::diagnostic_params! {
                         "path"=>path.to_string_lossy().into_owned(),
                         "grew"=>*grew,
+                    }
+                }
+                Self::InsufficientSpace {
+                    path,
+                    needed,
+                    available,
+                } => {
+                    crate::core::diagnostic_params! {
+                        "path"=>path.to_string_lossy().into_owned(),
+                        "needed_bytes"=>*needed,
+                        "available_bytes"=>*available,
                     }
                 }
                 Self::NotRegular { path }
