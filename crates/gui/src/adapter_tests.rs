@@ -610,6 +610,43 @@ fn callbacks_from_a_replaced_document_are_refused() {
 }
 
 #[test]
+fn document_projections_keep_unchanged_choice_models_so_presses_survive() {
+    let h = Harness::new();
+    let ui = h.ui();
+    h.workbench();
+    ui.invoke_add_component(ui.get_document(), 0);
+    h.settle();
+    let add = ui.get_add_choices();
+    let modulation = ui.get_modulation_choices();
+    let routing = ui.get_routing_choices();
+    let documents = h.adapter.counts.document_projections.get();
+    ui.invoke_commit_parameter(
+        parameter_field(&h.component_key(0), ParameterId::ToneFrequency),
+        "441".into(),
+    );
+    h.settle();
+    assert!(h.adapter.counts.document_projections.get() > documents);
+    // Replacing a model recreates its buttons and popups, dropping a press in flight.
+    assert_eq!(
+        ui.get_add_choices(),
+        add,
+        "unchanged Add choices keep their model"
+    );
+    assert_eq!(ui.get_modulation_choices(), modulation);
+    assert_eq!(ui.get_routing_choices(), routing);
+    // Changed contents still reach the view.
+    for _ in 0..7 {
+        ui.invoke_add_component(ui.get_document(), 2);
+    }
+    h.settle();
+    assert_ne!(ui.get_add_choices(), add);
+    assert!(
+        !ui.get_add_choices().row_data(2).unwrap().enabled,
+        "a third pair exceeds the remaining voice budget"
+    );
+}
+
+#[test]
 fn unchanged_state_projects_nothing_and_paths_follow_only_new_captures() {
     let h = Harness::new();
     for _ in 0..3 {

@@ -846,34 +846,31 @@ impl Workspace {
 
     /// Refresh pure views/models and schedule captured library jobs.
     /// External completions arrive through respond; the Runner owns IO and joins.
-    /// Returns whether anything a view shows may have changed.
+    /// Returns whether anything a view shows may have changed. Waveform and
+    /// model refreshes are telemetry: they change output and model views
+    /// without advancing [`Self::revision`].
     pub fn poll(&mut self) -> bool {
         let before = self.revision;
         self.resolve_pending();
         self.continue_library();
         let shown = self.selected().cloned();
         let export_rate = self.editor.export_rate();
-        if self
+        let captured = self
             .audio
-            .refresh(&mut self.editor, shown.as_ref(), self.view, export_rate)
-        {
-            self.changed();
-        }
+            .refresh(&mut self.editor, shown.as_ref(), self.view, export_rate);
         let live_document = self.live_rate().is_some();
         let rate = match self.view {
             View::Workbench => self.diagnostic_rate(),
             View::Library => self.editor.export_rate(),
         };
-        if self.audio.refresh_model(
+        let modelled = self.audio.refresh_model(
             &mut self.editor,
             shown.as_ref(),
             self.view,
             live_document,
             rate,
-        ) {
-            self.changed();
-        }
-        before != self.revision
+        );
+        captured || modelled || before != self.revision
     }
 
     fn finish_audio(

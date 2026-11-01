@@ -26,6 +26,7 @@
 - Finite duration/overall fades govern Library playback and export independently of live audition and its 30 ms transitions.
 - Routing names digital channels; intended separate-ear delivery is not verified. Small pair differences survive rounded carrier displays.
 - Workbench patterns refresh after edits with the monitor closed.
+- Add-component buttons and setting menus accept clicks while audio plays; live output no longer rebuilds the Workbench on every redraw.
 - CLI messages no longer wrap when piped and never split paths or selectors; unknown recipe values list the accepted ones instead of an internal code.
 - On macOS and Linux, WAV export refuses a file larger than the destination's free space before writing (`file.insufficient_space`, exit 1).
 - Library operations wait up to 2 seconds for another to finish before reporting busy; `library trash`, `restore` and `rename` name what they did.

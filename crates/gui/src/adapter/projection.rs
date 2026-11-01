@@ -352,6 +352,7 @@ impl SlintAdapter {
 
     pub(super) fn project_control_choices(&self, ui: &MainWindow) {
         let choices = self.control_choices.borrow();
+        let monitor = self.monitor.upgrade();
         for menu in choices.iter() {
             let labels = menu
                 .view
@@ -359,47 +360,73 @@ impl SlintAdapter {
                 .iter()
                 .map(|o| auditorylab_presentation::workspace::control_choice(o).into())
                 .collect::<Vec<SharedString>>();
-            let strings = ModelRc::new(VecModel::from(labels));
             let selected = selected_option(&menu.view);
+            // Replacing a model recreates its widgets, which drops a press or an
+            // open popup, so only changed contents get a new model.
+            let strings = |get: &dyn Fn() -> ModelRc<SharedString>,
+                           set: &dyn Fn(ModelRc<SharedString>)| {
+                if let Some(model) = replaced(&get(), &labels) {
+                    set(model);
+                }
+            };
             match menu.menu {
                 ControlMenu::SourceWidth | ControlMenu::ModulationWidth => {
-                    ui.set_pulse_width_choices(strings);
+                    strings(&|| ui.get_pulse_width_choices(), &|m| {
+                        ui.set_pulse_width_choices(m);
+                    });
                 }
                 ControlMenu::SourceShape | ControlMenu::ModulationShape => {
-                    ui.set_pulse_shape_choices(strings);
+                    strings(&|| ui.get_pulse_shape_choices(), &|m| {
+                        ui.set_pulse_shape_choices(m);
+                    });
                 }
-                ControlMenu::ChannelRouting => ui.set_routing_choices(strings),
-                ControlMenu::Carrier => ui.set_carrier_choices(strings),
-                ControlMenu::Modulation => ui.set_modulation_choices(strings),
-                ControlMenu::AddComponent => ui.set_add_choices(ModelRc::new(VecModel::from(
-                    menu.view
+                ControlMenu::ChannelRouting => {
+                    strings(&|| ui.get_routing_choices(), &|m| ui.set_routing_choices(m));
+                }
+                ControlMenu::Carrier => {
+                    strings(&|| ui.get_carrier_choices(), &|m| ui.set_carrier_choices(m));
+                }
+                ControlMenu::Modulation => strings(&|| ui.get_modulation_choices(), &|m| {
+                    ui.set_modulation_choices(m);
+                }),
+                ControlMenu::AddComponent => {
+                    let options = menu
+                        .view
                         .options
                         .iter()
-                        .map(|o| crate::generated::ControlOption {
-                            label: auditorylab_presentation::workspace::control_choice(o).into(),
+                        .zip(&labels)
+                        .map(|(o, label)| crate::generated::ControlOption {
+                            label: label.clone(),
                             enabled: o.enabled,
                         })
-                        .collect::<Vec<_>>(),
-                ))),
+                        .collect::<Vec<_>>();
+                    if let Some(model) = replaced(&ui.get_add_choices(), &options) {
+                        ui.set_add_choices(model);
+                    }
+                }
                 ControlMenu::MonitorSpan => {
                     ui.set_can_change_waveform(
                         menu.view.options.first().is_some_and(|o| o.enabled),
                     );
-                    ui.set_span_choices(strings.clone());
+                    strings(&|| ui.get_span_choices(), &|m| ui.set_span_choices(m));
                     ui.set_window_index(selected);
-                    if let Some(monitor) = self.monitor.upgrade() {
-                        monitor.set_span_choices(strings);
+                    if let Some(monitor) = &monitor {
+                        strings(&|| monitor.get_span_choices(), &|m| {
+                            monitor.set_span_choices(m);
+                        });
                     }
                 }
                 ControlMenu::WaveformScale => {
-                    ui.set_scale_choices(strings.clone());
+                    strings(&|| ui.get_scale_choices(), &|m| ui.set_scale_choices(m));
                     ui.set_scale_index(selected);
-                    if let Some(monitor) = self.monitor.upgrade() {
-                        monitor.set_scale_choices(strings);
+                    if let Some(monitor) = &monitor {
+                        strings(&|| monitor.get_scale_choices(), &|m| {
+                            monitor.set_scale_choices(m);
+                        });
                     }
                 }
                 ControlMenu::ExportRate => {
-                    ui.set_export_rates(strings);
+                    strings(&|| ui.get_export_rates(), &|m| ui.set_export_rates(m));
                     ui.set_rate_index(selected);
                 }
             }
@@ -981,4 +1008,13 @@ fn fitted_learning_waveform(bins: &[[auditorylab_app::core::waveform::Extent; 2]
         })
         .max(f64::MIN_POSITIVE);
     scope::paths(bins, limit)
+}
+
+/// A new model for `rows`, or `None` when `current` already holds them.
+fn replaced<T: Clone + PartialEq + 'static>(
+    current: &ModelRc<T>,
+    rows: &[T],
+) -> Option<ModelRc<T>> {
+    let same = current.row_count() == rows.len() && current.iter().zip(rows).all(|(a, b)| a == *b);
+    (!same).then(|| ModelRc::new(VecModel::from(rows.to_vec())))
 }
