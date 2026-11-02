@@ -3,7 +3,9 @@ Auditory Lab {version} — {product}
 Generate auditory stimuli from editable TOML recipes.
 Before listening, turn the volume down, start quietly and keep sessions short.
 Stop if listening is uncomfortable. Use headphones for separate-ear sounds.
-These research-inspired sounds are not medical treatment.
+Auditory Lab is not a medical device and is not intended to diagnose, treat,
+cure or prevent any disease or condition. Built-in recipes cite their studies;
+those researchers and publishers do not endorse Auditory Lab.
 
 {start}
 

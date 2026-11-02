@@ -144,7 +144,12 @@ pub(crate) fn further_evidence(recipe: &Recipe) -> String {
         if Some(source.key.as_str()) == primary_source {
             continue;
         }
-        let _ = writeln!(text, "Further source ({}): {}", source.key, source.citation);
+        let name = if source.label.trim().is_empty() {
+            &source.key
+        } else {
+            &source.label
+        };
+        let _ = writeln!(text, "Further source ({name}): {}", source.citation);
         if let Some(link) = source_link(source) {
             let _ = writeln!(text, "Link: {link}");
         }

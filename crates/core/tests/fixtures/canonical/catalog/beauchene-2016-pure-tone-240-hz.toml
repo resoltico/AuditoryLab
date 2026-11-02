@@ -24,7 +24,7 @@ kind = "none"
 
 [[source]]
 key = "beauchene-2016"
-label = "beauchene-2016"
+label = "Beauchene et al. 2016"
 citation = "Beauchene C, Abaid N, Moran R, Diana RA, Leonessa A (2016). The effect of binaural beats on visuospatial working memory and cortical connectivity. PLoS ONE 11(11): e0166630."
 doi = "10.1371/journal.pone.0166630"
 url = "https://doi.org/10.1371/journal.pone.0166630"

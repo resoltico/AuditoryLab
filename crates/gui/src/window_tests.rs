@@ -901,7 +901,7 @@ fn about_geometry_keeps_identity_icon_and_actions_visible_at_font_and_display_sc
         for size in [13.0_f32, 26.0, 40.0] {
             about.set_ui_size(size);
             let width = 420.0_f32.max(size * 30.0);
-            let height = 410.0_f32.max(size * 27.0);
+            let height = 500.0_f32.max(size * 33.0);
             about
                 .window()
                 .set_size(slint::LogicalSize::new(width, height));
@@ -922,7 +922,8 @@ fn about_geometry_keeps_identity_icon_and_actions_visible_at_font_and_display_sc
                             | "Project website"
                             | "Licenses"
                             | "#MadeWithSlint"
-                    ) || label.starts_with("Play and export"))
+                    ) || label.starts_with("Play and export")
+                        || label == auditorylab_presentation::build_info::RESEARCH_USE)
                 {
                     let geometry = item.geometry();
                     let origin = item.map_to_window(geometry.origin);
@@ -942,7 +943,7 @@ fn about_geometry_keeps_identity_icon_and_actions_visible_at_font_and_display_sc
                 }
                 ControlFlow::<()>::Continue(())
             });
-            assert_eq!(observed, 8, "all required About contents are reachable");
+            assert_eq!(observed, 9, "all required About contents are reachable");
             if let Ok(directory) = std::env::var("AUDITORYLAB_TEST_SCREENSHOTS") {
                 use std::io::Write;
                 std::fs::create_dir_all(&directory).unwrap();

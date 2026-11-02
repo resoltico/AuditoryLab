@@ -25,10 +25,17 @@ kind = "none"
 
 [[source]]
 key = "beauchene-2016"
-label = "beauchene-2016"
+label = "Beauchene et al. 2016"
 citation = "Beauchene C, Abaid N, Moran R, Diana RA, Leonessa A (2016). The effect of binaural beats on visuospatial working memory and cortical connectivity. PLoS ONE 11(11): e0166630."
 doi = "10.1371/journal.pone.0166630"
 url = "https://doi.org/10.1371/journal.pone.0166630"
+
+[[source]]
+key = "ingendoh-2023"
+label = "Ingendoh et al. 2023"
+citation = "Ingendoh RM, Posny ES, Heine A (2023). Binaural beats to entrain the brain? A systematic review of the effects of binaural beat stimulation on brain oscillatory activity, and the implications for psychological research and intervention. PLoS ONE 18(5): e0286023."
+doi = "10.1371/journal.pone.0286023"
+url = "https://doi.org/10.1371/journal.pone.0286023"
 
 [[evidence]]
 source = "beauchene-2016"
@@ -38,6 +45,6 @@ population_detail = "Human study: Visual working memory"
 condition_role = "test"
 measures = ["eeg", "behavior"]
 methods_locator = "Binaural-beat condition: 240 Hz in the right ear and 255 Hz in the left. One of six 5-minute sound conditions played in random order while 28 adults did a visuospatial working-memory task during EEG. Accuracy rose during the 15 Hz binaural beat and fell during the other conditions."
-summary = "Two steady low tones, 255 Hz in the left ear and 240 Hz in the right, which the brain hears as a 15-per-second pulsing (a binaural beat); use headphones. In one study, 28 adults heard it for 5 minutes during a visual memory task, and their accuracy improved slightly, and this was the only sound in the study with an accuracy increase. Reaction times did not differ significantly between the study's sounds. Reviews of binaural-beat research report mixed results."
+summary = "Two steady low tones, 255 Hz in the left ear and 240 Hz in the right, which the brain hears as a 15-per-second pulsing (a binaural beat); use headphones. In one study, 28 adults heard it for 5 minutes during a visual memory task, and their accuracy improved slightly, and this was the only sound in the study with an accuracy increase. Reaction times did not differ significantly between the study's sounds. A 2023 systematic review of 14 EEG studies found inconsistent evidence that binaural beats entrain brain rhythms."
 limitations = "Source findings concern the stated population and condition; adaptations do not establish efficacy for generated audio. See the summary and adaptation for study-specific limitations."
 adaptation = "The source generated the tones in MATLAB and let participants set the volume; it states no phase, ramps or sample rate. Tones start at phase zero with a -20 dBFS peak, uncalibrated, with 0.1 s fades added."

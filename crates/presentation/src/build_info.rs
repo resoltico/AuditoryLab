@@ -1,6 +1,13 @@
 //! Product identity wording derived from application metadata.
 use auditorylab_app::identity::BuildIdentity;
 
+/// What the product is for, shown wherever it introduces itself: About, CLI help
+/// and the Start here overview.
+pub const RESEARCH_USE: &str = "Auditory Lab is for exploring and making sounds described in \
+    research. It is not a medical device and is not intended to diagnose, treat, cure or \
+    prevent any disease or condition. Built-in recipes cite their studies; those researchers \
+    and publishers are not affiliated with Auditory Lab and do not endorse it.";
+
 /// About-window title derived from the canonical product name.
 #[must_use]
 pub fn about_title() -> String {

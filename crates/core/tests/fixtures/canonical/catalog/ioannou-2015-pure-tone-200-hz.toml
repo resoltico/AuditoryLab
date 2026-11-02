@@ -24,7 +24,7 @@ kind = "none"
 
 [[source]]
 key = "ioannou-2015"
-label = "ioannou-2015"
+label = "Ioannou et al. 2015"
 citation = "Ioannou CI, Pereda E, Lindsen JP, Bhattacharya J (2015). Electrical brain responses to an auditory illusion and the impact of musical expertise. PLoS ONE 10(6): e0129486."
 doi = "10.1371/journal.pone.0129486"
 url = "https://doi.org/10.1371/journal.pone.0129486"

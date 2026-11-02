@@ -157,6 +157,10 @@ const STUDIES: &[(&str, &str)] = &[
     ),
     ("chan-2022", include_str!("../../studies/chan-2022.toml")),
     (
+        "ingendoh-2023",
+        include_str!("../../studies/ingendoh-2023.toml"),
+    ),
+    (
         "ioannou-2015",
         include_str!("../../studies/ioannou-2015.toml"),
     ),
@@ -183,7 +187,7 @@ const STUDIES: &[(&str, &str)] = &[
 ];
 
 impl Entry {
-    /// Standalone schema-4 TOML, with the study citation and evidence limitations.
+    /// Standalone portable TOML, with study citations and evidence limitations.
     #[must_use]
     pub fn text(&self) -> String {
         generated_recipe(self.condition, |key| {
@@ -199,48 +203,21 @@ impl Entry {
 
 fn generated_recipe(
     condition: &str,
-    read: impl FnOnce(&str) -> Result<String, Box<dyn core::error::Error>>,
+    mut read: impl FnMut(&str) -> Result<String, Box<dyn core::error::Error>>,
 ) -> Result<String, Box<dyn core::error::Error>> {
     let mut document: toml::Table = toml::from_str(condition)?;
     let sources = document
         .get_mut("source")
         .and_then(toml::Value::as_array_mut)
         .ok_or("missing condition bibliography")?;
-    if sources.len() != 1 {
-        return Err("catalog conditions require one primary bibliography record".into());
+    if sources.is_empty() {
+        return Err("catalog conditions require a bibliography record".into());
     }
-    let source = sources[0].as_table_mut().ok_or("source must be a table")?;
-    let key = source
-        .get("key")
-        .and_then(toml::Value::as_str)
-        .ok_or("missing source key")?;
-    if key.is_empty()
-        || !key
-            .bytes()
-            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'-')
-    {
-        return Err("invalid study source ID".into());
-    }
-    let study: toml::Table = toml::from_str(&read(key)?)?;
-    if study.len() != 2 || !study.contains_key("citation") || !study.contains_key("source_url") {
-        return Err("study must contain only citation and source_url".into());
-    }
-    let citation = study.get("citation").cloned().ok_or("missing citation")?;
-    let url = study
-        .get("source_url")
-        .and_then(toml::Value::as_str)
-        .ok_or("missing URL")?;
-    let doi = url
-        .strip_prefix("https://doi.org/")
-        .ok_or("study URL must be a DOI URL")?;
-    for (field, value) in [
-        ("citation", citation),
-        ("url", toml::Value::String(url.into())),
-        ("doi", toml::Value::String(doi.to_ascii_lowercase())),
-    ] {
-        if source.insert(field.into(), value).is_some() {
-            return Err("condition duplicates authoritative study citation/DOI".into());
-        }
+    for source in sources {
+        merge_study(
+            source.as_table_mut().ok_or("source must be a table")?,
+            &mut read,
+        )?;
     }
     let evidence = document
         .get_mut("evidence")
@@ -254,6 +231,54 @@ fn generated_recipe(
             .or_insert_with(|| toml::Value::String(LIMITATIONS.into()));
     }
     Ok(toml::to_string(&document)?)
+}
+
+/// Complete one condition bibliography key from its study record, which alone
+/// owns the label, citation and DOI.
+fn merge_study(
+    source: &mut toml::Table,
+    read: &mut impl FnMut(&str) -> Result<String, Box<dyn core::error::Error>>,
+) -> Result<(), Box<dyn core::error::Error>> {
+    let key = source
+        .get("key")
+        .and_then(toml::Value::as_str)
+        .ok_or("missing source key")?;
+    if key.is_empty()
+        || !key
+            .bytes()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'-')
+    {
+        return Err("invalid study source ID".into());
+    }
+    let study: toml::Table = toml::from_str(&read(key)?)?;
+    if study.len() != 3
+        || !["label", "citation", "source_url"]
+            .iter()
+            .all(|k| study.contains_key(*k))
+    {
+        return Err("study must contain only label, citation and source_url".into());
+    }
+    let url = study
+        .get("source_url")
+        .and_then(toml::Value::as_str)
+        .ok_or("missing URL")?;
+    let doi = url
+        .strip_prefix("https://doi.org/")
+        .ok_or("study URL must be a DOI URL")?;
+    for (field, value) in [
+        ("label", study.get("label").cloned().ok_or("missing label")?),
+        (
+            "citation",
+            study.get("citation").cloned().ok_or("missing citation")?,
+        ),
+        ("url", toml::Value::String(url.into())),
+        ("doi", toml::Value::String(doi.to_ascii_lowercase())),
+    ] {
+        if source.insert(field.into(), value).is_some() {
+            return Err("condition duplicates authoritative study label/citation/DOI".into());
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

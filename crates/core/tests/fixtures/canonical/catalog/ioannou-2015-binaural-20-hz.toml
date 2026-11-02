@@ -25,10 +25,17 @@ kind = "none"
 
 [[source]]
 key = "ioannou-2015"
-label = "ioannou-2015"
+label = "Ioannou et al. 2015"
 citation = "Ioannou CI, Pereda E, Lindsen JP, Bhattacharya J (2015). Electrical brain responses to an auditory illusion and the impact of musical expertise. PLoS ONE 10(6): e0129486."
 doi = "10.1371/journal.pone.0129486"
 url = "https://doi.org/10.1371/journal.pone.0129486"
+
+[[source]]
+key = "ingendoh-2023"
+label = "Ingendoh et al. 2023"
+citation = "Ingendoh RM, Posny ES, Heine A (2023). Binaural beats to entrain the brain? A systematic review of the effects of binaural beat stimulation on brain oscillatory activity, and the implications for psychological research and intervention. PLoS ONE 18(5): e0286023."
+doi = "10.1371/journal.pone.0286023"
+url = "https://doi.org/10.1371/journal.pone.0286023"
 
 [[evidence]]
 source = "ioannou-2015"
@@ -38,6 +45,6 @@ population_detail = "Human study: Brain-rhythm response"
 condition_role = "test"
 measures = ["eeg"]
 methods_locator = "The binaural minute of the 20 Hz block: 200 Hz in the left ear and 220 Hz in the right. Sixteen musicians and sixteen non-musicians watched a silent subtitled film during EEG while 34 blocks played, each 20 s of silence, 1 minute of 200 Hz in both ears, then 1 minute of a binaural beat from 1 to 48 Hz. Beats in the alpha band, 9 to 12 Hz, gave the strongest steady-state responses."
-summary = "200 Hz in the left ear and 220 Hz in the right, heard through headphones as a 20-per-second binaural beat. In one study, 32 adults, half of them musicians, listened while watching a silent film; their brain recordings followed beats near 10 per second most strongly. The study measured brain responses, not effects such as relaxation or focus. Reviews of binaural-beat research report mixed results."
+summary = "200 Hz in the left ear and 220 Hz in the right, heard through headphones as a 20-per-second binaural beat. In one study, 32 adults, half of them musicians, listened while watching a silent film; their brain recordings followed beats near 10 per second most strongly. The study measured brain responses, not effects such as relaxation or focus. A 2023 systematic review of 14 EEG studies found inconsistent evidence that binaural beats entrain brain rhythms."
 limitations = "Source findings concern the stated population and condition; adaptations do not establish efficacy for generated audio. See the summary and adaptation for study-specific limitations."
 adaptation = "Volume was set by each participant; the source states no phase, ramps or sample rate. Tones start at phase zero with a -20 dBFS peak, uncalibrated, with 0.1 s fades added. The silent interval and the block sequence are not part of this recipe. The source's other blocks differ only in the right ear's frequency, 200 Hz plus the beat frequency."

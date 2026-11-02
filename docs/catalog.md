@@ -12,6 +12,14 @@ auditorylab inspect builtin:ioannou-2015-binaural-10-hz
 
 [Source methods](catalog-sources.md) gives the detailed paper locators and explains each recipe's adaptations. The [authoring guide](recipes.md#research-context-and-catalog-entries) defines admission and fidelity requirements. The authoritative condition data is in [catalog](../crates/core/catalog), with shared bibliography in [studies](../crates/core/studies); the application assembles standalone recipes from these embedded inputs at runtime. The curated `ENTRIES` and `STUDIES` lists in the [catalog module](../crates/core/src/model/catalog.rs) define their membership and order.
 
+## Research attribution
+
+Each built-in recipe takes factual information from its primary study: the stimulus settings it reports (frequencies, rates, widths, routing and durations), the studied population and sample sizes, what was measured and what was found. The summaries, method descriptions and adaptation notes are original wording; no article text, figures, tables, recordings or datasets are copied. Every recipe names its primary study with a full citation, a short label such as Ioannou et al. 2015 and a DOI link. Recipes that state a broader caution cite that review as a further source.
+
+The citation credits the researchers and lets you read the original findings; it does not imply that they or their publishers are affiliated with Auditory Lab or endorse it. Summaries describe the stated population and condition, including null results, and each recipe's adaptation lists how the generated sound differs from the study's. Auditory Lab is not a medical device; a recipe's study context is not evidence that the generated sound has any effect on you.
+
+To credit a recipe’s research in your own work, cite the primary study that `describe` shows.
+
 ## Nominal rhythm references
 
 The CLI and desktop derive reference-band memberships from the same pure structural classifier. These labels describe authored repetition, gating, amplitude modulation and explicit signed-offset pairs. They do not measure EEG, predict a mental state or certify a percept. Carrier frequency and endpoint fades are not classification inputs.

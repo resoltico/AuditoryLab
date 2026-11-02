@@ -25,10 +25,17 @@ kind = "none"
 
 [[source]]
 key = "jirakittayakorn-2017"
-label = "jirakittayakorn-2017"
+label = "Jirakittayakorn & Wongsawat 2017"
 citation = "Jirakittayakorn N, Wongsawat Y (2017). Brain responses to a 6-Hz binaural beat: effects on general theta rhythm and frontal midline theta activity. Frontiers in Neuroscience 11: 365."
 doi = "10.3389/fnins.2017.00365"
 url = "https://doi.org/10.3389/fnins.2017.00365"
+
+[[source]]
+key = "ingendoh-2023"
+label = "Ingendoh et al. 2023"
+citation = "Ingendoh RM, Posny ES, Heine A (2023). Binaural beats to entrain the brain? A systematic review of the effects of binaural beat stimulation on brain oscillatory activity, and the implications for psychological research and intervention. PLoS ONE 18(5): e0286023."
+doi = "10.1371/journal.pone.0286023"
+url = "https://doi.org/10.1371/journal.pone.0286023"
 
 [[evidence]]
 source = "jirakittayakorn-2017"
@@ -38,6 +45,6 @@ population_detail = "Human study: Meditation-like brain activity"
 condition_role = "test"
 measures = ["eeg", "subjective"]
 methods_locator = "A 30-minute binaural beat, 250 Hz in the left ear and 256 Hz in the right, heard by 17 seated adults between 5-minute baseline and post-sound EEG recordings; a control group of 11 heard silence. Theta activity increased within 10 minutes of exposure in the beat group."
-summary = "250 Hz in the left ear and 256 Hz in the right: a slow 6-per-second binaural beat for headphones. In one study, 17 adults listened for 30 minutes and 11 sat in silence. The authors reported more theta brain activity within 10 minutes and linked it with attention and meditation. They also measured mood: the beat group reported less worry and some more negative feelings, while both groups reported more fatigue and less vigor. These mixed mood findings do not establish a benefit over the control group or a wellbeing or performance benefit. Reviews of binaural-beat research report mixed results."
+summary = "250 Hz in the left ear and 256 Hz in the right: a slow 6-per-second binaural beat for headphones. In one study, 17 adults listened for 30 minutes and 11 sat in silence. The authors reported more theta brain activity within 10 minutes and linked it with attention and meditation. They also measured mood: the beat group reported less worry and some more negative feelings, while both groups reported more fatigue and less vigor. These mixed mood findings do not establish a benefit over the control group or a wellbeing or performance benefit. A 2023 systematic review of 14 EEG studies found inconsistent evidence that binaural beats entrain brain rhythms."
 limitations = "Source findings concern the stated population and condition; adaptations do not establish efficacy for generated audio. See the summary and adaptation for study-specific limitations."
 adaptation = "The source made the sound in Sound Forge Pro and played it at 65 dB SPL; it states no phase, ramps or sample rate. Tones start at phase zero with a -20 dBFS peak, uncalibrated, with 0.1 s fades added. The baseline and post-sound periods are not part of this recipe."

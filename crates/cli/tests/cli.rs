@@ -24,6 +24,33 @@ fn silence() -> String {
     common::silent(0.01, 0.0).to_toml().unwrap()
 }
 #[test]
+fn help_states_research_use_and_builtins_credit_every_cited_source() {
+    for args in [vec![], vec!["--help"]] {
+        let help = String::from_utf8(cli(&args).stdout).unwrap();
+        assert!(
+            help.contains("is not a medical device")
+                && help.contains("not intended to diagnose, treat, cure or prevent")
+                && help.contains("do not endorse it"),
+            "{args:?}: {help}"
+        );
+    }
+    let describe =
+        String::from_utf8(cli(&["describe", "builtin:orozco-perez-2020-binaural-7-hz"]).stdout)
+            .unwrap();
+    assert!(describe.contains(
+        "Citation: Orozco Perez HD, Dumas G, Lehmann A (2020). Binaural beats through the \
+        auditory pathway: from brainstem to connectivity patterns. eNeuro 7(2): \
+        ENEURO.0232-19.2020.\nLink: https://doi.org/10.1523/ENEURO.0232-19.2020\n"
+    ));
+    assert!(
+        describe.contains(
+            "Further source (Ingendoh et al. 2023): Ingendoh RM, Posny ES, Heine A (2023)."
+        )
+    );
+    assert!(describe.contains("Link: https://doi.org/10.1371/journal.pone.0286023\n"));
+    assert!(describe.contains("A 2023 systematic review of 14 EEG studies"));
+}
+#[test]
 fn commands_sources_and_exit_codes() {
     for args in [
         vec![],
@@ -652,7 +679,7 @@ fn grouped_schema_three_json_retains_display_labels_and_member_keys() {
             "study",
             vec![(
                 "study:10.1016/j.cell.2019.02.014",
-                "10.1016/j.cell.2019.02.014",
+                "Martorell et al. 2019 · 10.1016/j.cell.2019.02.014",
             )],
         ),
         ("collection", vec![("Built-in", "Built-in")]),

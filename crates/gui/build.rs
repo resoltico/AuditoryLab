@@ -21,6 +21,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "caption-product-name",
         "caption-copyright",
         "caption-about-product",
+        "caption-research-use",
     ] {
         append_term(&mut vocabulary, &mut properties, property, "")?;
     }
