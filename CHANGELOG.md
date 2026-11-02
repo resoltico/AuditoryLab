@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- About, CLI help, Start here and download READMEs state that Auditory Lab is not a medical device and that cited researchers and publishers do not endorse it.
+- Built-in recipes label each study by author and year, such as Ioannou et al. 2015; Library study groups show that label beside the DOI.
+- Binaural-beat recipes name and cite the 2023 systematic review behind their caution; `describe` lists further sources by label with a link.
+
 ## [0.9.0] - 2026-11-01
 
 - Recipe schema 5 replaces schema 4. Recreate old recipes with `new KIND` or updated built-ins; unsupported files remain intact and reported.

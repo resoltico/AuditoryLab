@@ -4,6 +4,10 @@ Auditory Lab lets you inspect, edit, play and export steady tones, pulse trains 
 
 The `auditorylab` CLI and `auditorylab-gui` desktop share a persistent User Library. You can keep temporary Open files separate, save independent copies and recover User recipes from Trash.
 
+## What it is for
+
+Auditory Lab is for exploring and making sounds described in research. It is not a medical device and is not intended to diagnose, treat, cure or prevent any disease or condition. Each built-in recipe reports what its study found for that study's population and cites the publication; those researchers and publishers are not affiliated with Auditory Lab and do not endorse it. See [research attribution](docs/catalog.md#research-attribution).
+
 ## Listening safely
 
 Set the device volume low before pressing Play, then raise it gradually. Digital dBFS values describe samples; device volume, headphones and speakers determine the listening level. Use headphones for binaural pairs so each ear receives its intended tone.

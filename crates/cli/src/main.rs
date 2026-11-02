@@ -20,6 +20,7 @@ use std::{
 };
 #[derive(Parser)]
 #[command(name = "auditorylab", about = "Browse, export and play research-inspired sounds",
+    after_help = auditorylab_presentation::build_info::RESEARCH_USE,
     version = auditorylab_presentation::build_info::build_identity_version_text(
         auditorylab_app::identity::BUILD_IDENTITY
     ))]

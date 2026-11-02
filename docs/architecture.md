@@ -24,7 +24,7 @@ flowchart TD
 
 A term lives with the type that gives it meaning. [Core vocabulary](../crates/core/src/model/vocabulary.rs) describes sound, research and portable document terms. [App vocabulary](../crates/app/src/vocabulary.rs) describes operations, statuses, query absence and application views. Discovery owns [query choices](../crates/app/src/discovery/query.rs), with defaults, reset behavior and execution in [collection queries](../crates/app/src/discovery/collection.rs). Desktop-only wording stays in [GUI terms](../crates/gui/src/terms.rs). Labels never identify commands or records. Both owners participate in the checked [diagnostic and vocabulary references](formats.md).
 
-The built-in [catalog](../crates/core/src/model/catalog.rs) contains curated condition/study lists. Requesting an entry merges its study citation and shared limitation into standalone schema-5 TOML without comments. Directory/order tests check the lists; [catalog documentation](catalog.md) supplies explanations.
+The built-in [catalog](../crates/core/src/model/catalog.rs) contains curated condition/study lists. Requesting an entry merges the label, citation and DOI of each study it cites, and the shared limitation, into standalone schema-5 TOML without comments. Directory/order tests check the lists; [catalog documentation](catalog.md) supplies explanations.
 
 Root [Cargo.toml](../Cargo.toml) owns product name, copyright and version. Build readers share metadata validation. About and executable version text belong to [build-info presentation](../crates/presentation/src/build_info.rs); native version fields derive from the version. LICENSE supplies legal terms independently.
 

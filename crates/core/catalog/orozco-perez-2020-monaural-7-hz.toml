@@ -1,6 +1,6 @@
 # Copyright 2026 Ervins Strauhmanis
 # SPDX-License-Identifier: MPL-2.0
-# Source parameters and adaptations: see docs/catalog.md.
+# Source parameters and adaptations: see docs/catalog-sources.md.
 schema_version = 5
 
 [document]
@@ -29,7 +29,6 @@ kind = "none"
 
 [[source]]
 key = "orozco-perez-2020"
-label = "orozco-perez-2020"
 
 [[evidence]]
 source = "orozco-perez-2020"

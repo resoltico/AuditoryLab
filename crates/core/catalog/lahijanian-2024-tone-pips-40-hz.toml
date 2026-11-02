@@ -1,6 +1,6 @@
 # Copyright 2026 Ervins Strauhmanis
 # SPDX-License-Identifier: MPL-2.0
-# Source parameters and adaptations: see docs/catalog.md.
+# Source parameters and adaptations: see docs/catalog-sources.md.
 schema_version = 5
 
 [document]
@@ -35,7 +35,6 @@ kind = "rectangular"
 
 [[source]]
 key = "lahijanian-2024"
-label = "lahijanian-2024"
 
 [[evidence]]
 source = "lahijanian-2024"

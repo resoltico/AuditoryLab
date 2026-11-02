@@ -11,13 +11,13 @@ This reference records the primary methods, evidence limits and synthesis adapta
 | Ioannou et al. 2015 | PLOS ONE 10(6), e0129486; [publisher article](https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0129486), DOI 10.1371/journal.pone.0129486 |
 | Jirakittayakorn & Wongsawat 2017 | Frontiers in Neuroscience 11:365; [publisher article](https://www.frontiersin.org/journals/neuroscience/articles/10.3389/fnins.2017.00365/full), DOI 10.3389/fnins.2017.00365; [author/publisher-deposited PMC copy](https://pmc.ncbi.nlm.nih.gov/articles/PMC5487409/) |
 | Lahijanian et al. 2024 | Scientific Reports version of record / PMC version 1; [publisher](https://www.nature.com/articles/s41598-024-63727-z), DOI 10.1038/s41598-024-63727-z; [archived full XML](https://www.ebi.ac.uk/europepmc/webservices/rest/PMC11161471/fullTextXML) |
-| Martorell et al. 2019 | Cell final edited publisher PDF and PMC author manuscript; [PMC](https://pmc.ncbi.nlm.nih.gov/articles/PMC6774262/), DOI 10.1016/j.cell.2019.02.014; [author-lab publisher PDF with supplementary figures](https://synthneuro.org/wp-content/uploads/2021/08/19-04-martorell.pdf) |
+| Martorell et al. 2019 | Cell final edited publisher PDF and PMC author manuscript; [PMC](https://pmc.ncbi.nlm.nih.gov/articles/PMC6774262/), DOI 10.1016/j.cell.2019.02.014; supplementary figures are part of the Cell article |
 | Orozco Perez et al. 2020 | eNeuro / PMC version 1; [publisher](https://www.eneuro.org/content/7/2/ENEURO.0232-19.2020), DOI 10.1523/ENEURO.0232-19.2020; [archived full XML](https://www.ebi.ac.uk/europepmc/webservices/rest/PMC7082494/fullTextXML) |
 | Van Eeckhoutte et al. 2018 | Trends in Hearing version of record / PMC version 1; [publisher](https://journals.sagepub.com/doi/full/10.1177/2331216518805352), DOI 10.1177/2331216518805352; [archived full XML](https://www.ebi.ac.uk/europepmc/webservices/rest/PMC6196616/fullTextXML) |
 
 Check primary methods, relevant supplements and publisher corrections when revising a recipe. Required waveform parameters come from primary methods.
 
-Broader-literature caution is separate from checking individual source parameters. [Ingendoh, Posny and Heine (2023), PLOS ONE 18(5):e0286023](https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0286023), Abstract, eligibility criteria and Discussion, reports inconsistent EEG entrainment findings across fourteen studies and substantial methodological heterogeneity.
+Broader-literature caution is separate from checking individual source parameters. [Ingendoh, Posny and Heine (2023), PLOS ONE 18(5):e0286023](https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0286023), Abstract, eligibility criteria and Discussion, reports inconsistent EEG entrainment findings across fourteen studies (five consistent with entrainment, eight contradictory, one mixed) and substantial methodological heterogeneity. Every binaural-beat recipe states this caution and cites the review as a further source, `ingendoh-2023`.
 
 ## 1. Beauchene 2016 — four recipes
 

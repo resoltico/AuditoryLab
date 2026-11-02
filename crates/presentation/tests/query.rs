@@ -160,7 +160,27 @@ fn schema_three_group_labels_preserve_human_captions_and_machine_identity() {
         (GroupLabel::Method(Method::Sinusoidal), "Sinusoidal AM"),
         (GroupLabel::State(RhythmState::None), "No rhythmic rate"),
         (GroupLabel::NoMethod, "No declared method"),
-        (GroupLabel::Study("10.1234/study".into()), "10.1234/study"),
+        (
+            GroupLabel::Study {
+                identity: "10.1234/study".into(),
+                label: None,
+            },
+            "10.1234/study",
+        ),
+        (
+            GroupLabel::Study {
+                identity: "10.1234/study".into(),
+                label: Some("Author et al. 2020".into()),
+            },
+            "Author et al. 2020 · 10.1234/study",
+        ),
+        (
+            GroupLabel::Study {
+                identity: "local-key".into(),
+                label: Some("local-key".into()),
+            },
+            "local-key",
+        ),
         (GroupLabel::NoStudy, "No current study declaration"),
         (GroupLabel::Collection(Collection::BuiltIn), "Built-in"),
         (GroupLabel::Collection(Collection::User), "User"),

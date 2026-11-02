@@ -29,6 +29,10 @@ pub struct EvidenceFacet {
     pub source: String,
     /// Normalized DOI identity when declared.
     pub doi: Option<String>,
+    /// Human bibliography label of the same source. Display text only: the
+    /// machine report identifies the study by `source` and `doi`.
+    #[serde(skip_serializing)]
+    pub label: Option<String>,
     /// Current-condition versus ancestor scope.
     pub scope: EvidenceScope,
     /// Population of this same record.
@@ -89,18 +93,18 @@ impl EntrySummary {
         let evidence = recipe
             .evidence()
             .iter()
-            .map(|e| EvidenceFacet {
-                source: e.source.clone(),
-                doi: recipe
-                    .sources()
-                    .iter()
-                    .find(|s| s.key == e.source)
-                    .and_then(|s| s.doi.clone()),
-                scope: e.scope,
-                population: e.population,
-                role: e.condition_role,
-                measures: e.measures.clone(),
-                population_detail: e.population_detail.clone(),
+            .map(|e| {
+                let source = recipe.sources().iter().find(|s| s.key == e.source);
+                EvidenceFacet {
+                    source: e.source.clone(),
+                    doi: source.and_then(|s| s.doi.clone()),
+                    label: source.map(|s| s.label.clone()),
+                    scope: e.scope,
+                    population: e.population,
+                    role: e.condition_role,
+                    measures: e.measures.clone(),
+                    population_detail: e.population_detail.clone(),
+                }
             })
             .collect();
         Self {
@@ -233,8 +237,13 @@ pub enum GroupLabel {
     Method(rhythm::Method),
     /// No method is declared by the indexed source.
     NoMethod,
-    /// Correlated DOI or bibliography key supplied by the source.
-    Study(String),
+    /// Correlated study: its DOI or bibliography key, and the source's label.
+    Study {
+        /// DOI, or bibliography key without one; also the group identity.
+        identity: String,
+        /// Human bibliography label, when the source declares one.
+        label: Option<String>,
+    },
     /// No current-condition study is declared.
     NoStudy,
     /// Runtime ownership collection.
@@ -535,8 +544,14 @@ impl CatalogQuery {
                         .iter()
                         .filter(|e| e.scope == EvidenceScope::ReferenceCondition)
                     {
-                        let label = e.doi.as_deref().unwrap_or(&e.source).to_owned();
-                        values.push((format!("study:{label}"), GroupLabel::Study(label)));
+                        let identity = e.doi.as_deref().unwrap_or(&e.source).to_owned();
+                        values.push((
+                            format!("study:{identity}"),
+                            GroupLabel::Study {
+                                identity,
+                                label: e.label.clone(),
+                            },
+                        ));
                     }
                     if values.is_empty() {
                         values.push(("no-current-study".into(), GroupLabel::NoStudy));

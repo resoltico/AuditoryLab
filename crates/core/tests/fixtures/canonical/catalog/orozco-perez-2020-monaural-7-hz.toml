@@ -26,7 +26,7 @@ kind = "none"
 
 [[source]]
 key = "orozco-perez-2020"
-label = "orozco-perez-2020"
+label = "Orozco Perez et al. 2020"
 citation = "Orozco Perez HD, Dumas G, Lehmann A (2020). Binaural beats through the auditory pathway: from brainstem to connectivity patterns. eNeuro 7(2): ENEURO.0232-19.2020."
 doi = "10.1523/eneuro.0232-19.2020"
 url = "https://doi.org/10.1523/ENEURO.0232-19.2020"

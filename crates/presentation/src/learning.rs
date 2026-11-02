@@ -68,13 +68,13 @@ pub const fn body(topic: Topic) -> &'static str {
 
 pub fn details(topic: Topic, construction: Construction) -> String {
     match topic {
-        Topic::Overview => {
+        Topic::Overview => format!(
             "Library is for finding and inspecting sounds. Workbench edits one sound at \
             a time. This guide is optional and remembers your current lesson during \
             this session. Auditory Lab does not measure sound pressure or brain \
-            activity."
-                .into()
-        }
+            activity.\n\n{}",
+            crate::build_info::RESEARCH_USE
+        ),
         Topic::Library => "Read each Library record for its population, sources, limitations and \
             explicit adaptations. An example may represent one condition rather than \
             an entire trial sequence. Open files are temporary until explicitly added \

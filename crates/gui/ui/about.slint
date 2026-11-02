@@ -21,7 +21,7 @@ export component AboutWindow inherits Window {
     // Match the companion EML About dialog's toolkit typography.
     default-font-size: root.ui-size;
     preferred-width: max(420px, root.ui-size * 30);
-    preferred-height: max(410px, root.ui-size * 27);
+    preferred-height: max(500px, root.ui-size * 33);
     in property <string> identity;
     callback open-source();
     callback open-licenses();
@@ -94,6 +94,12 @@ export component AboutWindow inherits Window {
             purpose-text := AboutLabel {
                 text: Terms.caption-product-description;
                 single-line: false;
+            }
+
+            research-use-text := AboutLabel {
+                text: Terms.caption-research-use;
+                single-line: false;
+                wrap: word-wrap;
             }
 
             copyright-text := AboutLabel {

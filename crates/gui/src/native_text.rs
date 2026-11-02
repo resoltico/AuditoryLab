@@ -110,4 +110,5 @@ pub(crate) fn initialize_identity(terms: &crate::generated::Terms<'_>) {
     terms.set_caption_product_name(identity.name.into());
     terms.set_caption_copyright(identity.copyright.into());
     terms.set_caption_about_product(auditorylab_presentation::build_info::about_title().into());
+    terms.set_caption_research_use(auditorylab_presentation::build_info::RESEARCH_USE.into());
 }

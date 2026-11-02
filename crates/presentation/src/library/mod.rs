@@ -587,7 +587,12 @@ pub fn group_label(label: &auditorylab_app::discovery::collection::GroupLabel) -
         L::State(state) => state.label().into(),
         L::Method(method) => method.label().into(),
         L::NoMethod => "No declared method".into(),
-        L::Study(label) => label.clone(),
+        L::Study { identity, label } => match label.as_deref().map(str::trim) {
+            Some(label) if !label.is_empty() && label != identity => {
+                format!("{label} · {identity}")
+            }
+            _ => identity.clone(),
+        },
         L::NoStudy => "No current study declaration".into(),
         L::Collection(collection) => match collection {
             Collection::BuiltIn => "Built-in",

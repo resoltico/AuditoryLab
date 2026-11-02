@@ -26,7 +26,7 @@ depth = 1.0
 
 [[source]]
 key = "van-eeckhoutte-2018"
-label = "van-eeckhoutte-2018"
+label = "Van Eeckhoutte et al. 2018"
 citation = "Van Eeckhoutte M, Wouters J, Francart T (2018). Objective binaural loudness balancing based on 40-Hz auditory steady-state responses. Part I: Normal hearing. Trends in Hearing 22: 2331216518805352."
 doi = "10.1177/2331216518805352"
 url = "https://doi.org/10.1177/2331216518805352"

@@ -462,3 +462,70 @@ fn merging_refuses_duplicate_citations_and_preserves_specific_limitations() {
         );
     assert!(super::generated_recipe(&toml::to_string(&condition).unwrap(), read).is_err());
 }
+
+#[test]
+fn every_cited_source_carries_its_study_label_and_review_cautions_cite_the_review() {
+    for entry in catalog::ENTRIES {
+        let recipe = recipe(entry);
+        for source in recipe.sources() {
+            let study: toml::Table = toml::from_str(
+                super::STUDIES
+                    .iter()
+                    .find(|(id, _)| *id == source.key)
+                    .unwrap()
+                    .1,
+            )
+            .unwrap();
+            assert_eq!(
+                source.label,
+                study["label"].as_str().unwrap(),
+                "{}",
+                entry.id
+            );
+            assert_ne!(source.label, source.key, "{}", entry.id);
+        }
+        let mentions_review = recipe
+            .evidence()
+            .iter()
+            .any(|e| e.summary.contains("review"));
+        let cites_review = recipe.sources().iter().any(|s| s.key == "ingendoh-2023");
+        assert_eq!(mentions_review, cites_review, "{}", entry.id);
+    }
+    let binaural = catalog::ENTRIES
+        .iter()
+        .filter(|e| e.id.contains("-binaural-"))
+        .count();
+    let reviewed = catalog::ENTRIES
+        .iter()
+        .filter(|e| recipe(e).sources().iter().any(|s| s.key == "ingendoh-2023"))
+        .count();
+    assert_eq!((binaural, reviewed), (11, 11));
+}
+
+#[test]
+fn merging_refuses_condition_labels_and_incomplete_study_records() {
+    let entry = &catalog::ENTRIES[0];
+    let condition: toml::Table = toml::from_str(entry.condition).unwrap();
+    let study = |text: &'static str| {
+        move |_: &str| -> Result<String, std::boxed::Box<dyn core::error::Error>> {
+            Ok(text.into())
+        }
+    };
+    let complete = "label = \"A et al. 2020\"\ncitation = \"A (2020).\"\n\
+        source_url = \"https://doi.org/10.1234/x\"\n";
+    let text = toml::to_string(&condition).unwrap();
+    let merged = super::generated_recipe(&text, study(complete)).unwrap();
+    assert_eq!(
+        Recipe::parse(&merged).unwrap().sources()[0].label,
+        "A et al. 2020"
+    );
+    let unlabeled = "citation = \"A (2020).\"\nsource_url = \"https://doi.org/10.1234/x\"\n";
+    assert!(super::generated_recipe(&text, study(unlabeled)).is_err());
+    let mut labeled = condition;
+    labeled.get_mut("source").unwrap().as_array_mut().unwrap()[0]
+        .as_table_mut()
+        .unwrap()
+        .insert("label".into(), toml::Value::String("Local".into()));
+    let labeled = toml::to_string(&labeled).unwrap();
+    assert!(super::generated_recipe(&labeled, study(complete)).is_err());
+}
