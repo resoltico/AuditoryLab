@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- `list --group-by` text output shows each group's heading and sound count before its rows; group headings say "1 unique sound" in the singular.
 - About, CLI help, Start here and download READMEs state that Auditory Lab is not a medical device and that cited researchers and publishers do not endorse it.
 - Built-in recipes label each study by author and year, such as Ioannou et al. 2015; Library study groups show that label beside the DOI.
 - Binaural-beat recipes name and cite the 2023 systematic review behind their caution; `describe` lists further sources by label with a link.

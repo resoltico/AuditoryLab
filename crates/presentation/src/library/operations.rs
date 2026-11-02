@@ -99,6 +99,34 @@ pub fn entry_summary_list_description(
     text
 }
 
+/// Listing rows as text. A grouped query shows each group's heading before its
+/// rows; a sound in several groups appears under each of them.
+#[must_use]
+pub fn listing_description(listing: &auditorylab_app::services::Listing) -> String {
+    let sort = listing.query().effective_sort().0;
+    let row = |entry| entry_summary_list_description(entry, sort);
+    if listing.groups().is_empty() {
+        return listing.entries().iter().map(row).collect();
+    }
+    let mut text = String::new();
+    for (index, group) in listing.groups().iter().enumerate() {
+        if index > 0 {
+            text.push('\n');
+        }
+        let _ = writeln!(
+            text,
+            "{}",
+            crate::display_scalar(&crate::library::group_heading(group))
+        );
+        for key in &group.keys {
+            if let Some(entry) = listing.entries().iter().find(|e| &e.key == key) {
+                text.push_str(&row(entry));
+            }
+        }
+    }
+    text
+}
+
 /// Membership details shown next to the selected portable description.
 pub fn entry_summary_membership_description(value: &EntrySummary) -> String {
     if !matches!(

@@ -51,6 +51,43 @@ fn help_states_research_use_and_builtins_credit_every_cited_source() {
     assert!(describe.contains("A 2023 systematic review of 14 EEG studies"));
 }
 #[test]
+fn grouped_text_lists_show_each_group_heading_before_its_rows() {
+    let text = |extra: &[&str]| {
+        let mut args = vec!["list", "--collection", "builtin"];
+        args.extend_from_slice(extra);
+        let out = cli(&args);
+        assert!(out.status.success(), "{out:?}");
+        String::from_utf8(out.stdout).unwrap()
+    };
+    let plain = text(&[]);
+    assert!(!plain.contains("unique sound"), "{plain}");
+    let grouped = text(&["--group-by", "study"]);
+    let heading = "Martorell et al. 2019 · 10.1016/j.cell.2019.02.014 · 3 unique sounds\n";
+    let start = grouped.find(heading).expect(&grouped) + heading.len();
+    let section = &grouped[start
+        ..grouped[start..]
+            .find("\n\n")
+            .map_or(grouped.len(), |end| start + end)];
+    for id in ["tone-pips-8-hz", "tone-pips-40-hz", "tone-pips-80-hz"] {
+        assert!(
+            section.contains(&format!("builtin:martorell-2019-{id}\n")),
+            "{section}"
+        );
+    }
+    assert_eq!(section.matches("  builtin:").count(), 3, "{section}");
+    assert!(
+        grouped.contains("Lahijanian et al. 2024 · 10.1038/s41598-024-63727-z · 1 unique sound\n")
+    );
+    let bands = text(&["--group-by", "band"]);
+    let headings: Vec<_> = bands
+        .lines()
+        .filter(|l| l.contains("unique sound"))
+        .collect();
+    assert_eq!(headings.first(), Some(&"Delta · 1 unique sound"), "{bands}");
+    assert!(headings.contains(&"Gamma · 10 unique sounds"), "{bands}");
+}
+
+#[test]
 fn commands_sources_and_exit_codes() {
     for args in [
         vec![],
