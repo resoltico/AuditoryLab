@@ -47,6 +47,57 @@ pub(crate) fn file_description(product: Product<'_>, executable: Executable) -> 
         Executable::Cli => format!("{} CLI", product.name),
     }
 }
+/// Windows application manifest: Windows 10/11 support, long paths and no elevation for
+/// both products; the desktop also binds Common Controls 6 (custom dialog buttons) and
+/// declares the per-monitor DPI awareness its windowing layer requests at startup.
+pub(crate) fn windows_manifest(executable: Executable) -> String {
+    let (controls, dpi) = match executable {
+        Executable::Desktop => (
+            r#"
+  <dependency>
+    <dependentAssembly>
+      <assemblyIdentity type="win32" name="Microsoft.Windows.Common-Controls"
+        version="6.0.0.0" processorArchitecture="*" publicKeyToken="6595b64144ccf1df"
+        language="*"/>
+    </dependentAssembly>
+  </dependency>"#,
+            r#"
+      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings"
+        >true/pm</dpiAware>
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings"
+        >PerMonitorV2, PerMonitor</dpiAwareness>"#,
+        ),
+        Executable::Cli => ("", ""),
+    };
+    format!(
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">{controls}
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <supportedOS Id="{{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}}"/>
+    </application>
+  </compatibility>
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>{dpi}
+      <longPathAware xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings"
+        >true</longPathAware>
+    </windowsSettings>
+  </application>
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+    <security>
+      <requestedPrivileges>
+        <requestedExecutionLevel level="asInvoker" uiAccess="false"/>
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+</assembly>
+"#
+    )
+}
+/// Resource statement embedding a manifest file as the process manifest (ID 1).
+pub(crate) fn windows_manifest_resource(path: &std::path::Path) -> String {
+    format!("1 24 {:?}\n", path.to_string_lossy().replace('\\', "/"))
+}
 /// Native executable resource; numeric versions are separate from identity text.
 pub(crate) fn windows_resource(
     product: Product<'_>,
@@ -148,5 +199,25 @@ mod product_tests {
         let cli = windows_resource(product, Executable::Cli, "1.2.3").unwrap();
         assert!(cli.contains("VALUE \"FileDescription\", \"Auditory Lab CLI\""));
         assert!(windows_resource(product, Executable::Desktop, "65536.0.0").is_err());
+    }
+    #[test]
+    fn windows_manifests_declare_support_and_only_the_desktop_binds_common_controls() {
+        let desktop = windows_manifest(Executable::Desktop);
+        let cli = windows_manifest(Executable::Cli);
+        for manifest in [&desktop, &cli] {
+            assert!(
+                manifest.contains(r#"<supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}"/>"#)
+            );
+            assert!(manifest.contains(r#"level="asInvoker""#));
+            assert!(manifest.contains(">true</longPathAware>"));
+        }
+        assert!(desktop.contains(r#"name="Microsoft.Windows.Common-Controls""#));
+        assert!(desktop.contains(r#"version="6.0.0.0""#));
+        assert!(desktop.contains(">PerMonitorV2, PerMonitor</dpiAwareness>"));
+        assert!(!cli.contains("Common-Controls") && !cli.contains("dpiAware"));
+        assert_eq!(
+            windows_manifest_resource(std::path::Path::new(r"C:\out\app.manifest")),
+            "1 24 \"C:/out/app.manifest\"\n"
+        );
     }
 }

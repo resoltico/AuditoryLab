@@ -13,8 +13,7 @@ Check the download with its SHA256SUMS entry before opening it.
 {platform_needs}
 
 Source and guides: https://github.com/resoltico/AuditoryLab
-Software: MPL-2.0; owner artwork: separate proprietary terms in LICENSE.
-Unchanged artwork may accompany modified MPL-covered Auditory Lab distributions.
+{legal}
 Dependency terms: THIRD-PARTY-NOTICES.txt.
 Rust standard-library component terms: COPYRIGHT-library.html.
 Source: SOURCE.txt records the exact revision, source URL and package identity.

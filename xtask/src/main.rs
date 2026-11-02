@@ -1,5 +1,6 @@
 //! Build, license and package Auditory Lab downloads.
 mod archive;
+mod fonts;
 mod macos;
 mod notices;
 mod package;
@@ -143,10 +144,15 @@ fn readme(version: &str, gui: bool, target: &str) -> String {
             .to_owned()
     };
     let needs = match (gui, os) {
-        (_, "macos") => {
+        (true, "macos") => {
             "macOS 15 or later. If first launch is blocked, use System Settings > \
             Privacy & Security > Open Anyway after trying to open the app. Apple \
             instructions: https://support.apple.com/en-us/102445"
+        }
+        (false, "macos") => {
+            "macOS 15 or later. If macOS blocks the first run, use System Settings > \
+            Privacy & Security > Allow Anyway after trying to run auditorylab, then run \
+            it again. Apple instructions: https://support.apple.com/en-us/102445"
         }
         (true, "windows") => {
             "Windows 10 or later on x86_64; Windows 11 on ARM64. Desktop drawing \
@@ -181,6 +187,15 @@ fn readme(version: &str, gui: bool, target: &str) -> String {
         .replace("{product}", if gui { "Desktop" } else { "CLI" })
         .replace("{start}", &start)
         .replace("{platform_needs}", needs)
+        .replace(
+            "{legal}",
+            if gui {
+                "Software: MPL-2.0; owner artwork: separate proprietary terms in LICENSE.\n\
+                Unchanged artwork may accompany modified MPL-covered Auditory Lab distributions."
+            } else {
+                "Software: MPL-2.0; see LICENSE."
+            },
+        )
         .replace("{platform_notes}\n", notes)
 }
 fn section<'a>(changelog: &'a str, version: &str) -> Result<(&'a str, &'a str)> {
@@ -245,6 +260,15 @@ fn release_notes<'a>(changelog: &'a str, version: &str) -> Result<&'a str> {
     }
     Ok(body)
 }
+/// Linux launcher entry. Its file name, `StartupWMClass` and the window's XDG app ID
+/// (set from the binary name at startup) agree, so desktops match the window to it.
+fn desktop_entry(binary: &str) -> String {
+    format!(
+        "[Desktop Entry]\nType=Application\nName=Auditory Lab\nComment=Explore and make sounds \
+        described in research\nExec={binary}\nIcon=org.resoltico.auditorylab\nTerminal=false\n\
+        Categories=Science;\nStartupWMClass={binary}\n"
+    )
+}
 // Cargo metadata merges host/target and workspace feature sets. The selected
 // product's normal-edge tree supplies the enabled graph; metadata supplies IDs.
 fn product_dependencies(
@@ -259,7 +283,8 @@ fn product_dependencies(
     ]))?)?;
     notices::identities(metadata, &tree)
 }
-fn about(product: &str, target: &str, meta: &Value) -> Result<String> {
+/// Product notices; fonts embedded in `executable` are credited when it is supplied.
+fn about(product: &str, target: &str, meta: &Value, executable: Option<&Path>) -> Result<String> {
     let manifest = format!("crates/{product}/Cargo.toml");
     let data = capture(Command::new("cargo").args([
         "about",
@@ -303,6 +328,9 @@ fn about(product: &str, target: &str, meta: &Value) -> Result<String> {
         &rust_version()?,
         target.contains("windows"),
     )?;
+    if let Some(executable) = executable {
+        text.push_str(&fonts::notices(&fonts::embedded(&fs::read(executable)?))?);
+    }
     if product == "gui" {
         text.push_str(
             "\nOwner artwork terms (complete software and artwork terms are also in LICENSE)\n\n",
@@ -451,8 +479,8 @@ fn dist(target: &str, out: &Path, icons: Option<&Path>) -> Result<()> {
             };
             let built = target_dir.join(target).join("dist").join(&exe);
             let destination = folder.join(&exe);
-            fs::copy(built, &destination)?;
-            let notice = about(product, target, &meta)?;
+            fs::copy(&built, &destination)?;
+            let notice = about(product, target, &meta, Some(&built))?;
             println!("{product} notices: {} bytes", notice.len());
             fs::write(folder.join("THIRD-PARTY-NOTICES.txt"), notice)?;
             fs::write(
@@ -480,10 +508,8 @@ fn dist(target: &str, out: &Path, icons: Option<&Path>) -> Result<()> {
             }
             if product == "gui" && target.contains("linux") {
                 fs::write(
-                    folder.join("auditorylab-gui.desktop"),
-                    "[Desktop Entry]\nType=Application\nName=Auditory \
-                        Lab\nExec=auditorylab-gui\nIcon=org.resoltico.auditorylab\nTerminal=fa\
-                        lse\nCategories=Science;\n",
+                    folder.join(format!("{binary}.desktop")),
+                    desktop_entry(binary),
                 )?;
                 copy_tree(
                     Path::new("artwork/auditorylab-icon/assets/linux/hicolor"),
@@ -583,15 +609,16 @@ fn main() -> Result<()> {
             rust_standard_library_copyright()?;
             Ok(())
         }
-        Some("notices") if args.len() == 4 => {
+        Some("notices") if (4..=5).contains(&args.len()) => {
             let meta = metadata(Some(&args[2]))?;
-            fs::write(&args[3], about(&args[1], &args[2], &meta)?)?;
+            let executable = args.get(4).map(Path::new);
+            fs::write(&args[3], about(&args[1], &args[2], &meta, executable)?)?;
             Ok(())
         }
         _ => Err(
             "use cargo xtask check-style, verify-vendor, dist --target TARGET [--out DIR] \
             [--icons DIR], compile-icons OUTPUT, inspect-package TARGET ARCHIVE, \
-            collect-assets VERSION INPUT OUTPUT, notices PRODUCT TARGET OUTPUT, \
+            collect-assets VERSION INPUT OUTPUT, notices PRODUCT TARGET OUTPUT [EXECUTABLE], \
             notes VERSION, or check-release VERSION"
                 .into(),
         ),
@@ -620,6 +647,32 @@ fn distribution_tools(
     })?;
     Ok(rust_copyright)
 }
+/// Distribution-only compiler flags for one target, as a Cargo `--config` value.
+///
+/// Cargo joins this array with `.cargo/config.toml`'s target flags (the Windows static
+/// runtime), whereas RUSTFLAGS would replace them. Build-host directories are remapped
+/// so executables carry no checkout or Cargo-home paths; when several prefixes match,
+/// rustc applies the last, so the more specific Cargo home follows the checkout.
+/// Windows executables also get Control Flow Guard checks.
+fn dist_rustflags(target: &str, root: &Path, cargo_home: &Path) -> String {
+    let mut flags = vec![
+        format!("--remap-path-prefix={}=/auditorylab", root.display()),
+        format!("--remap-path-prefix={}=/cargo", cargo_home.display()),
+    ];
+    if target.contains("windows") {
+        flags.push("-Ccontrol-flow-guard".into());
+    }
+    let array = toml::Value::Array(flags.into_iter().map(toml::Value::String).collect());
+    format!("target.{target}.rustflags={array}")
+}
+pub(crate) fn cargo_home() -> Result<PathBuf> {
+    if let Some(home) = std::env::var_os("CARGO_HOME") {
+        return Ok(PathBuf::from(home));
+    }
+    let user = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
+        .ok_or("cannot locate the Cargo home directory")?;
+    Ok(PathBuf::from(user).join(".cargo"))
+}
 fn build_binaries(target: &str, source: &source::Source) -> Result<()> {
     let mut command = Command::new("cargo");
     command.args([
@@ -633,6 +686,14 @@ fn build_binaries(target: &str, source: &source::Source) -> Result<()> {
         "auditorylab-gui",
         "--target",
         target,
+        "--config",
+        &dist_rustflags(
+            target,
+            // Plain absolute paths: Windows canonical forms carry a `\\?\` prefix that
+            // compiler source paths do not.
+            &std::env::current_dir()?,
+            &std::path::absolute(cargo_home()?)?,
+        ),
     ]);
     if target.contains("apple") {
         command.env("MACOSX_DEPLOYMENT_TARGET", "15.0");
@@ -718,6 +779,69 @@ mod tests {
         assert!(text.contains("Desktop") && text.contains("xdg-desktop-portal"));
         assert!(text.contains("Install auditorylab-gui.desktop under"));
         assert!(!text.contains("{version}"));
+    }
+    #[test]
+    fn readmes_state_only_their_own_product_terms_and_launch_steps() {
+        let cli = readme("0.4.0", false, "aarch64-apple-darwin");
+        assert!(cli.contains("Software: MPL-2.0; see LICENSE."), "{cli}");
+        assert!(
+            !cli.contains("artwork") && !cli.contains("open the app"),
+            "{cli}"
+        );
+        assert!(cli.contains("after trying to run auditorylab"), "{cli}");
+        let gui = readme("0.4.0", true, "aarch64-apple-darwin");
+        assert!(gui.contains("owner artwork: separate proprietary terms in LICENSE"));
+        assert!(gui.contains("after trying to open the app"));
+        assert!(!gui.contains("{legal}") && !cli.contains("{legal}"));
+    }
+    #[test]
+    fn the_linux_launcher_names_the_window_class_of_its_binary() {
+        let entry = desktop_entry("auditorylab-gui");
+        for line in [
+            "Exec=auditorylab-gui",
+            "StartupWMClass=auditorylab-gui",
+            "Icon=org.resoltico.auditorylab",
+            "Terminal=false",
+        ] {
+            assert!(entry.lines().any(|actual| actual == line), "{entry}");
+        }
+    }
+    #[test]
+    fn dist_flags_remap_host_paths_and_harden_only_windows() {
+        let parse = |target| {
+            let config = dist_rustflags(
+                target,
+                Path::new("/work/repo"),
+                Path::new("/work/repo/cargo"),
+            );
+            let value: toml::Table = toml::from_str(&config).unwrap();
+            value["target"][target]["rustflags"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|flag| flag.as_str().unwrap().to_owned())
+                .collect::<Vec<_>>()
+        };
+        let windows = parse("x86_64-pc-windows-msvc");
+        assert_eq!(
+            windows,
+            [
+                "--remap-path-prefix=/work/repo=/auditorylab",
+                "--remap-path-prefix=/work/repo/cargo=/cargo",
+                "-Ccontrol-flow-guard",
+            ]
+        );
+        assert!(!parse("x86_64-unknown-linux-gnu").contains(&"-Ccontrol-flow-guard".to_owned()));
+        let config = dist_rustflags(
+            "aarch64-pc-windows-msvc",
+            Path::new(r"C:\a\repo"),
+            Path::new(r"C:\Users\me\.cargo"),
+        );
+        let value: toml::Table = toml::from_str(&config).unwrap();
+        assert_eq!(
+            value["target"]["aarch64-pc-windows-msvc"]["rustflags"][0].as_str(),
+            Some(r"--remap-path-prefix=C:\a\repo=/auditorylab")
+        );
     }
     #[test]
     fn each_readme_names_only_its_own_platform() {

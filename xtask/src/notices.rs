@@ -40,6 +40,19 @@ pub(crate) fn identities(metadata: &Value, tree: &str) -> Result<BTreeSet<String
     }
     Ok(ids)
 }
+/// Where a third-party component's published source can be obtained.
+fn source_location(package: &Value, name: &str, version: &str) -> Result<String> {
+    match package["source"].as_str() {
+        Some("registry+https://github.com/rust-lang/crates.io-index") => {
+            Ok(format!("https://crates.io/crates/{name}/{version}"))
+        }
+        // Patched toolkit sources are part of this repository's corresponding source.
+        None => Ok("Auditory Lab corresponding source (SOURCE.txt)".into()),
+        Some(other) => {
+            Err(format!("{name} {version} comes from unsupported source {other}").into())
+        }
+    }
+}
 pub(crate) fn assemble(
     about: &Value,
     metadata: &Value,
@@ -61,26 +74,38 @@ pub(crate) fn assemble(
         )
         .into());
     }
+    // Auditory Lab's own crates are covered by LICENSE, not listed as third parties.
+    let own: BTreeSet<_> = array(metadata, "workspace_members")?
+        .iter()
+        .filter_map(Value::as_str)
+        .collect();
     let mut covered = BTreeSet::new();
     let mut text = String::from("Third-party notices\n===================\n\n");
     for license in array(about, "licenses")? {
         let mut names = Vec::new();
+        let mut sources = Vec::new();
         for user in array(license, "used_by")? {
             let package = &user["crate"];
-            covered.insert(string(package, "id")?.to_owned());
-            if normal.contains(string(package, "id")?) {
-                names.push(format!(
-                    "{} {}",
-                    string(package, "name")?,
-                    string(package, "version")?
-                ));
+            let id = string(package, "id")?;
+            covered.insert(id.to_owned());
+            if normal.contains(id) && !own.contains(id) {
+                let (name, version) = (string(package, "name")?, string(package, "version")?);
+                names.push(format!("{name} {version}"));
+                sources.push(source_location(package, name, version)?);
             }
         }
         names.sort();
+        sources.sort();
         if !names.is_empty() {
+            // MPL-2.0 §3.2(a): say where each component's Source Code Form is available.
+            let source = if license["id"] == "MPL-2.0" {
+                format!("Source code: {}\n", sources.join(", "))
+            } else {
+                String::new()
+            };
             let _ = write!(
                 text,
-                "{}\nUsed by: {}\n\n{}\n\n",
+                "{}\nUsed by: {}\n{source}\n{}\n\n",
                 string(license, "name")?,
                 names.join(", "),
                 string(license, "text")?
@@ -147,7 +172,8 @@ mod tests {
         (
             json!({"crates":[{"package":package}],"licenses":[{"name":"MIT","text":"License text",
                 "used_by":[{"crate":package}]}]}),
-            json!({"packages":[package],"resolve":{"nodes":[{"id":"p","deps":[]}]}}),
+            json!({"packages":[package],"workspace_members":[],
+                "resolve":{"nodes":[{"id":"p","deps":[]}]}}),
         )
     }
     #[test]
@@ -250,5 +276,29 @@ mod tests {
             )
             .is_err()
         );
+    }
+    #[test]
+    fn own_crates_are_omitted_and_mpl_components_name_their_source() {
+        let own = json!({"id":"own","name":"auditorylab-core","version":"1","license":"MPL-2.0"});
+        let mpl = json!({"id":"m","name":"option-ext","version":"0.2.0","license":"MPL-2.0",
+            "source":"registry+https://github.com/rust-lang/crates.io-index"});
+        let about = json!({"crates":[{"package":own},{"package":mpl}],
+            "licenses":[{"name":"Mozilla Public License 2.0","id":"MPL-2.0","text":"MPL text",
+                "used_by":[{"crate":own},{"crate":mpl}]}]});
+        let metadata = json!({"packages":[own,mpl],"workspace_members":["own"]});
+        let all = BTreeSet::from(["own".into(), "m".into()]);
+        let text = assemble(&about, &metadata, &all, &all, "1.99.0", false).unwrap();
+        assert!(text.contains(
+            "Used by: option-ext 0.2.0\nSource code: https://crates.io/crates/option-ext/0.2.0\n"
+        ));
+        assert!(!text.contains("auditorylab-core"), "{text}");
+        let mut git = about.clone();
+        git["licenses"][0]["used_by"][1]["crate"]["source"] = json!("git+https://example.org/x");
+        assert!(assemble(&git, &metadata, &all, &all, "1.99.0", false).is_err());
+        let only_own = json!({"crates":[{"package":own}],"licenses":[{"name":"MPL","id":"MPL-2.0",
+            "text":"MPL text","used_by":[{"crate":own}]}]});
+        let own_set = BTreeSet::from(["own".into()]);
+        let text = assemble(&only_own, &metadata, &own_set, &own_set, "1.99.0", false).unwrap();
+        assert!(!text.contains("MPL text"), "{text}");
     }
 }

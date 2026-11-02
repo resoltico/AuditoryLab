@@ -49,7 +49,11 @@ embed-resource = "=3.0.12"
 slint-build = { version = "=1.18.1", default-features = false, features = ["compat-1-18"] }
 libc = "0.2"
 rustix = { version = "1.1.5", default-features = false, features = ["std", "fs"] }
-rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal", "wayland"] }
+rfd = { version = "0.17.2", default-features = false, features = [
+    "xdg-portal",
+    "wayland",
+    "common-controls-v6",
+] }
 
 clap = { version = "4", features = ["derive", "string"] }
 textwrap = { version = "0.16", default-features = false, features = ["unicode-width", "terminal_size"] }

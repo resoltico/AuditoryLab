@@ -16,8 +16,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             identity_input::Executable::Cli,
             &std::env::var("CARGO_PKG_VERSION")?,
         )?;
-        let path = std::path::Path::new(&std::env::var("OUT_DIR")?).join("version.rc");
-        std::fs::write(&path, resource)?;
+        let out = std::path::PathBuf::from(std::env::var("OUT_DIR")?);
+        let manifest_path = out.join("app.manifest");
+        std::fs::write(
+            &manifest_path,
+            identity_input::windows_manifest(identity_input::Executable::Cli),
+        )?;
+        let path = out.join("version.rc");
+        std::fs::write(
+            &path,
+            resource + &identity_input::windows_manifest_resource(&manifest_path),
+        )?;
         embed_resource::compile(path, embed_resource::NONE).manifest_required()?;
     }
     Ok(())

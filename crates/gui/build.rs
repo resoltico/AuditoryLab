@@ -53,11 +53,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let icon = std::path::Path::new(&std::env::var("CARGO_MANIFEST_DIR")?)
             .join("../../artwork/auditorylab-icon/assets/windows/auditorylab.ico")
             .canonicalize()?;
+        let out = std::path::PathBuf::from(std::env::var("OUT_DIR")?);
+        let manifest_path = out.join("app.manifest");
+        std::fs::write(
+            &manifest_path,
+            identity_input::windows_manifest(identity_input::Executable::Desktop),
+        )?;
         let source = std::fs::read_to_string("app.rc")?
             .replace("@ICON_PATH@", &icon.to_string_lossy().replace('\\', "/"));
-        let path = std::path::Path::new(&std::env::var("OUT_DIR")?).join("app.rc");
-        std::fs::write(&path, source + &resource)?;
-        embed_resource::compile(path, embed_resource::NONE).manifest_required()?;
+        let path = out.join("app.rc");
+        std::fs::write(
+            &path,
+            source + &resource + &identity_input::windows_manifest_resource(&manifest_path),
+        )?;
+        // Unit-test executables load the same Common Controls 6 dialog API, so every
+        // linked target carries the manifest, not only the shipped binary.
+        embed_resource::compile_for_everything(path, embed_resource::NONE).manifest_required()?;
     }
     Ok(())
 }

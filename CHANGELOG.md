@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+- Linux: reinstall `auditorylab-gui.desktop` from the archive; its new `StartupWMClass`, with the window's app ID, lets Wayland and X11 docks show Auditory Lab's own icon.
+- Windows: confirmation dialogs show their real buttons, such as Save, Discard and Cancel, instead of Yes, No and Cancel, in the current Windows style.
+- Windows executables declare Windows 10/11 support and long-path awareness and are built with Control Flow Guard.
+- macOS: on Macs with two graphics processors, the desktop app stays on the power-saving integrated GPU.
+- Linux desktop notices credit the Cantarell font that Wayland window decorations embed, under its SIL Open Font License.
+- Notices list where each MPL-2.0 component's source code is published and no longer list Auditory Lab's own crates.
+- Executables no longer contain the build machine's file paths; CLI READMEs describe only the CLI's terms and first run.
 ## [0.9.1] - 2026-11-02
 
 - About, CLI help, Start here and download READMEs state that Auditory Lab is not a medical device and that cited researchers and publishers do not endorse it.
