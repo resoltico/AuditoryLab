@@ -24,6 +24,13 @@ pub fn entry_studied_for(entry: &EntrySummary) -> String {
             |e| crate::recipe::studied_for(e.population_detail.as_deref(), e.population, e.role),
         )
 }
+/// Heading for one result group: its label and how many unique sounds it holds.
+#[must_use]
+pub fn group_heading(group: &auditorylab_app::discovery::collection::ResultGroup) -> String {
+    let count = group.keys.len();
+    let noun = if count == 1 { "sound" } else { "sounds" };
+    format!("{} · {count} unique {noun}", group_label(&group.label))
+}
 /// Render a semantic row, without executing queries or selecting recipe ownership.
 pub fn row(
     row: &auditorylab_app::workspace::LibraryRowView,
@@ -36,11 +43,7 @@ pub fn row(
             requires_read,
             ..
         } => entry_row(entry, sort, *requires_read),
-        Row::Group(group) => heading_row(format!(
-            "{} · {} unique sounds",
-            group_label(&group.label),
-            group.keys.len()
-        )),
+        Row::Group(group) => heading_row(group_heading(group)),
         Row::Unreadable => {
             heading_row("Unreadable storage entries · not included in sound counts".into())
         }

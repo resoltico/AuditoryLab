@@ -398,15 +398,7 @@ fn print_list(
         }
         ListFormat::Json => print_json(&Report::listing(operation, listing))?,
         ListFormat::Text => {
-            for entry in listing.entries() {
-                output(
-                    auditorylab_presentation::library::entry_summary_list_description(
-                        entry,
-                        listing.query().effective_sort().0,
-                    )
-                    .as_bytes(),
-                )?;
-            }
+            output(auditorylab_presentation::library::listing_description(listing).as_bytes())?;
             if !listing.complete() {
                 eprintln!(
                     "{}",
