@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-11-02
+
 - Linux: reinstall `auditorylab-gui.desktop` from the archive; its new `StartupWMClass`, with the window's app ID, lets Wayland and X11 docks show Auditory Lab's own icon.
 - Windows: confirmation dialogs show their real buttons, such as Save, Discard and Cancel, instead of Yes, No and Cancel, in the current Windows style.
 - Windows executables declare Windows 10/11 support and long-path awareness and are built with Control Flow Guard.
