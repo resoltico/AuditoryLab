@@ -44,6 +44,78 @@ fn architecture_header(bytes: &[u8], target: &str) -> Result<()> {
     }
     Ok(())
 }
+/// What the executable carries: no build-host paths, and a notice for every
+/// embedded font.
+fn executable_content(root: &Path, executable: &Path) -> Result<()> {
+    let built = fs::read(executable)?;
+    let mut hosts = vec![std::env::current_dir()?];
+    hosts.push(std::path::absolute(crate::cargo_home()?)?);
+    leaks_no_host_path(&built, &hosts)?;
+    let notices = fs::read_to_string(root.join("THIRD-PARTY-NOTICES.txt"))?;
+    for font in crate::fonts::embedded(&built) {
+        if font.copyright.trim().is_empty() || !notices.contains(font.copyright.trim()) {
+            return Err(format!("embedded font {:?} is not credited in notices", font.name).into());
+        }
+    }
+    Ok(())
+}
+/// Compiled-in source locations are remapped, so no build-host directory remains.
+fn leaks_no_host_path(bytes: &[u8], hosts: &[PathBuf]) -> Result<()> {
+    for host in hosts {
+        let host = host.to_string_lossy();
+        if host.len() > 3
+            && bytes
+                .windows(host.len())
+                .any(|window| window == host.as_bytes())
+        {
+            return Err(format!("executable embeds the build-host path {host}").into());
+        }
+    }
+    Ok(())
+}
+/// Windows executable protections and process identity that the loader reads.
+///
+/// Requires ASLR with high entropy, DEP and Control Flow Guard; no dynamically
+/// linked C runtime (it is linked statically); and the product's exact manifest.
+fn windows_executable(bytes: &[u8], desktop: bool) -> Result<()> {
+    const REQUIRED: u16 = 0x0020 | 0x0040 | 0x0100 | 0x4000;
+    let characteristics = bytes
+        .get(0x3c..0x40)
+        .and_then(|offset| usize::try_from(u32::from_le_bytes(offset.try_into().ok()?)).ok())
+        .and_then(|pe| bytes.get(pe + 24 + 70..pe + 24 + 72))
+        .map(|value| u16::from_le_bytes([value[0], value[1]]))
+        .ok_or("PE optional header is truncated")?;
+    if characteristics & REQUIRED != REQUIRED {
+        return Err(format!(
+            "Windows executable lacks ASLR, high-entropy ASLR, DEP or Control Flow Guard: \
+            DllCharacteristics {characteristics:#06x}"
+        )
+        .into());
+    }
+    let lower = bytes.to_ascii_lowercase();
+    for runtime in [&b"vcruntime140"[..], b"msvcp140", b"api-ms-win-crt-"] {
+        if lower.windows(runtime.len()).any(|window| window == runtime) {
+            return Err(format!(
+                "Windows executable imports a dynamic C runtime: {}",
+                String::from_utf8_lossy(runtime)
+            )
+            .into());
+        }
+    }
+    let kind = if desktop {
+        crate::source::identity_input::Executable::Desktop
+    } else {
+        crate::source::identity_input::Executable::Cli
+    };
+    let manifest = crate::source::identity_input::windows_manifest(kind);
+    if !bytes
+        .windows(manifest.len())
+        .any(|window| window == manifest.as_bytes())
+    {
+        return Err("Windows executable lacks its exact application manifest".into());
+    }
+    Ok(())
+}
 pub(crate) fn inspect(
     archive: &Path,
     out: &Path,
@@ -107,6 +179,7 @@ pub(crate) fn inspect(
             }
         ))
     };
+    executable_content(&root, &executable)?;
     #[cfg(unix)]
     if !target.contains("windows") {
         use std::os::unix::fs::PermissionsExt;
@@ -120,6 +193,7 @@ pub(crate) fn inspect(
         let bytes = fs::read(&executable)?;
         architecture_header(&bytes, target)?;
         if target.contains("windows") {
+            windows_executable(&bytes, binary == "auditorylab-gui")?;
             inspect_windows_identity(&executable, binary, version)?;
         }
         if binary == "auditorylab-gui" && target.contains("windows") {
@@ -131,10 +205,15 @@ pub(crate) fn inspect(
         if binary == "auditorylab-gui" && target.contains("linux") {
             let source = Path::new("artwork/auditorylab-icon/assets/linux/hicolor");
             compare_tree(source, &root.join("hicolor"))?;
-            if !fs::read_to_string(root.join("auditorylab-gui.desktop"))?
-                .contains("Icon=org.resoltico.auditorylab\n")
-            {
-                return Err("desktop Icon identifier missing".into());
+            let entry = fs::read_to_string(root.join(format!("{binary}.desktop")))?;
+            for line in [
+                "Icon=org.resoltico.auditorylab".to_owned(),
+                format!("Exec={binary}"),
+                format!("StartupWMClass={binary}"),
+            ] {
+                if !entry.lines().any(|actual| actual == line) {
+                    return Err(format!("desktop entry lacks {line}").into());
+                }
             }
         }
     }
@@ -244,10 +323,23 @@ fn inspect_macos(
                 return Err(format!("bundled legal resource differs: {file}").into());
             }
         }
-        for file in ["Assets.car", "AppIcon.icns", "icon-partial.plist"] {
+        for file in crate::macos::BUNDLED_ICON_FILES {
             if fs::metadata(app.join("Contents/Resources").join(file))?.len() == 0 {
                 return Err(format!("missing icon resource: {file}").into());
             }
+        }
+        let mut resources: Vec<_> = fs::read_dir(app.join("Contents/Resources"))?
+            .map(|entry| entry.map(|entry| entry.file_name()))
+            .collect::<std::io::Result<_>>()?;
+        resources.sort();
+        let mut expected: Vec<_> = crate::macos::BUNDLED_ICON_FILES
+            .iter()
+            .chain(crate::LEGAL_FILES.iter())
+            .map(std::ffi::OsString::from)
+            .collect();
+        expected.sort();
+        if resources != expected {
+            return Err(format!("unexpected app resources: {resources:?}").into());
         }
         let manifest: toml::Value = toml::from_str(&fs::read_to_string("Cargo.toml")?)?;
         let product = crate::source::identity_input::product(&manifest)?;
@@ -256,6 +348,9 @@ fn inspect_macos(
             ("CFBundleShortVersionString", version.to_owned()),
             ("CFBundleVersion", bundle_version.to_string()),
             ("LSMinimumSystemVersion", "15.0".into()),
+            ("CFBundleIconName", "AppIcon".into()),
+            // OpenGL apps stay on the integrated GPU of dual-GPU Macs only with this key.
+            ("NSSupportsAutomaticGraphicsSwitching", "true".into()),
         ] {
             let actual = String::from_utf8(capture(
                 Command::new("/usr/libexec/PlistBuddy")
@@ -394,5 +489,44 @@ mod tests {
         for actual in ["arm64 x86_64", "x86_64 arm64", "x86_64", "arm64 arm64", ""] {
             assert!(super::architecture(actual, "arm64").is_err());
         }
+    }
+    #[test]
+    fn windows_executables_need_protections_a_static_runtime_and_their_manifest() {
+        use crate::source::identity_input::{Executable, windows_manifest};
+        let image = |characteristics: u16, extra: &[u8]| {
+            let mut bytes = vec![0_u8; 0x200];
+            bytes[0x3c] = 0x80;
+            bytes[0x80 + 24 + 70..0x80 + 24 + 72].copy_from_slice(&characteristics.to_le_bytes());
+            bytes.extend_from_slice(extra);
+            bytes
+        };
+        let gui = windows_manifest(Executable::Desktop);
+        let cli = windows_manifest(Executable::Cli);
+        assert!(super::windows_executable(&image(0x4160, gui.as_bytes()), true).is_ok());
+        assert!(super::windows_executable(&image(0xc160, cli.as_bytes()), false).is_ok());
+        // Control Flow Guard, DEP, ASLR or high-entropy ASLR missing.
+        for missing in [0x0160, 0x4060, 0x4120, 0x4140] {
+            let error = super::windows_executable(&image(missing, gui.as_bytes()), true);
+            assert!(
+                error
+                    .unwrap_err()
+                    .to_string()
+                    .contains("DllCharacteristics")
+            );
+        }
+        let mut dynamic = gui.as_bytes().to_vec();
+        dynamic.extend_from_slice(b"VCRUNTIME140.dll");
+        assert!(super::windows_executable(&image(0x4160, &dynamic), true).is_err());
+        // The desktop needs its own manifest; the CLI one lacks Common Controls 6.
+        assert!(super::windows_executable(&image(0x4160, cli.as_bytes()), true).is_err());
+        assert!(super::windows_executable(&image(0x4160, b""), false).is_err());
+        assert!(super::windows_executable(&[0; 0x40], false).is_err());
+    }
+    #[test]
+    fn executables_must_not_embed_build_host_paths() {
+        let hosts = [std::path::PathBuf::from("/home/runner/work/repo")];
+        assert!(super::leaks_no_host_path(b"panic at /auditorylab/src/x.rs", &hosts).is_ok());
+        let leaked = b"panic at /home/runner/work/repo/src/x.rs";
+        assert!(super::leaks_no_host_path(leaked, &hosts).is_err());
     }
 }

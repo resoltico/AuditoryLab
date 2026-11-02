@@ -16,7 +16,7 @@ macOS icon compilation needs full Xcode 26 or later with `actool` on macOS 26 or
 
 Both Windows products need the Windows SDK resource compiler for version information. The desktop also embeds its icon. Missing required resources or a resource compiler fail the build.
 
-To inspect notices without building archives, use `cargo xtask notices cli TARGET target/cli-notices.txt`, or substitute `gui`. Notice generation checks the selected non-dev Cargo graph and required license texts. Each archive includes the pinned compiler's original `COPYRIGHT-library.html` for Rust components outside that graph.
+To inspect notices without building archives, use `cargo xtask notices cli TARGET target/cli-notices.txt`, or substitute `gui`; add a built executable as a final argument to include its embedded fonts. Notice generation checks the selected non-dev Cargo graph and required license texts. Auditory Lab's own crates are covered by `LICENSE` and are not listed as third parties. Each MPL-2.0 component names where its source code is published. Fonts compiled into the executable are found by their font structure and credited from their own copyright and license records; a font without a copyright or under a license other than the SIL Open Font License 1.1 stops packaging. Each archive includes the pinned compiler's original `COPYRIGHT-library.html` for Rust components outside that graph.
 
 ## Formats and installed resources
 
@@ -31,7 +31,11 @@ All archives contain `LICENSE`, `README.txt`, `THIRD-PARTY-NOTICES.txt`, `COPYRI
 
 The [editable artwork](../artwork/README.md) supplies the runtime icon, native Windows executable resource and Linux hicolor tree. macOS packaging compiles `AppIcon.icon` into `Assets.car` and `AppIcon.icns` before app signing; it uses no flat-icon fallback. Keep the Linux executable and legal materials in one folder on PATH, and install the `.desktop` file and hicolor tree as described in the [desktop guide](desktop.md#platforms).
 
-Both macOS CLI architectures and the app are ad-hoc signed and verified after extraction. This checks local signature validity; it does not provide Developer ID signing or notarization.
+Both macOS CLI architectures and the app are ad-hoc signed and verified after extraction. This checks local signature validity; it does not provide Developer ID signing or notarization. The app's `Contents/Resources` holds exactly the legal files and compiled icons; the icon compiler's partial plist is merged into `Info.plist`. `Info.plist` declares `NSSupportsAutomaticGraphicsSwitching`, so the OpenGL renderer keeps dual-GPU Macs on their integrated GPU.
+
+Windows executables embed an application manifest declaring Windows 10/11 support, long-path awareness and `asInvoker`; the desktop's also binds Common Controls 6, which native confirmation dialogs need for their Save/Discard/Cancel buttons, and declares per-monitor DPI awareness. Both link the Microsoft C runtime statically and are built with Control Flow Guard. Package inspection requires ASLR, high-entropy ASLR, DEP and Control Flow Guard, no dynamically linked C runtime and the exact manifest.
+
+The Linux desktop archive's `auditorylab-gui.desktop` names `StartupWMClass=auditorylab-gui`, matching the XDG app ID the desktop sets at startup, so Wayland and X11 desktops match its window to the launcher and icon.
 
 ## Source and build identity
 
@@ -39,7 +43,7 @@ Both macOS CLI architectures and the app are ad-hoc signed and verified after ex
 
 The app build script reads `workspace.metadata.auditorylab.product-name` and `copyright` for display identity, and regenerates identity when the manifest or `AUDITORYLAB_SOURCE_REVISION` changes. LICENSE supplies legal terms independently of display metadata. Supplied revisions must be full 40- or 64-character ASCII hexadecimal IDs. CLI/GUI `--version` includes the source revision when supplied; About shows the version and an optional short source revision. macOS `CFBundleShortVersionString` uses the release version. The GUI and CLI build scripts validate the same root metadata before generating Windows resources.
 
-Distribution resolves source revision and `SOURCE_DATE_EPOCH` from HEAD and its commit time, rejecting conflicting supplied values. A source tree without `.git` requires both values from the release commit; these inputs identify a claimed source and do not authenticate it. Commit reviewed source before native checks: dirty-tree packages still carry HEAD's base identity and are development evidence only. `SOURCE.txt` records the revision, source URL, version and epoch.
+Distribution builds remap the checkout to `/auditorylab` and the Cargo home to `/cargo` in compiled source locations, through a target-specific `--config` that keeps `.cargo/config.toml` flags; package inspection rejects executables containing either build-host path. Distribution resolves source revision and `SOURCE_DATE_EPOCH` from HEAD and its commit time, rejecting conflicting supplied values. A source tree without `.git` requires both values from the release commit; these inputs identify a claimed source and do not authenticate it. Commit reviewed source before native checks: dirty-tree packages still carry HEAD's base identity and are development evidence only. `SOURCE.txt` records the revision, source URL, version and epoch.
 
 Archive times accept 1980–2107, the common ZIP range. Tar members retain exact epoch seconds and zero owner IDs. ZIP stores UTC civil fields rounded down to two-second precision, without a timezone marker; extraction tools may interpret those fields locally. Repeated archive output over identical staged bytes is tested separately from compilation and does not establish reproducible binaries.
 

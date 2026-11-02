@@ -1,6 +1,6 @@
 # Desktop toolkit integration
 
-The workspace patches the native toolkit for accessibility, focus, multiline editing, modeless windows and macOS application menus. Font shaping and X11 DPI use the toolkit's upstream policy. No font files are embedded.
+The workspace patches the native toolkit for accessibility, focus, multiline editing, modeless windows and macOS application menus. Font shaping and X11 DPI use the toolkit's upstream policy. The application embeds no fonts and uses system fonts; on Linux, Winit's Wayland window decorations embed the Cantarell title font, which packaging credits under its SIL Open Font License.
 
 [patches.toml](patches.toml) defines archive URLs, versions and SHA-256 digests. [patches/](patches/) contains the exact unified diffs. Vendored source must equal its authenticated archive with the corresponding patch applied. Each vendored package includes its authenticated archive’s `Cargo.lock`.
 

@@ -7,6 +7,8 @@ use std::{
 };
 
 const ICON_FILES: [&str; 3] = ["Assets.car", "AppIcon.icns", "icon-partial.plist"];
+/// Icon compiler outputs copied into Contents/Resources.
+pub(crate) const BUNDLED_ICON_FILES: [&str; 2] = ["Assets.car", "AppIcon.icns"];
 const SOURCE_MARKER: &str = "source-identity.txt";
 
 fn identity(source: &Source) -> String {
@@ -143,13 +145,11 @@ pub(crate) fn bundle(
         &local_icons
     };
     validate_icons(icons, source)?;
-    for name in ICON_FILES {
+    // The partial plist is compiler output merged into Info.plist, not a bundle resource.
+    for name in BUNDLED_ICON_FILES {
         fs::copy(icons.join(name), resources.join(name))?;
     }
-    if compiled_locally {
-        fs::remove_dir_all(local_icons)?;
-    }
-    let partial = resources.join("icon-partial.plist");
+    let partial = icons.join("icon-partial.plist");
     let plist = contents.join("Info.plist");
     let manifest: toml::Value = toml::from_str(&fs::read_to_string("Cargo.toml")?)?;
     let product = crate::source::identity_input::product(&manifest)?;
@@ -159,14 +159,17 @@ pub(crate) fn bundle(
             "<?xml version=\"1.0\" encoding=\"UTF-8\"?><!DOCTYPE plist PUBLIC \
                 \"-//Apple//DTD PLIST 1.0//EN\" \
                 \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\"><plist \
-                version=\"1.0\"><dict><key>CFBundleIdentifier</key><string>org.resolti\
-                co.auditorylab</string><key>CFBundleName</key><string>Auditory \
+                version=\"1.0\"><dict><key>CFBundleInfoDictionaryVersion</key><string>\
+                6.0</string><key>CFBundleDevelopmentRegion</key><string>en</string><key>\
+                CFBundleIdentifier</key><string>org.resoltico.auditorylab</string><key>\
+                CFBundleName</key><string>Auditory \
                 Lab</string><key>CFBundleDisplayName</key><string>Auditory \
                 Lab</string><key>CFBundleExecutable</key><string>auditorylab-gui</stri\
                 ng><key>CFBundlePackageType</key><string>APPL</string><key>CFBundleSho\
                 rtVersionString</key><string>{version}</string><key>CFBundleVersion</k\
                 ey><string>{bundle_version}</string><key>LSMinimumSystemVersion</key><\
-                string>15.0</string><key>NSHighResolutionCapable</key><true/><key>NSHuma\
+                string>15.0</string><key>NSHighResolutionCapable</key><true/><key>\
+                NSSupportsAutomaticGraphicsSwitching</key><true/><key>NSHuma\
                 nReadableCopyright</key><string>{copyright}</string></dict></plist>",
             copyright = xml_text(product.copyright)
         ),
@@ -175,6 +178,9 @@ pub(crate) fn bundle(
         .arg("-c")
         .arg(format!("Merge '{}'", partial.display()))
         .arg(&plist))?;
+    if compiled_locally {
+        fs::remove_dir_all(local_icons)?;
+    }
     run(Command::new("codesign")
         .args(["--sign", "-", "--force"])
         .arg(&app))?;

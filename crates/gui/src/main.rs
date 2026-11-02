@@ -81,6 +81,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         )
     };
     selector.select()?;
+    // Wayland and X11 desktops match windows to auditorylab-gui.desktop by this ID.
+    slint::set_xdg_app_id(env!("CARGO_BIN_NAME"))?;
     let windows = Windows::new()?;
     let mut workspace = Workspace::with_binding(
         auditorylab_app::services::catalog()?,
