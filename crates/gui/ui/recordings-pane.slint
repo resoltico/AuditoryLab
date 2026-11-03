@@ -1,0 +1,120 @@
+// SPDX-License-Identifier: MPL-2.0
+import { ViewCaptions } from "view-captions.slint";
+import { Actions } from "actions.slint";
+import { Button } from "button.slint";
+import { Terms } from "vocabulary.slint";
+import { Palette, VerticalBox, ScrollView } from "std-widgets.slint";
+import { RecordingFacts } from "models.slint";
+import { Section } from "editor.slint";
+
+// The opened recording's identity and what is measured, shown together.
+export component RecordingsPane inherits Rectangle {
+    in property <bool> has-recording;
+    in property <RecordingFacts> recording;
+    in property <string> measurements;
+    in property <int> tab-index;
+    in property <length> ui-size;
+    callback open-recording();
+
+    accessible-role: tab-panel;
+    accessible-label: ViewCaptions.recordings;
+    visible: root.tab-index == 3;
+
+    recordings-scroll := ScrollView {
+        width: parent.width;
+        height: parent.height;
+        VerticalBox {
+            width: recordings-scroll.visible-width;
+            padding: 16px;
+            spacing: 14px;
+            Text {
+                text: ViewCaptions.recordings;
+                font-size: root.ui-size * 1.5;
+                font-weight: 700;
+                wrap: word-wrap;
+                accessible-role: text;
+            }
+
+            Text {
+                text: Terms.caption-recordings-introduction;
+                wrap: word-wrap;
+                min-width: 0px;
+                accessible-role: text;
+            }
+
+            HorizontalLayout {
+                alignment: start;
+                Button {
+                    text: Actions.open-recording.label + "…";
+                    enabled: Actions.open-recording.enabled;
+                    triggered => { root.open-recording(); }
+                }
+            }
+
+            if !root.has-recording: Text {
+                text: Terms.caption-no-recording;
+                wrap: word-wrap;
+                min-width: 0px;
+                color: Palette.foreground.with-alpha(0.72);
+                accessible-role: text;
+            }
+            if root.has-recording: Section {
+                title: root.recording.name;
+                ui-size: root.ui-size;
+                GridLayout {
+                    spacing-horizontal: 16px;
+                    spacing-vertical: 6px;
+                    Row {
+                        Text {
+                            text: Terms.caption-recording-location;
+                            font-weight: 600;
+                        }
+
+                        Text {
+                            text: root.recording.path;
+                            wrap: word-wrap;
+                            min-width: 0px;
+                            horizontal-stretch: 1;
+                        }
+                    }
+
+                    Row {
+                        Text {
+                            text: Terms.caption-recording-size;
+                            font-weight: 600;
+                        }
+
+                        Text {
+                            text: root.recording.size;
+                            wrap: word-wrap;
+                            min-width: 0px;
+                        }
+                    }
+
+                    Row {
+                        Text {
+                            text: Terms.caption-recording-format;
+                            font-weight: 600;
+                        }
+
+                        Text {
+                            text: root.recording.format;
+                            wrap: word-wrap;
+                            min-width: 0px;
+                        }
+                    }
+                }
+            }
+            Section {
+                title: Terms.caption-recording-measurements;
+                ui-size: root.ui-size;
+                Text {
+                    text: root.measurements;
+                    wrap: word-wrap;
+                    min-width: 0px;
+                    accessible-role: text;
+                }
+            }
+        }
+    }
+}

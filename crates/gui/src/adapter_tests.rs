@@ -5064,7 +5064,7 @@ fn navigation_intents_apply_once_in_order_and_projection_never_departs_learning(
     assert!(!ui.get_learning_visible());
     ui.invoke_open_learning(0);
     ui.invoke_tab_changed(-1);
-    ui.invoke_tab_changed(2);
+    ui.invoke_tab_changed(4);
     h.settle();
     assert!(
         ui.get_learning_visible(),
@@ -6152,4 +6152,68 @@ fn repaired_preference_clears_its_old_notice_and_open_popup_on_successful_depart
                 .is_some(),
         "resolved-notice cleanup preserves the explicit workspace exit focus"
     );
+}
+
+#[test]
+fn device_check_and_recordings_tabs_drive_their_production_callbacks() {
+    use auditorylab_app::device_check::{ChannelResult, DeviceTest};
+    let h = Harness::new();
+    let ui = h.ui();
+    ui.invoke_tab_changed(2);
+    h.settle();
+    assert_eq!(h.adapter.inspect(|w| w.view()), View::DeviceCheck);
+    assert!(labelled(ui, "Device check").is_visible());
+    let tests = ui.get_device_tests();
+    assert_eq!(tests.row_count(), DeviceTest::ALL.len());
+    let left = tests.row_data(0).unwrap();
+    assert_eq!(left.key, "left_channel");
+    assert!(left.selected);
+    assert_eq!(left.answers.row_count(), 4);
+    ui.invoke_answer_device_test("left_channel".into(), "left".into());
+    ui.invoke_answer_device_test("right_channel".into(), "right".into());
+    // Unknown keys from a stale or mistyped binding change nothing.
+    ui.invoke_answer_device_test("tone_40_hz".into(), "sideways".into());
+    h.settle();
+    assert_eq!(
+        h.adapter
+            .inspect(|w| w.device_check_view().assessment.channels),
+        ChannelResult::Separate
+    );
+    assert!(
+        ui.get_device_channel_result()
+            .starts_with("Left and right reach separate ears")
+    );
+    assert!(
+        ui.get_device_tests()
+            .row_data(0)
+            .unwrap()
+            .answers
+            .row_data(0)
+            .unwrap()
+            .selected
+    );
+    ui.invoke_clear_device_answers();
+    h.settle();
+    assert!(!h.adapter.inspect(|w| w.device_check_view().answered));
+
+    ui.invoke_tab_changed(3);
+    h.settle();
+    assert_eq!(h.adapter.inspect(|w| w.view()), View::Recordings);
+    assert!(!ui.get_has_recording());
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("take.ogg");
+    std::fs::write(&path, b"OggS\0\x02\0\0\0\0\0\0").unwrap();
+    ui.invoke_open_recording();
+    let [Request::Path(prompt, PathPurpose::OpenRecording, None)] = h.take()[..] else {
+        panic!("Open recording asks for an existing file");
+    };
+    h.adapter.respond(prompt, PromptAnswer::Path(Some(path)));
+    h.wait_for_files();
+    h.settle();
+    assert!(ui.get_has_recording());
+    let facts = ui.get_recording();
+    assert_eq!(facts.name, "take.ogg");
+    assert_eq!(facts.size, "12 bytes");
+    assert_eq!(facts.format, "Ogg");
+    assert!(ui.get_recording_measurements().contains("does not decode"));
 }

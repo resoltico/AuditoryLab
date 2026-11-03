@@ -73,6 +73,7 @@ impl FileState {
     pub(super) fn apply(&mut self, command: FileCommand) -> Result<Option<FileRequest>, Refusal> {
         Ok(match command {
             FileCommand::Import => Some(FileRequest::Import),
+            FileCommand::OpenRecording => Some(FileRequest::OpenRecording),
             FileCommand::Save => Some(FileRequest::Save),
             FileCommand::SaveCopy => Some(FileRequest::SaveCopy),
             FileCommand::ExportRecipe => Some(FileRequest::ExportRecipe),
@@ -114,6 +115,7 @@ impl PreparedExport {
 
 pub(super) enum FileRequest {
     Import,
+    OpenRecording,
     Save,
     SaveCopy,
     ExportRecipe,

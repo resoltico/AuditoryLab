@@ -96,6 +96,15 @@ chrome! {
             are missing"),
         WavAudio => ("caption-wav-audio", "WAV audio"),
         TomlSound => ("caption-toml-sound", "TOML sound"),
+        AudioRecording => ("caption-audio-recording", "Audio recording"),
+        DeviceCheckResults => ("caption-device-check-results", "What your answers mean"),
+        RecordingsIntroduction => ("caption-recordings-introduction", "Open an audio file to \
+            see its format and size."),
+        NoRecording => ("caption-no-recording", "No recording is open."),
+        RecordingLocation => ("caption-recording-location", "Location"),
+        RecordingSize => ("caption-recording-size", "Size"),
+        RecordingFormat => ("caption-recording-format", "Format"),
+        RecordingMeasurements => ("caption-recording-measurements", "Measurements"),
         AudioSnapshot => ("caption-audio-snapshot", "Audio and task details · snapshot"),
         NoticesPathError => ("caption-notices-path-error", "Cannot open a non-UTF8 notices path."),
         CalendarRangeError => ("caption-calendar-range-error", "Invalid calendar range. Use \

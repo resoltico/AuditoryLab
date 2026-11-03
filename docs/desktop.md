@@ -14,7 +14,7 @@ Open **Auditory Lab.app**, `auditorylab-gui.exe`, or `auditorylab-gui`. Start wi
 | Sound types | Six constructions shown as choices at once, and **Open this example in Workbench**. |
 | Rhythm ranges | A combined five-band spectrum, selected-band detail, observed EEG/MEG contexts and source links. |
 
-Choose **Library** or **Workbench** to leave. Reading preserves drafts, pending text, Library selection and running tasks. Play, Save and Export require a working destination; Stop and Cancel export still address the actual running work. Guide entry focuses the selected lesson.
+Choose **Library**, **Workbench**, **Device check** or **Recordings** to leave. Reading preserves drafts, pending text, Library selection and running tasks. Play, Save and Export require a working destination; Stop and Cancel export still address the actual running work. Guide entry focuses the selected lesson.
 
 **Create a pulsed tone** opens the starter; **Open this example in Workbench** opens the selected construction. Both capture a complete fresh example through Save/Discard/Cancel. Successful replacement focuses its title. Cancel or failed Save retains the guide and current draft. Nothing plays or saves automatically; **New sound** starts empty and silent.
 
@@ -89,6 +89,18 @@ Finite but acoustically invalid documents can be saved for repair. File errors k
 One audio slot and one file slot run independently. Stop targets audio; **Cancel export** targets WAV export. During native path selection, macOS offers Stop in the file panel; Windows/Linux offer modeless Audio controls. A worker slot remains busy until its thread has joined, including after displayed progress reaches completion.
 
 New/copy/close/Quit protect unsaved content through Save/Discard/Cancel. Repeated Quit shares one decision. Failed saves and newer unsaved edits keep the application open.
+
+## Check your device
+
+**Device check** plays five short tones and asks what you heard: a 440 Hz tone on the left channel only, the same tone on the right channel only, and 100, 60 and 40 Hz tones on both channels. Every tone lasts 3 seconds at -20 dBFS with a 0.1 s fade at each end. Set the device volume low first and keep it unchanged for every tone.
+
+Each test has its own **Play test tone** button; the persistent player also plays the highlighted test. Choose **Left only**, **Right only**, **Both sides** or **Did not hear it** for the channel tests, and **Heard it** or **Did not hear it** for the low tones. **What your answers mean** then says whether left and right reach separate ears, which binaural pairs need, and the lowest tone you heard. Answers last for this session; **Clear answers** forgets them.
+
+Software cannot observe which ear hears a channel or whether a speaker reproduces a tone; the results describe your answers.
+
+## Recordings
+
+**Recordings** identifies an audio file. **Open recording…** reads the file's size and its first 12 bytes, which name the container: WAV (including RF64 and BW64), AIFF, FLAC, MP3, AAC (ADTS), MPEG-4 (M4A/MP4), Ogg or Matroska/WebM; other files show as unrecognized. The audio is not decoded or measured. The most recently opened recording stays shown until another one opens; a failed open keeps it and reports the problem. Nothing in Recordings plays or exports.
 
 ## View timing and output
 

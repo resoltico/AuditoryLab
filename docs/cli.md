@@ -61,6 +61,21 @@ auditorylab export --file pair.toml --output pair.wav --sample-rate 48000
 
 `recipe SELECTOR` prints saved portable TOML; `--output PATH` writes it. Built-in output is standalone TOML assembled from embedded catalog conditions and study records; User output retains exact saved file bytes. Both preserve document identity and declared timestamps. CLI recipe and WAV exports never overwrite an existing destination; export checks the destination before announcing the file and its size, and on Unix refuses with `file.insufficient_space` when its volume has less free space than that size. Exported files get the same permissions as other new files you create; library records stay readable only by you.
 
+## Check your output device
+
+Set device volume low, then run `auditorylab device-check`. It plays a 440 Hz tone on the left channel, then on the right channel, then 100, 60 and 40 Hz tones on both channels, each for 3 seconds at -20 dBFS. After each tone, type an answer key and press Enter: `left`, `right`, `both` or `not_heard` for the channel tests, `heard` or `not_heard` for the low tones, or `replay` to hear the tone again. The command then explains what the answers mean for binaural pairs and low tones. Answers can also be piped on standard input, one per line; input that ends early is a usage error.
+
+Ctrl-C stops the tone that is playing; while the command waits for an answer, Ctrl-C ends it with status 130.
+
+## Identify a recording
+
+```text
+auditorylab analyze recording.m4a
+auditorylab analyze --format json recording.m4a
+```
+
+`analyze` reads a regular file's size and its first 12 bytes and reports the container format they name: `wav` (including RF64 and BW64), `aiff`, `flac`, `mp3`, `adts_aac`, `mp4` (M4A/MP4), `ogg`, `matroska` (including WebM) or `unknown`. It does not decode or measure the audio. A missing or non-regular file exits with status 1.
+
 ## Root and lifecycle
 
 CLI and desktop share one native per-user library. Each command captures one configured root and precedence source; filesystem/layout checks still run against the state used for each action. An absolute `--library-dir PATH` takes precedence over `AUDITORYLAB_LIBRARY_DIR`, then the native default. Inspect the location before changing it:

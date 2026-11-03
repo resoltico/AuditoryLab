@@ -54,6 +54,7 @@ impl SlintAdapter {
         *self.control_choices.borrow_mut() = controls;
         self.project_control_choices(ui);
         self.project_learning(ui);
+        self.project_device_check(ui);
         self.project_view_captions(ui, &editor);
         self.reconcile_document(ui, &editor);
         if let Some(workspace) = self.workspace.borrow().as_ref() {
@@ -345,6 +346,11 @@ impl SlintAdapter {
                     Operation::AddComponent => actions.set_add_component(action),
                     Operation::UndoRemove => actions.set_undo_remove(action),
                     Operation::RemoveComponent => actions.set_remove_component(action),
+                    Operation::DeviceCheck => actions.set_device_check(action),
+                    Operation::PlayTestTone => actions.set_play_test_tone(action),
+                    Operation::ClearDeviceAnswers => actions.set_clear_device_answers(action),
+                    Operation::OpenRecording => actions.set_open_recording(action),
+                    Operation::AnalyzeRecording => actions.set_analyze_recording(action),
                 }
             }
         }
@@ -755,6 +761,8 @@ pub(crate) fn project_captions(
             ViewCaption::ModifiedFromYyyyMmDd => captions.set_modified_from_yyyy_mm_dd(label),
             ViewCaption::ModifiedThroughYyyyMmDd => captions.set_modified_through_yyyy_mm_dd(label),
             ViewCaption::Workbench => captions.set_workbench(label),
+            ViewCaption::DeviceCheck => captions.set_device_check(label),
+            ViewCaption::Recordings => captions.set_recordings(label),
             ViewCaption::SoundTitle => captions.set_sound_title(label),
             ViewCaption::ChannelRouting => captions.set_channel_routing(label),
             ViewCaption::Carrier => captions.set_carrier(label),
@@ -850,6 +858,8 @@ impl SlintAdapter {
         ui.set_tab_index(match workspace.view() {
             auditorylab_app::workspace::View::Library => 0,
             auditorylab_app::workspace::View::Workbench => 1,
+            auditorylab_app::workspace::View::DeviceCheck => 2,
+            auditorylab_app::workspace::View::Recordings => 3,
         });
         Self::initialize_learning_choices(ui);
         let Some(learning) = learning else {

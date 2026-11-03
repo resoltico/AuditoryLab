@@ -45,8 +45,23 @@ pub enum Command {
     File(FileCommand),
     /// Change monitor/preview policy.
     Output(OutputCommand),
+    /// Play device-check tones and record what the listener heard.
+    DeviceCheck(DeviceCheckCommand),
     /// Request the shared close decision.
     Close,
+}
+/// Device-check input; answers stay in this session.
+#[derive(Debug, Clone, Copy)]
+pub enum DeviceCheckCommand {
+    /// Select a test and play its tone while Device check is the current view.
+    Play(crate::device_check::DeviceTest),
+    /// Record what the listener reported for a test.
+    Answer(
+        crate::device_check::DeviceTest,
+        crate::device_check::DeviceAnswer,
+    ),
+    /// Forget every answer.
+    Clear,
 }
 /// Document input whose identities remain bound to the captured editor lifetime.
 #[derive(Debug, Clone)]
@@ -154,6 +169,7 @@ pub enum AudioCommand {
 #[derive(Debug, Clone, Copy)]
 pub enum FileCommand {
     Import,
+    OpenRecording,
     Save,
     SaveCopy,
     ExportRecipe,
@@ -191,6 +207,7 @@ impl Workspace {
                 Ok(())
             }
             Command::Close => self.close(),
+            Command::DeviceCheck(command) => self.apply_device_check(command),
             Command::Editor(command) => self.apply_editor(command),
             Command::Library(command) => self.apply_library(command),
             Command::Audio(command) => match self.audio.apply(command) {
@@ -215,6 +232,7 @@ impl Workspace {
                 }
                 match self.files.apply(command)? {
                     Some(file::FileRequest::Import) => self.import(),
+                    Some(file::FileRequest::OpenRecording) => self.open_recording(),
                     Some(file::FileRequest::Save) => self.save(),
                     Some(file::FileRequest::SaveCopy) => self.save_independent_copy(),
                     Some(file::FileRequest::ExportRecipe) => self.export_recipe(),
@@ -261,6 +279,75 @@ impl Workspace {
         });
         self.changed();
         Ok(())
+    }
+    /// Choose a recording to identify. Opening may run beside audio.
+    ///
+    /// # Errors
+    /// Returns the admission refusal.
+    pub(super) fn open_recording(&mut self) -> Result<(), Refusal> {
+        self.import_admission()?;
+        let id = self.prompt(PromptState::OpenRecording);
+        self.effects.push(Effect::ChoosePath {
+            prompt: id,
+            purpose: PathPurpose::OpenRecording,
+            suggested_name: None,
+        });
+        self.changed();
+        Ok(())
+    }
+    fn apply_device_check(&mut self, command: DeviceCheckCommand) -> Result<(), Refusal> {
+        match command {
+            DeviceCheckCommand::Play(test) => {
+                if self.view != View::DeviceCheck {
+                    return Ok(());
+                }
+                if self.device_check.select(test) {
+                    self.changed();
+                }
+                self.play()
+            }
+            DeviceCheckCommand::Answer(test, answer) => {
+                self.device_check.record(test, answer)?;
+                self.changed();
+                Ok(())
+            }
+            DeviceCheckCommand::Clear => {
+                if self.device_check.clear() {
+                    self.changed();
+                }
+                Ok(())
+            }
+        }
+    }
+    /// Device-check tests, answers and their interpretation.
+    #[must_use]
+    pub fn device_check_view(&self) -> crate::workspace::DeviceCheckView {
+        let check = self.device_check.check();
+        crate::workspace::DeviceCheckView {
+            tests: crate::device_check::DeviceTest::ALL
+                .into_iter()
+                .map(|test| crate::workspace::DeviceTestView {
+                    test,
+                    answer: check.answer(test),
+                    selected: test == self.device_check.selected(),
+                })
+                .collect(),
+            assessment: check.assessment(),
+            answered: check.started(),
+        }
+    }
+    /// The most recently opened recording, kept until another one opens.
+    #[must_use]
+    pub const fn recording(&self) -> Option<&crate::recording::RecordingFile> {
+        self.recording.as_ref()
+    }
+    /// The captured recipe the current view's preview and Play use, if any.
+    pub(super) fn shown(&self) -> Option<&RecipeSnapshot> {
+        match self.view {
+            View::Library => self.selected(),
+            View::DeviceCheck => Some(self.device_check.tone()),
+            View::Workbench | View::Recordings => None,
+        }
     }
     /// Commit and capture the open document, then choose where to save it.
     /// The captured content is what is written, whatever is edited later.
@@ -358,6 +445,7 @@ impl Workspace {
         match self.view {
             View::Library => self.library.prepare_export(self.editor.export_rate()),
             View::Workbench => self.editor.prepare_export(),
+            View::DeviceCheck | View::Recordings => Err(Refusal::NoSoundInView),
         }
     }
     pub(super) fn prepare_export_recipe(&mut self) -> Result<(Arc<str>, String), Refusal> {
@@ -365,6 +453,7 @@ impl Workspace {
         match self.view {
             View::Library => self.library.prepare_recipe_text(),
             View::Workbench => self.editor.prepare_recipe_text(),
+            View::DeviceCheck | View::Recordings => Err(Refusal::NoSoundInView),
         }
     }
     pub(super) fn prepare_audio(&mut self) -> Result<AudioRequest, Refusal> {
@@ -376,6 +465,8 @@ impl Workspace {
         match self.view {
             View::Library => self.library.prepare_audio(),
             View::Workbench => self.editor.prepare_live(),
+            View::DeviceCheck => Ok(self.device_check.prepare_audio()),
+            View::Recordings => Err(Refusal::NoSoundInView),
         }
     }
     pub(super) fn preview_admission(&self) -> Result<(), Refusal> {
@@ -1007,6 +1098,7 @@ impl Workspace {
                 .err()
                 .filter(|r| matches!(r, Refusal::Document(_)))
                 .cloned(),
+            View::DeviceCheck | View::Recordings => None,
         };
         let row = self.editor.session().document_key();
         let component_add = self.component_add_admission(row, CarrierKind::Tone);
@@ -1048,17 +1140,20 @@ impl Workspace {
             exporting,
             transport_action: if playing {
                 crate::vocabulary::Operation::Stop
-            } else if self.view == View::Workbench {
-                crate::vocabulary::Operation::PlayLive
             } else {
-                crate::vocabulary::Operation::PlaySelectedSound
+                match self.view {
+                    View::Workbench => crate::vocabulary::Operation::PlayLive,
+                    View::DeviceCheck => crate::vocabulary::Operation::PlayTestTone,
+                    View::Library | View::Recordings => {
+                        crate::vocabulary::Operation::PlaySelectedSound
+                    }
+                }
             },
             play_target: match self.view {
                 View::Workbench => self.editor.session().draft().title().to_owned(),
-                View::Library => self
-                    .selected()
-                    .map(RecipeSnapshot::title)
-                    .unwrap_or_default(),
+                View::Library | View::DeviceCheck | View::Recordings => {
+                    self.shown().map(RecipeSnapshot::title).unwrap_or_default()
+                }
             },
             progress,
             file_status: self.files.status().clone(),
@@ -1089,13 +1184,15 @@ impl Workspace {
                         !self.learning_visible && view.can_new()
                     }
                     O::EditCopy => view.can_copy(),
-                    O::OpenRecipe => view.can_import(),
+                    O::OpenRecipe | O::OpenRecording => view.can_import(),
                     O::ExportRecipe => view.can_export_recipe(),
                     O::Export => view.can_export(),
                     O::Play | O::PlaySelectedSound | O::StopCurrentAndPlayRecipe => {
                         self.view == View::Library && view.can_play()
                     }
                     O::PlayLive => self.view == View::Workbench && view.can_play(),
+                    O::PlayTestTone => self.view == View::DeviceCheck && view.can_play(),
+                    O::ClearDeviceAnswers => self.device_check.check().started(),
                     O::Stop => view.playback_busy(),
                     O::CancelExport => view.exporting,
                     O::AddComponent | O::RemoveComponent => view.can_edit(),
@@ -1117,7 +1214,9 @@ impl Workspace {
                     | O::LibraryRefresh
                     | O::LibraryRead
                     | O::CloseOpenFile
-                    | O::ShowSaved => true,
+                    | O::ShowSaved
+                    | O::DeviceCheck
+                    | O::AnalyzeRecording => true,
                 };
                 ActionView { operation, enabled }
             })

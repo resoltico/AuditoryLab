@@ -272,6 +272,13 @@ report_struct!(Report {
     selector: Option<LibraryKey>,
     #[serde(skip_serializing_if = "Option::is_none")]
     version_token: Option<Option<VersionToken>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    recording: Option<RecordingReport>,
+});
+report_struct!(RecordingReport {
+    path: PathBuf,
+    bytes: u64,
+    format: auditorylab_app::recording::ContainerFormat,
 });
 impl Report {
     fn new(operation: Operation, complete: bool) -> Self {
@@ -292,7 +299,19 @@ impl Report {
             status: None,
             selector: None,
             version_token: None,
+            recording: None,
         }
+    }
+    /// An opened recording's identity.
+    #[must_use]
+    pub fn recording(recording: &auditorylab_app::recording::RecordingFile) -> Self {
+        let mut report = Self::new(Operation::AnalyzeRecording, true);
+        report.recording = Some(RecordingReport {
+            path: recording.path.clone(),
+            bytes: recording.bytes,
+            format: recording.format,
+        });
+        report
     }
     fn with_entries(mut self, entries: Vec<EntryReport>) -> Self {
         self.unique_count = entries.len();

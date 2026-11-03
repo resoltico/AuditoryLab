@@ -99,7 +99,10 @@ fn vocabulary_and_query_tables_match_every_owned_key() {
         Channel,
         SlotRole,
         Operation,
-        Status
+        Status,
+        auditorylab_app::device_check::DeviceTest,
+        auditorylab_app::device_check::DeviceAnswer,
+        auditorylab_app::recording::ContainerFormat
     );
     let declared = auditorylab_core::diagnostic::OWNERS
         .iter()

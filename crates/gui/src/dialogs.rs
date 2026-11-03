@@ -107,12 +107,17 @@ impl Shell for NativeShell {
             adapter.respond(prompt, PromptAnswer::Path(None));
             return;
         };
-        let extension = match purpose {
-            PathPurpose::OpenRecipe | PathPurpose::ExportRecipe => "toml",
-            PathPurpose::ExportWav => "wav",
+        let extensions: Vec<&'static str> = match purpose {
+            PathPurpose::OpenRecipe | PathPurpose::ExportRecipe => vec!["toml"],
+            PathPurpose::ExportWav => vec!["wav"],
+            PathPurpose::OpenRecording => auditorylab_app::recording::ContainerFormat::ALL
+                .iter()
+                .flat_map(|format| format.extensions().iter().copied())
+                .collect(),
         };
+        let extension = extensions[0];
         let destination = match purpose {
-            PathPurpose::OpenRecipe => None,
+            PathPurpose::OpenRecipe | PathPurpose::OpenRecording => None,
             PathPurpose::ExportRecipe | PathPurpose::ExportWav => Some(
                 suggested_name
                     .unwrap_or_else(|| crate::terms::Caption::suggested_filename(extension)),
@@ -121,7 +126,7 @@ impl Shell for NativeShell {
         // A native Stop control in the panel stops exactly the audio playing now.
         let control = adapter.audio_control();
         answer(adapter, prompt, async move {
-            match file_path(&ui, destination.as_deref(), extension, control).await {
+            match file_path(&ui, destination.as_deref(), &extensions, control).await {
                 Ok(path) => PromptAnswer::Path(path),
                 Err(error) => PromptAnswer::Failed(error),
             }
@@ -149,12 +154,12 @@ impl Shell for NativeShell {
 async fn file_path(
     ui: &crate::MainWindow,
     filename: Option<&str>,
-    extension: &str,
+    extensions: &[&str],
     control: Option<auditorylab_app::services::playback::PlaybackControl>,
 ) -> Result<Option<std::path::PathBuf>, String> {
     #[cfg(target_os = "macos")]
     {
-        crate::native_application::choose_file(ui, filename, extension, control).await
+        crate::native_application::choose_file(ui, filename, extensions, control).await
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -164,12 +169,12 @@ async fn file_path(
         let dialog = rfd::AsyncFileDialog::new()
             .set_parent(&ui.window().window_handle())
             .add_filter(
-                if extension == "wav" {
-                    crate::terms::Caption::WavAudio.label()
-                } else {
-                    crate::terms::Caption::TomlSound.label()
+                match extensions {
+                    ["wav"] => crate::terms::Caption::WavAudio.label(),
+                    ["toml"] => crate::terms::Caption::TomlSound.label(),
+                    _ => crate::terms::Caption::AudioRecording.label(),
                 },
-                &[extension],
+                extensions,
             );
         let selected = if let Some(name) = filename {
             dialog.set_file_name(name).save_file().await

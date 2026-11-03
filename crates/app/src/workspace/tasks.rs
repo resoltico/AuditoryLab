@@ -69,6 +69,7 @@ pub(crate) struct AudioTask {
 #[derive(Debug, Clone)]
 pub(crate) enum FileKind {
     Import(PathBuf),
+    OpenRecording(PathBuf),
     Managed(super::library::LibraryJob),
     ExportRecipe {
         text: std::sync::Arc<str>,
@@ -88,6 +89,8 @@ pub(crate) enum FileKind {
 pub enum FileOutcome {
     /// Captured external recipe load.
     Imported(Result<RecipeSnapshot, LoadError>),
+    /// Identified recording file.
+    RecordingOpened(Result<crate::recording::RecordingFile, crate::services::FileError>),
     /// Managed library operation.
     Managed(Result<super::library::LibraryOutcome, Error>),
     /// Published portable bytes.
@@ -107,6 +110,10 @@ impl FileOutcome {
                 .as_ref()
                 .err()
                 .map(crate::services::LoadError::outcome),
+            Self::RecordingOpened(result) => result
+                .as_ref()
+                .err()
+                .map(crate::services::FileError::outcome),
             Self::RecipeExported(result) => result
                 .as_ref()
                 .err()
@@ -137,6 +144,7 @@ impl FileKind {
         match (self, outcome) {
             (Self::Managed(job), FileOutcome::Managed(Ok(outcome))) => job.accepts(outcome),
             (Self::Import(_), FileOutcome::Imported(_))
+            | (Self::OpenRecording(_), FileOutcome::RecordingOpened(_))
             | (Self::ExportRecipe { .. }, FileOutcome::RecipeExported(_))
             | (Self::Export { .. }, FileOutcome::Exported(_))
             | (Self::Managed(_), FileOutcome::Managed(Err(_))) => true,
@@ -150,6 +158,9 @@ impl FileKind {
             ),
             Self::Managed(job) => FileOutcome::Managed(job.execute()),
             Self::Import(path) => FileOutcome::Imported(crate::services::open_file(&path)),
+            Self::OpenRecording(path) => {
+                FileOutcome::RecordingOpened(crate::services::open_recording(&path))
+            }
             Self::Export {
                 path,
                 cancel,
@@ -219,6 +230,7 @@ impl JobOutcome {
             Self::Audio(Err(error)) => crate::services::OperationError::from(error.clone()),
             Self::File(outcome) => match outcome {
                 FileOutcome::Imported(Err(error)) => error.clone().into(),
+                FileOutcome::RecordingOpened(Err(error)) => error.clone().into(),
                 FileOutcome::Managed(Err(error)) => error.clone(),
                 FileOutcome::RecipeExported(Err(error)) => error.clone().into(),
                 FileOutcome::Exported(Err(error)) => error.clone().into(),

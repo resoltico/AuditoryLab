@@ -4,7 +4,9 @@ use auditorylab_app::job::{Cancel, Progress, Replace};
 
 use auditorylab_presentation::Explain;
 mod cli_text;
+mod device_check_cli;
 mod library_cli;
+mod recording_cli;
 use auditorylab_app::core::SampleRate;
 use auditorylab_app::outcome::Outcome;
 use auditorylab_app::vocabulary::Operation;
@@ -86,6 +88,17 @@ enum Command {
     },
     /// Play a sound on the default audio output; turn the volume down first.
     Play(Source),
+    /// Play short test tones and report whether left, right and low tones reach you.
+    DeviceCheck,
+    /// Identify an audio recording's format and size.
+    Analyze {
+        /// Audio file to identify.
+        #[arg(value_name = "FILE")]
+        file: PathBuf,
+        /// Output as readable text or JSON for scripts.
+        #[arg(long, value_enum, default_value = "text")]
+        format: library_cli::ReadFormat,
+    },
     /// Save a sound as a stereo WAV file (32-bit float); an existing file is never replaced.
     Export {
         #[command(flatten)]
@@ -206,6 +219,7 @@ macro_rules! operation_errors {
 operation_errors! {
     auditorylab_app::services::OperationError,
     auditorylab_app::services::LoadError,
+    auditorylab_app::services::FileError,
     auditorylab_app::services::library::LibraryError,
     auditorylab_app::services::SaveError,
     auditorylab_app::services::ExportError,
@@ -531,6 +545,8 @@ fn run(cli: Cli) -> Result<Ended, CliError> {
             let resolved = library_cli::resolve(source, &context)?;
             return play(&resolved);
         }
+        Command::DeviceCheck => return device_check_cli::device_check(),
+        Command::Analyze { file, format } => recording_cli::analyze(&file, format)?,
     }
     Ok(Ended::Normally)
 }
@@ -549,6 +565,11 @@ fn command_output(command: Option<&Command>) -> Option<(bool, Operation)> {
         Command::Recipe { .. } => (false, Operation::Recipe),
         Command::Export { .. } => (false, Operation::Export),
         Command::Play(_) => (false, Operation::Play),
+        Command::DeviceCheck => (false, Operation::DeviceCheck),
+        Command::Analyze { format, .. } => (
+            *format == library_cli::ReadFormat::Json,
+            Operation::AnalyzeRecording,
+        ),
     })
 }
 
@@ -674,6 +695,8 @@ mod operation_tests {
             (&["library", "list-trash"], Operation::ListTrash),
             (&["library", "check"], Operation::LibraryCheck),
             (&["new", "tone"], Operation::NewSound),
+            (&["device-check"], Operation::DeviceCheck),
+            (&["analyze", "in.m4a"], Operation::AnalyzeRecording),
         ];
         let mut operations = BTreeSet::new();
         let mut names = BTreeSet::new();

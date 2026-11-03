@@ -18,6 +18,10 @@ Choose a CLI or desktop archive for your OS and processor from [Releases](https:
 
 Compare the archive with its entry in `SHA256SUMS` before extracting: use `shasum -a 256 ARCHIVE` on macOS, `sha256sum ARCHIVE` on Linux, or `Get-FileHash ARCHIVE -Algorithm SHA256` in PowerShell. Follow the included `README.txt` to launch it. The macOS app contains its legal resources and can be moved to Applications.
 
+## Check your headphones or speakers
+
+The desktop **Device check** and `auditorylab device-check` play left, right and low test tones and explain what your answers mean: whether each ear gets its own channel, which binaural pairs need, and how low your output reaches. **Recordings** and `auditorylab analyze FILE` identify an audio file's format and size. See the [desktop](docs/desktop.md#check-your-device) and [CLI](docs/cli.md#check-your-output-device) guides.
+
 ## Find a sound
 
 Use `./auditorylab` from an extracted macOS/Linux archive, `.\auditorylab.exe` on Windows, or `auditorylab` when installed on PATH:

@@ -20,6 +20,8 @@ use {
 pub enum FileAction {
     /// Read portable input without granting managed membership.
     Import,
+    /// Identify a recording for analysis.
+    OpenRecording,
     /// Read or mutate the persistent managed library.
     Library(crate::vocabulary::Operation),
     /// Publish captured portable content with unchanged identity and history.
@@ -34,6 +36,7 @@ impl FileAction {
         use crate::vocabulary::Operation;
         match self {
             Self::Import => Operation::OpenRecipe,
+            Self::OpenRecording => Operation::OpenRecording,
             Self::Library(operation) => operation,
             Self::RecipeExport => Operation::ExportRecipe,
             Self::AudioExport => Operation::Export,
@@ -57,6 +60,12 @@ impl FileActivity {
         match kind {
             FileKind::Import(path) => Self {
                 kind: FileAction::Import,
+                path: path.clone(),
+                title: None,
+                may_publish: false,
+            },
+            FileKind::OpenRecording(path) => Self {
+                kind: FileAction::OpenRecording,
                 path: path.clone(),
                 title: None,
                 may_publish: false,

@@ -14,6 +14,9 @@ import { Button } from "button.slint";
 
 
 import { LearningPane } from "learning-pane.slint";
+import { DeviceCheckPane } from "device-check-pane.slint";
+import { RecordingsPane } from "recordings-pane.slint";
+import { DeviceTestRow, RecordingFacts } from "models.slint";
 import { WorkspaceNavigation } from "workspace-navigation.slint";
 export { Terms } from "vocabulary.slint";
 import { Terms } from "vocabulary.slint";
@@ -335,6 +338,17 @@ export component MainWindow inherits Window {
     }
     public function focus-workspace-navigation() { workspace-navigation.focus(); }
     in property <int> tab-index: 0;
+    in property <string> device-check-introduction;
+    in property <[DeviceTestRow]> device-tests;
+    in property <string> device-channel-result;
+    in property <string> device-low-tone-result;
+    in property <bool> has-recording;
+    in property <RecordingFacts> recording;
+    in property <string> recording-measurements;
+    callback play-device-test(string);
+    callback answer-device-test(string, string);
+    callback clear-device-answers();
+    callback open-recording();
     in-out property <int> window-index;
     in-out property <int> rate-index: 1;
     in-out property <bool> held: false;
@@ -700,10 +714,10 @@ export component MainWindow inherits Window {
             vertical-stretch: 0;
             padding: 8px;
             workspace-navigation := WorkspaceNavigation {
-                current: root.learning-visible ? 2 : root.tab-index;
+                current: root.learning-visible ? 4 : root.tab-index;
                 text-size: root.ui-size;
                 selected(index) => {
-                    if index == 2 { root.resume-learning(); }
+                    if index == 4 { root.resume-learning(); }
                     else { root.tab-changed(index); }
                 }
             }
@@ -899,6 +913,34 @@ export component MainWindow inherits Window {
                 tab-index: root.tab-index;
                 title-field: root.title-field;
                 ui-size: root.ui-size;
+            }
+
+            device-check-page := DeviceCheckPane {
+                visible: !root.learning-visible && root.tab-index == 2;
+                width: parent.width;
+                height: parent.height;
+                introduction: root.device-check-introduction;
+                tests: root.device-tests;
+                channel-result: root.device-channel-result;
+                low-tone-result: root.device-low-tone-result;
+                play-reason: root.play-reason;
+                tab-index: root.tab-index;
+                ui-size: root.ui-size;
+                play-test(key) => { root.play-device-test(key); }
+                answer-test(key, answer) => { root.answer-device-test(key, answer); }
+                clear-answers() => { root.clear-device-answers(); }
+            }
+
+            recordings-page := RecordingsPane {
+                visible: !root.learning-visible && root.tab-index == 3;
+                width: parent.width;
+                height: parent.height;
+                has-recording: root.has-recording;
+                recording: root.recording;
+                measurements: root.recording-measurements;
+                tab-index: root.tab-index;
+                ui-size: root.ui-size;
+                open-recording() => { root.open-recording(); }
             }
 
             learning-page := LearningPane {

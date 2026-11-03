@@ -24,9 +24,11 @@ pub use choices::{
 };
 mod commands;
 pub use commands::{
-    AudioCommand, Command, EditorCommand, FileCommand, LibraryCommand, Navigation, OutputCommand,
+    AudioCommand, Command, DeviceCheckCommand, EditorCommand, FileCommand, LibraryCommand,
+    Navigation, OutputCommand,
 };
 pub(crate) use views::CODES as VIEW_CODES;
+mod device_check;
 mod editor;
 mod file;
 mod library;
@@ -50,9 +52,9 @@ pub use tasks::{
     ShutdownError, ShutdownIssue, TaskFailure, TaskId, WorkerFailure,
 };
 pub use views::{
-    ActionView, ComponentView, EditorView, FacetCounts, FacetKind, FieldDiagnostic,
-    LibraryFacetView, LibraryRowView, LibraryView, MetadataView, MonitorView, ParameterView,
-    TransportView, WorkspaceActions,
+    ActionView, ComponentView, DeviceCheckView, DeviceTestView, EditorView, FacetCounts, FacetKind,
+    FieldDiagnostic, LibraryFacetView, LibraryRowView, LibraryView, MetadataView, MonitorView,
+    ParameterView, TransportView, WorkspaceActions,
 };
 
 use crate::audio::session::{PlaybackControl, PlaybackPhase, Session, StopRequest};
@@ -81,6 +83,10 @@ pub enum View {
     Library,
     /// The open document: Play runs it live until stopped.
     Workbench,
+    /// Listening checks of the output: Play plays the selected test tone.
+    DeviceCheck,
+    /// An opened recording; nothing in this view plays.
+    Recordings,
 }
 
 /// Capabilities available to a workspace.
@@ -117,6 +123,8 @@ pub struct PromptId(u64);
 pub enum PathPurpose {
     /// An existing recipe to open.
     OpenRecipe,
+    /// An existing recording to open for analysis.
+    OpenRecording,
     /// A destination for exported audio; replacement follows the panel's
     /// own overwrite confirmation.
     ExportWav,
@@ -217,6 +225,10 @@ pub enum ResponseDisposition {
 pub enum Refusal {
     /// Choose a working surface before acting on its hidden source.
     LearningVisible,
+    /// The current view has no sound to play, export or save.
+    NoSoundInView,
+    /// A device-check test does not offer this answer.
+    UnofferedAnswer(crate::device_check::UnofferedAnswer),
     /// The configured persistent library cannot be used.
     LibraryUnavailable(crate::storage::library::LibraryDiagnostic),
     /// Device playback is disabled by this workspace’s runtime policy.
@@ -332,6 +344,8 @@ pub struct Workspace {
     learning: crate::learning::LearningState,
     learning_visible: bool,
     editor: EditorState,
+    device_check: device_check::DeviceCheckState,
+    recording: Option<crate::recording::RecordingFile>,
     audio: AudioState,
     files: FileState,
     prompts: Prompts,
@@ -371,6 +385,8 @@ impl Workspace {
             learning: crate::learning::LearningState::default(),
             learning_visible: false,
             editor: EditorState::new()?,
+            device_check: device_check::DeviceCheckState::new()?,
+            recording: None,
             audio: AudioState::new(capabilities),
             files: FileState::default(),
             prompts: Prompts::default(),
@@ -644,6 +660,9 @@ impl Workspace {
             (PromptState::Import, PromptAnswer::Path(Some(path))) => {
                 self.start_file(FileKind::Import(path));
             }
+            (PromptState::OpenRecording, PromptAnswer::Path(Some(path))) => {
+                self.start_file(FileKind::OpenRecording(path));
+            }
             (PromptState::Export(sound), PromptAnswer::Path(Some(path))) => {
                 if self.audio.busy() {
                     self.files
@@ -857,7 +876,7 @@ impl Workspace {
         let before = self.revision;
         self.resolve_pending();
         self.continue_library();
-        let shown = self.selected().cloned();
+        let shown = self.shown().cloned();
         let export_rate = self.editor.export_rate();
         let captured = self
             .audio
@@ -865,7 +884,7 @@ impl Workspace {
         let live_document = self.live_rate().is_some();
         let rate = match self.view {
             View::Workbench => self.diagnostic_rate(),
-            View::Library => self.editor.export_rate(),
+            View::Library | View::DeviceCheck | View::Recordings => self.editor.export_rate(),
         };
         let modelled = self.audio.refresh_model(
             &mut self.editor,
@@ -940,7 +959,12 @@ impl Workspace {
             (_, FileOutcome::Exported(Err(error))) if error.outcome() == Outcome::Cancelled => {
                 FileStatus::Notice(FileNotice::ExportCancelled)
             }
+            (_, FileOutcome::RecordingOpened(Ok(recording))) => {
+                self.recording = Some(recording);
+                FileStatus::Idle
+            }
             (_, FileOutcome::Imported(Err(error))) => FileStatus::Failed(error.into()),
+            (_, FileOutcome::RecordingOpened(Err(error))) => FileStatus::Failed(error.into()),
             (_, FileOutcome::RecipeExported(Err(error))) => FileStatus::Failed(error.into()),
             (_, FileOutcome::Exported(Err(error))) => FileStatus::Failed(error.into()),
             _ => FileStatus::WorkerFailed {
@@ -1020,6 +1044,7 @@ impl Workspace {
             return match &task.kind {
                 FileKind::Managed(job) => JobContext::Library(job.context()),
                 FileKind::Import(path)
+                | FileKind::OpenRecording(path)
                 | FileKind::ExportRecipe { path, .. }
                 | FileKind::Export { path, .. } => JobContext::File(path.clone()),
             };
@@ -1090,6 +1115,8 @@ crate::core::diagnostic_codes! {
             Self::RestoreBeforePlayback => "workspace.restore_before_playback",
             Self::Invalid { error: None, .. } => "workspace.invalid",
             Self::NoSelection => "workspace.no_selection",
+            Self::NoSoundInView => "workspace.no_sound_in_view",
+            Self::UnofferedAnswer(..) => "workspace.unoffered_answer",
         }
         delegates {
             Self::LibraryUnavailable(problem) => problem,
@@ -1103,6 +1130,11 @@ crate::core::diagnostic_codes! {
             match this {
                 Self::Input(problems) => {
                     crate::core::diagnostic_params! {"problem_count"=>problems.len()}
+                }
+                Self::UnofferedAnswer(refused) => {
+                    crate::core::diagnostic_params! {
+                        "test"=>refused.test.key(),"answer"=>refused.answer.key()
+                    }
                 }
                 Self::DetachedDraft(key) => {
                     crate::core::diagnostic_params! {"selector"=>key.to_string()}

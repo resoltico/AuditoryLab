@@ -8,6 +8,7 @@ pub(super) enum PromptState {
         expect: crate::document::origin::VersionToken,
     },
     Import,
+    OpenRecording,
     Export(Rendition),
     ExportRecipe(Arc<str>),
 }

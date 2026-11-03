@@ -1,11 +1,13 @@
 //! Sentences, explanations and machine reports for Auditory Lab frontends.
 #![forbid(unsafe_code)]
 pub mod build_info;
+pub mod device_check;
 pub mod errors;
 pub mod learning;
 pub mod library;
 pub mod numbers;
 pub mod recipe;
+pub mod recording;
 pub mod report;
 pub mod sound;
 pub mod workspace;

@@ -136,13 +136,16 @@ These are the vocabulary keys used by queries, portable choices and JSON values.
 | `channel_routing` | `both`, `left`, `right` |
 | `completeness` | `complete`, `invalid` |
 | `condition_role` | `test`, `comparison`, `mixed`, `unspecified` |
+| `container_format` | `wav`, `aiff`, `flac`, `mp3`, `adts_aac`, `mp4`, `ogg`, `matroska`, `unknown` |
+| `device_answer` | `left`, `right`, `both`, `heard`, `not_heard` |
+| `device_test` | `left_channel`, `right_channel`, `tone_100_hz`, `tone_60_hz`, `tone_40_hz` |
 | `direction` | `asc`, `desc` |
 | `evidence_scope` | `reference_condition`, `ancestor` |
 | `group_by` | `none`, `band`, `method`, `study`, `collection` |
 | `measure` | `eeg`, `behavior`, `subjective`, `sleep`, `hearing`, `other` |
 | `method` | `binaural`, `monaural`, `pulse_train`, `pulsed`, `sinusoidal`, `steady_tone` |
 | `modulation_kind` | `sinusoidal`, `pulsed` |
-| `operation` | `list`, `list_trash`, `describe`, `inspect`, `recipe`, `export`, `play`, `stop`, `library_path`, `library_init`, `library_add`, `library_update`, `library_rename`, `library_trash`, `library_restore`, `library_purge`, `library_check`, `library_refresh`, `library_read`, `new_sound`, `edit_copy`, `save`, `save_copy`, `open_recipe`, `export_recipe`, `stop_current_and_play_recipe`, `play_selected_sound`, `play_live`, `edit_saved_recipe`, `edit_external_file`, `close_open_file`, `show_saved`, `cancel_export`, `add_component`, `undo_remove`, `remove_component` |
+| `operation` | `list`, `list_trash`, `describe`, `inspect`, `recipe`, `export`, `play`, `stop`, `library_path`, `library_init`, `library_add`, `library_update`, `library_rename`, `library_trash`, `library_restore`, `library_purge`, `library_check`, `library_refresh`, `library_read`, `new_sound`, `edit_copy`, `save`, `save_copy`, `open_recipe`, `export_recipe`, `stop_current_and_play_recipe`, `play_selected_sound`, `play_live`, `edit_saved_recipe`, `edit_external_file`, `close_open_file`, `show_saved`, `cancel_export`, `add_component`, `undo_remove`, `remove_component`, `device_check`, `play_test_tone`, `clear_device_answers`, `open_recording`, `analyze_recording` |
 | `pair_kind` | `binaural`, `monaural` |
 | `parameter_id` | `tone_frequency`, `source_pulse_rate`, `source_pulse_duration`, `peak_level`, `modulation_rate`, `modulation_depth`, `modulation_pulse_rate`, `modulation_pulse_duration`, `pair_first_frequency`, `pair_offset`, `pair_first_level`, `pair_second_level`, `source_duty`, `source_rise`, `source_fall`, `modulation_duty`, `modulation_rise`, `modulation_fall`, `duration`, `fade` |
 | `population` | `human`, `mouse`, `other_animal`, `mixed`, `not_applicable`, `unspecified` |
@@ -166,6 +169,7 @@ Every envelope contains `output_schema_version`, `operation`, `complete`, `conve
 | Initialization | Root result and published/unchanged `status`. |
 | Library check | Bounded inventory, diagnostics and retained stages. |
 | Mutation | Confirmed `status`, `selector`, `version_token`, affected entry and diagnostics. |
+| Analyze recording | `recording` with the opened `path`, size in `bytes` and recognized container `format`. |
 | Failure | Outcome `status` and operation diagnostics. |
 
 The [diagnostic contract](#diagnostic-codes) applies to nominal diagnostics, rate-validation diagnostics, declared-history warnings and publication warnings. Inspection exposes generator lanes under `voices`; authored components remain in recipe TOML. Pulse facts retain requested width mode/quantity and shape, resolved window/edge frames, and rate. Pair facts retain signed requested and resolved differences; unresolved pair checks have no resolved difference. Digital routes use `route`, and peak diagnostics name a `channel`.
@@ -360,10 +364,13 @@ For example, an out-of-range rate reports `sample_rate.range` with `hz`, `min_hz
 | `vocabulary.band` |
 | `vocabulary.calendar_field` |
 | `vocabulary.carrier_kind` |
-| `vocabulary.channel` |
 | `vocabulary.channel_routing` |
+| `vocabulary.channel` |
 | `vocabulary.completeness` |
 | `vocabulary.condition_role` |
+| `vocabulary.container_format` |
+| `vocabulary.device_answer` |
+| `vocabulary.device_test` |
 | `vocabulary.direction` |
 | `vocabulary.evidence_scope` |
 | `vocabulary.group_by` |
@@ -402,6 +409,7 @@ For example, an out-of-range rate reports `sample_rate.range` with `hz`, `min_hz
 | `workspace.no_audio` |
 | `workspace.no_export` |
 | `workspace.no_selection` |
+| `workspace.no_sound_in_view` |
 | `workspace.not_finite` |
 | `workspace.prompt_open` |
 | `workspace.purge_selection_changed` |
@@ -409,6 +417,7 @@ For example, an out-of-range rate reports `sample_rate.range` with `hz`, `min_hz
 | `workspace.saved_entry_unreadable` |
 | `workspace.selection_changed` |
 | `workspace.temporary_required` |
+| `workspace.unoffered_answer` |
 <!-- diagnostic-codes:end -->
 
 ## Library layout

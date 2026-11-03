@@ -30,6 +30,16 @@ pub fn prepare_playback(
     }
     prepare_captured(session, &resolved.snapshot, resolved.managed.as_ref())
 }
+/// Prepare a captured recipe that carries no library authority, such as a device-check tone.
+///
+/// # Errors
+/// Preserves acoustic and native-device failures.
+pub fn prepare_snapshot(
+    session: Session,
+    snapshot: &RecipeSnapshot,
+) -> Result<Preparation<PreparedPlayback>, PlaybackError> {
+    prepare_captured(session, snapshot, None)
+}
 /// Revalidate a captured User version using the library that admitted it.
 ///
 /// A fresh load is required even when its content hash is unchanged: Trash

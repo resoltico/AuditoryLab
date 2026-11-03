@@ -153,6 +153,13 @@ pub fn open_file(
 ) -> Result<crate::document::recipe::RecipeSnapshot, crate::storage::load::LoadError> {
     crate::storage::load::load_file(path)
 }
+/// Identify one regular recording file by its size and leading signature, without decoding it.
+///
+/// # Errors
+/// Preserves input admission and read failures.
+pub fn open_recording(path: &Path) -> Result<crate::recording::RecordingFile, FileError> {
+    crate::storage::recording::identify(path)
+}
 /// Read one bounded portable stream under an explicit captured attribution.
 ///
 /// # Errors
