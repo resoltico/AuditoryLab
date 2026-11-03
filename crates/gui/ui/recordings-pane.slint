@@ -65,7 +65,11 @@ export component RecordingsPane inherits Rectangle {
                     spacing-horizontal: 16px;
                     spacing-vertical: 6px;
                     Row {
-                        Text { text: Terms.caption-recording-location; font-weight: 600; }
+                        Text {
+                            text: Terms.caption-recording-location;
+                            font-weight: 600;
+                        }
+
                         Text {
                             text: root.recording.path;
                             wrap: word-wrap;
@@ -75,13 +79,29 @@ export component RecordingsPane inherits Rectangle {
                     }
 
                     Row {
-                        Text { text: Terms.caption-recording-size; font-weight: 600; }
-                        Text { text: root.recording.size; wrap: word-wrap; min-width: 0px; }
+                        Text {
+                            text: Terms.caption-recording-size;
+                            font-weight: 600;
+                        }
+
+                        Text {
+                            text: root.recording.size;
+                            wrap: word-wrap;
+                            min-width: 0px;
+                        }
                     }
 
                     Row {
-                        Text { text: Terms.caption-recording-format; font-weight: 600; }
-                        Text { text: root.recording.format; wrap: word-wrap; min-width: 0px; }
+                        Text {
+                            text: Terms.caption-recording-format;
+                            font-weight: 600;
+                        }
+
+                        Text {
+                            text: root.recording.format;
+                            wrap: word-wrap;
+                            min-width: 0px;
+                        }
                     }
                 }
             }
