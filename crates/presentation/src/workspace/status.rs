@@ -340,7 +340,7 @@ pub fn inventory_status_description(value: &InventoryStatus) -> String {
 pub fn file_activity_description(value: &FileActivity) -> String {
     let operation = value.kind.operation().label();
     match value.kind {
-        FileAction::Import | FileAction::RecipeExport => {
+        FileAction::Import | FileAction::OpenRecording | FileAction::RecipeExport => {
             format!("{operation}: {}.", value.path.display())
         }
         FileAction::Library(_) => format!("{operation} · persistent library."),

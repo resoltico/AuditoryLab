@@ -87,3 +87,16 @@ export struct LearningTrace {
 
 // User-facing source label; application-owned commands retain the destination URL.
 export struct LearningSource {label: string}
+
+// One answer a device-check test offers; the key is the application's answer key.
+export struct DeviceAnswerChoice { key: string, label: string, selected: bool }
+// One device-check test; the key is the application's test key.
+export struct DeviceTestRow {
+    key: string,
+    label: string,
+    prompt: string,
+    selected: bool,
+    answers: [DeviceAnswerChoice],
+}
+// An opened recording's identity, rendered by shared presentation.
+export struct RecordingFacts { name: string, path: string, size: string, format: string }

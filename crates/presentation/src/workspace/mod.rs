@@ -14,9 +14,7 @@ use auditorylab_core::ParameterId;
 use std::path::Path;
 pub(crate) fn refusal_text(refusal: &Refusal) -> String {
     match refusal {
-        Refusal::LearningVisible => {
-            "Return to Library or Workbench before using this action.".into()
-        }
+        Refusal::LearningVisible => "Leave Start here before using this action.".into(),
         Refusal::LibraryUnavailable(problem) => {
             format!(
                 "User Library unavailable: {}",
@@ -36,6 +34,14 @@ pub(crate) fn refusal_text(refusal: &Refusal) -> String {
         Refusal::AudioPlaying => "Stop audio before exporting a WAV file.".into(),
         Refusal::Exporting => "Wait for the export to finish or cancel it before playing.".into(),
         Refusal::NoAudio => "Nothing is playing.".into(),
+        Refusal::NoSoundInView => {
+            "This view has no recipe to play or export. Use Library or Workbench.".into()
+        }
+        Refusal::UnofferedAnswer(refused) => format!(
+            "The {} test does not offer the answer “{}”.",
+            refused.test.phrase(),
+            refused.answer.label()
+        ),
         Refusal::NoSelection => "No recipe matches the search; clear it or choose a recipe.".into(),
         Refusal::NoExport => "No export is running.".into(),
         Refusal::Input(problems) => input_text(problems),
@@ -720,7 +726,7 @@ pub(crate) fn file_activity(
             "Later edits remain independent of the captured library operation."
         }
         FileAction::AudioExport => "Cancel export is separate from Stop audio.",
-        FileAction::Import => "The playing source remains unchanged.",
+        FileAction::Import | FileAction::OpenRecording => "The playing source remains unchanged.",
     };
     format!("{} · {context}", kind.operation().label())
 }

@@ -7,37 +7,50 @@ export component WorkspaceNavigation inherits FocusScope {
     in property <int> current;
     in property <length> text-size:13px;
     private property <string> start-label: "Start here";
-    private property <[string]> destinations: [Views.library, Views.workbench, root.start-label];
+    private property <[string]> destinations: [
+        Views.library,
+        Views.workbench,
+        Views.device-check,
+        Views.recordings,
+        root.start-label,
+    ];
+    private property <int> last: root.destinations.length - 1;
     callback selected(int);
     function choose(index: int) {
         if index != root.current { root.selected(index); }
     }
     accessible-role: tab-list;
     accessible-label: Terms.caption-workspace-navigation;
-    min-width: tabs.min-width;
-    preferred-width: tabs.preferred-width;
-    max-width: tabs.preferred-width;
-    min-height: tabs.min-height;
-    preferred-height: tabs.preferred-height;
-    max-height: tabs.preferred-height;
-    horizontal-stretch: 0;
+    min-width: row.min-width;
+    preferred-width: row.preferred-width;
+    max-width: row.preferred-width;
+    min-height: row.min-height;
+    preferred-height: row.preferred-height;
+    max-height: row.preferred-height;
+    horizontal-stretch: 1;
     key-pressed(event) => {
         if event.text == Key.Home {
             root.choose(0);
             return accept;
         }
         if event.text == Key.End {
-            root.choose(2);
+            root.choose(root.last);
             return accept;
         }
         if event.text == Key.LeftArrow { root.choose(max(0,root.current - 1)); return accept; }
-        if event.text == Key.RightArrow { root.choose(min(2,root.current + 1)); return accept; }
+        if event.text == Key.RightArrow {
+            root.choose(min(root.last, root.current + 1));
+            return accept;
+        }
         return reject;
     }
-    tabs := HorizontalLayout {
+    row := HorizontalLayout {
         spacing: 4px;
+        // Every tab stays visible in one row; a narrow toolbar wraps labels
+        // onto a second line inside the same tab height.
         for label[index] in root.destinations: Rectangle {
-            min-width: caption.preferred-width + 24px;
+            min-width: caption.min-width + 12px;
+            preferred-width: caption.preferred-width + 24px;
             // The Button height, so tabs and toolbar actions share one row line.
             min-height: max(32px, 2.5rem);
             max-height: self.min-height;
@@ -59,6 +72,7 @@ export component WorkspaceNavigation inherits FocusScope {
                 font-weight: root.current == index ? 600 : 400;
                 horizontal-alignment: center;
                 vertical-alignment: center;
+                wrap: word-wrap;
                 color: Palette.foreground;
             }
 

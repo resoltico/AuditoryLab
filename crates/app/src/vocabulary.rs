@@ -108,6 +108,16 @@ pub enum Operation {
     UndoRemove,
     /// Remove.
     RemoveComponent,
+    /// Device check.
+    DeviceCheck,
+    /// Play test tone.
+    PlayTestTone,
+    /// Clear answers.
+    ClearDeviceAnswers,
+    /// Open recording.
+    OpenRecording,
+    /// Analyze recording.
+    AnalyzeRecording,
 }
 vocabulary! {Operation,"operation" {
     List => ("list","List","list"),
@@ -147,6 +157,11 @@ vocabulary! {Operation,"operation" {
     AddComponent => ("add_component","Add component","add component"),
     UndoRemove => ("undo_remove","Undo remove","undo remove"),
     RemoveComponent => ("remove_component","Remove","remove"),
+    DeviceCheck => ("device_check","Device check","device check"),
+    PlayTestTone => ("play_test_tone","Play test tone","play test tone"),
+    ClearDeviceAnswers => ("clear_device_answers","Clear answers","clear answers"),
+    OpenRecording => ("open_recording","Open recording","open recording"),
+    AnalyzeRecording => ("analyze_recording","Analyze recording","analyze recording"),
 }}
 
 /// Shared status labels used by both frontends.
@@ -194,6 +209,9 @@ macro_rules! vocabularies {
             calendar_field:crate::discovery::query::CalendarField,
             operation:Operation,
             status:Status,
+            device_test:crate::device_check::DeviceTest,
+            device_answer:crate::device_check::DeviceAnswer,
+            container_format:crate::recording::ContainerFormat,
         }
     };
 }
@@ -245,6 +263,8 @@ pub enum ViewCaption {
     ModifiedFromYyyyMmDd,
     ModifiedThroughYyyyMmDd,
     Workbench,
+    DeviceCheck,
+    Recordings,
     SoundTitle,
     ChannelRouting,
     Carrier,
@@ -295,6 +315,8 @@ impl ViewCaption {
         Self::ModifiedFromYyyyMmDd,
         Self::ModifiedThroughYyyyMmDd,
         Self::Workbench,
+        Self::DeviceCheck,
+        Self::Recordings,
         Self::SoundTitle,
         Self::ChannelRouting,
         Self::Carrier,
@@ -353,6 +375,8 @@ impl ViewCaption {
             Self::ModifiedFromYyyyMmDd => "Modified from YYYY-MM-DD",
             Self::ModifiedThroughYyyyMmDd => "Modified through YYYY-MM-DD",
             Self::Workbench => "Workbench",
+            Self::DeviceCheck => "Device check",
+            Self::Recordings => "Recordings",
             Self::SoundTitle => "Sound title",
             Self::ChannelRouting => auditorylab_core::vocabulary::CHANNEL_ROUTING.label,
             Self::Carrier => auditorylab_core::vocabulary::CARRIER.label,

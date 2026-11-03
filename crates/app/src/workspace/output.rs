@@ -227,10 +227,10 @@ impl OutputState {
                 ),
                 rate,
             ),
-            (None, View::Library, Some(snapshot)) => {
+            (None, View::Library | View::DeviceCheck | View::Recordings, Some(snapshot)) => {
                 ModelKey::Source(SourceKey::Snapshot(snapshot.id()), rate)
             }
-            (None, View::Library, None) => {
+            (None, View::Library | View::DeviceCheck | View::Recordings, None) => {
                 let changed = self.model.is_some();
                 self.model = None;
                 return changed;
@@ -361,7 +361,7 @@ impl OutputState {
         scale: WaveformScale,
     ) {
         let source = match view {
-            View::Library => {
+            View::Library | View::DeviceCheck | View::Recordings => {
                 if let Some(snapshot) = selected {
                     SourceKey::Snapshot(snapshot.id())
                 } else {
@@ -386,7 +386,7 @@ impl OutputState {
                 self.previews += 1;
             }
             let result = match view {
-                View::Library => {
+                View::Library | View::DeviceCheck | View::Recordings => {
                     let Some(snapshot) = selected else {
                         return;
                     };

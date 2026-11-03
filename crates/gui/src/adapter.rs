@@ -16,6 +16,7 @@ use slint::winit_030::WinitWindowAccessor;
 use auditorylab_presentation::numbers::NumberStyle;
 mod actions;
 mod auxiliary;
+mod device_check;
 mod editing;
 mod library;
 mod projection;
@@ -524,7 +525,9 @@ impl SlintAdapter {
         if let Some(ui) = self.main.upgrade() {
             match view {
                 View::Workbench => ui.invoke_focus_workbench(),
-                View::Library => ui.invoke_focus_workspace_navigation(),
+                View::Library | View::DeviceCheck | View::Recordings => {
+                    ui.invoke_focus_workspace_navigation();
+                }
             }
         }
     }

@@ -128,7 +128,7 @@ impl StopTarget {
 pub(crate) async fn choose_file(
     ui: &crate::MainWindow,
     filename: Option<&str>,
-    extension: &str,
+    extensions: &[&str],
     control: Option<auditorylab_app::services::playback::PlaybackControl>,
 ) -> Result<Option<std::path::PathBuf>, String> {
     use slint::winit_030::winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
@@ -161,9 +161,11 @@ pub(crate) async fn choose_file(
         panel.setAllowsMultipleSelection(false);
         Retained::into_super(panel)
     };
-    panel.setAllowedFileTypes(Some(&NSArray::from_retained_slice(&[NSString::from_str(
-        extension,
-    )])));
+    let types: Vec<_> = extensions
+        .iter()
+        .map(|extension| NSString::from_str(extension))
+        .collect();
+    panel.setAllowedFileTypes(Some(&NSArray::from_retained_slice(&types)));
     panel.setCanCreateDirectories(true);
     // The button's target is weak; this binding keeps it alive until the
     // panel completes.

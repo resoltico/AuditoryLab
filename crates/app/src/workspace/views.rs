@@ -361,3 +361,24 @@ impl WorkspaceActions {
         self.playing || self.can_play()
     }
 }
+
+/// Device-check tests in display order, with the listener's answers.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeviceCheckView {
+    /// Every test, in `DeviceTest::ALL` order.
+    pub tests: Vec<DeviceTestView>,
+    /// Interpretation of the answers so far.
+    pub assessment: crate::device_check::Assessment,
+    /// Whether any test has an answer.
+    pub answered: bool,
+}
+/// One device-check test and its recorded answer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DeviceTestView {
+    /// The test.
+    pub test: crate::device_check::DeviceTest,
+    /// The listener's answer, if given.
+    pub answer: Option<crate::device_check::DeviceAnswer>,
+    /// Whether Play plays this test's tone.
+    pub selected: bool,
+}

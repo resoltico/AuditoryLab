@@ -1,0 +1,124 @@
+// SPDX-License-Identifier: MPL-2.0
+import { ViewCaptions } from "view-captions.slint";
+import { Actions } from "actions.slint";
+import { Button } from "button.slint";
+import { Terms } from "vocabulary.slint";
+import { Palette, VerticalBox, HorizontalBox, ScrollView } from "std-widgets.slint";
+import { DeviceTestRow } from "models.slint";
+import { Section } from "editor.slint";
+
+// Every test, its answers and their meaning stay visible together.
+export component DeviceCheckPane inherits Rectangle {
+    in property <string> introduction;
+    in property <[DeviceTestRow]> tests;
+    in property <string> channel-result;
+    in property <string> low-tone-result;
+    in property <string> play-reason;
+    in property <int> tab-index;
+    in property <length> ui-size;
+    callback play-test(string);
+    callback answer-test(string, string);
+    callback clear-answers();
+
+    accessible-role: tab-panel;
+    accessible-label: ViewCaptions.device-check;
+    visible: root.tab-index == 2;
+
+    check-scroll := ScrollView {
+        width: parent.width;
+        height: parent.height;
+        VerticalBox {
+            width: check-scroll.visible-width;
+            padding: 16px;
+            spacing: 14px;
+            Text {
+                text: ViewCaptions.device-check;
+                font-size: root.ui-size * 1.5;
+                font-weight: 700;
+                wrap: word-wrap;
+                accessible-role: text;
+            }
+
+            Text {
+                text: root.introduction;
+                wrap: word-wrap;
+                min-width: 0px;
+                accessible-role: text;
+            }
+
+            for test in root.tests: Rectangle {
+                border-width: test.selected ? 2px : 1px;
+                border-color: test.selected ? Palette.accent-background : Palette.border;
+                border-radius: 6px;
+                VerticalBox {
+                    padding: 12px;
+                    spacing: 8px;
+                    HorizontalBox {
+                        padding: 0px;
+                        Text {
+                            text: test.label;
+                            font-weight: 700;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                            wrap: word-wrap;
+                            min-width: 0px;
+                            accessible-role: text;
+                        }
+
+                        Button {
+                            text: Actions.play-test-tone.label;
+                            enabled: Actions.play-test-tone.enabled;
+                            accessible-description: test.label + " · " + root.play-reason;
+                            triggered => { root.play-test(test.key); }
+                        }
+                    }
+
+                    Text {
+                        text: test.prompt;
+                        wrap: word-wrap;
+                        min-width: 0px;
+                        accessible-role: text;
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: start;
+                        for choice in test.answers: Button {
+                            text: choice.label;
+                            primary: choice.selected;
+                            accessible-description: test.label;
+                            triggered => { root.answer-test(test.key, choice.key); }
+                        }
+                    }
+                }
+            }
+
+            Section {
+                title: Terms.caption-device-check-results;
+                ui-size: root.ui-size;
+                Text {
+                    text: root.channel-result;
+                    wrap: word-wrap;
+                    min-width: 0px;
+                    accessible-role: text;
+                }
+
+                Text {
+                    text: root.low-tone-result;
+                    wrap: word-wrap;
+                    min-width: 0px;
+                    accessible-role: text;
+                }
+
+                HorizontalLayout {
+                    alignment: start;
+                    Button {
+                        text: Actions.clear-device-answers.label;
+                        enabled: Actions.clear-device-answers.enabled;
+                        triggered => { root.clear-answers(); }
+                    }
+                }
+            }
+        }
+    }
+}

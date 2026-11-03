@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Device check: a new desktop tab and `auditorylab device-check` play left, right and low test tones and explain what your answers mean for binaural pairs and low tones.
+- Recordings: a new desktop tab and `auditorylab analyze FILE` identify an audio file's container format and size from its first bytes; audio is not decoded or measured.
+- CLI JSON gains the `analyze_recording` operation with a `recording` object; the `device_check` and other new operation and vocabulary keys are listed in [formats](docs/formats.md).
+- Desktop workspace tabs wrap their labels onto two lines when a narrow window with large text cannot fit them on one.
+
 ## [0.9.2] - 2026-11-02
 
 - Linux: reinstall `auditorylab-gui.desktop` from the archive; its new `StartupWMClass`, with the window's app ID, lets Wayland and X11 docks show Auditory Lab's own icon.
@@ -11,6 +16,7 @@
 - Linux desktop notices credit the Cantarell font that Wayland window decorations embed, under its SIL Open Font License.
 - Notices list where each MPL-2.0 component's source code is published and no longer list Auditory Lab's own crates.
 - Executables no longer contain the build machine's file paths; CLI READMEs describe only the CLI's terms and first run.
+
 ## [0.9.1] - 2026-11-02
 
 - About, CLI help, Start here and download READMEs state that Auditory Lab is not a medical device and that cited researchers and publishers do not endorse it.

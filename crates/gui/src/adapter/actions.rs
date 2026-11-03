@@ -3,10 +3,11 @@ use super::{
     ComponentHandle, Duration, MainWindow, Rc, SlintAdapter, View, Weak, Workspace, library,
     open_web, present_details, read_only,
 };
+use auditorylab_app::device_check::{DeviceAnswer, DeviceTest};
 use auditorylab_app::workspace::{
     AudioCommand, Command, EditorCommand, FileCommand, LibraryCommand, Navigation, OutputCommand,
 };
-use auditorylab_app::workspace::{FilterInput, QueryFacet};
+use auditorylab_app::workspace::{DeviceCheckCommand, FilterInput, QueryFacet};
 
 macro_rules! on {
         ($adapter:expr, $ui:expr, $setter:ident, |$a:ident $(, $arg:ident)*| $body:expr) => {{
@@ -61,6 +62,8 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
         let view = match index {
             0 => View::Library,
             1 => View::Workbench,
+            2 => View::DeviceCheck,
+            3 => View::Recordings,
             _ => return,
         };
         a.command(|w| w.apply(Command::SetView(view)));
@@ -249,6 +252,27 @@ fn install_workbench_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
     });
     on!(adapter, ui, on_open_recipe, |a| a
         .command(|w| w.apply(Command::File(FileCommand::Import))));
+    on!(adapter, ui, on_open_recording, |a| a.command(
+        |w| w.apply(Command::File(FileCommand::OpenRecording))
+    ));
+    on!(adapter, ui, on_play_device_test, |a, key| {
+        if let Ok(test) = key.parse::<DeviceTest>() {
+            a.command(|w| w.apply(Command::DeviceCheck(DeviceCheckCommand::Play(test))));
+        }
+    });
+    on!(adapter, ui, on_answer_device_test, |a, key, answer| {
+        if let (Ok(test), Ok(answer)) = (key.parse::<DeviceTest>(), answer.parse::<DeviceAnswer>())
+        {
+            a.command(|w| {
+                w.apply(Command::DeviceCheck(DeviceCheckCommand::Answer(
+                    test, answer,
+                )))
+            });
+        }
+    });
+    on!(adapter, ui, on_clear_device_answers, |a| a.command(
+        |w| w.apply(Command::DeviceCheck(DeviceCheckCommand::Clear))
+    ));
     on!(adapter, ui, on_save_recipe, |a| a
         .command(|w| w.apply(Command::File(FileCommand::Save))));
     on!(adapter, ui, on_export_recipe, |a| a.command(
