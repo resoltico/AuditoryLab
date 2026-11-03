@@ -5,6 +5,7 @@
 - Device check: a new desktop tab and `auditorylab device-check` play left, right and low test tones and explain what your answers mean for binaural pairs and low tones.
 - Recordings: a new desktop tab and `auditorylab analyze FILE` identify an audio file's container format and size from its first bytes; audio is not decoded or measured.
 - CLI JSON gains the `analyze_recording` operation with a `recording` object; the `device_check` and other new operation and vocabulary keys are listed in [formats](docs/formats.md).
+- The bundled `pulldown-cmark` Markdown parser is updated to 0.13.6 for RUSTSEC-2026-0433.
 - Desktop workspace tabs wrap their labels onto two lines when a narrow window with large text cannot fit them on one.
 
 ## [0.9.2] - 2026-11-02

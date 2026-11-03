@@ -52,6 +52,8 @@ fn analyze_reports_file_identity_as_text_and_json_and_fails_on_missing_input() {
 
     let directory = analyze(&[dir.path().to_str().unwrap()]);
     assert_eq!(directory.status.code(), Some(1));
+    // Windows refuses to open a directory before admission can name it.
+    #[cfg(unix)]
     assert!(
         String::from_utf8(directory.stderr)
             .unwrap()

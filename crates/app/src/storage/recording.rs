@@ -49,9 +49,16 @@ mod tests {
         std::fs::write(&empty, b"").unwrap();
         let empty = identify(&empty).unwrap();
         assert_eq!((empty.bytes, empty.format), (0, ContainerFormat::Unknown));
+        // Unix opens a directory and admission refuses it; Windows refuses the open itself.
+        #[cfg(unix)]
         assert!(matches!(
             identify(dir.path()),
             Err(FileError::NotRegular { path }) if path == dir.path()
+        ));
+        #[cfg(windows)]
+        assert!(matches!(
+            identify(dir.path()),
+            Err(FileError::Io(failure)) if failure.action == IoOperation::Open
         ));
         assert!(matches!(
             identify(&dir.path().join("missing.wav")),
