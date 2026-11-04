@@ -255,7 +255,7 @@ fn analysis_limits(a: &auditorylab_app::recording::Analysis) -> String {
         patterns, not creator intent; symmetric sidebands can also be synthesized as \
         separate tones. Peaks below −80 dB relative to the strongest are omitted. \
         Envelope peaks below {contrast:.0} dB of squared mean amplitude are omitted. \
-        The analytic envelope excludes FFT window edges. \
+        The analytic envelope excludes DC and FFT window edges. \
         Only the selected window is measured; later corruption may not be found. \
         This describes the sound, not measured brain activity.",
         a.window.start_seconds,

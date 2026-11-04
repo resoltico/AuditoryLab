@@ -175,3 +175,38 @@ fn strong_modulation_is_not_attributed_to_an_unrelated_weak_beat_harmonic() {
         "strong AM must retain its modulation attribution"
     );
 }
+
+#[test]
+fn dc_offsets_are_level_energy_but_do_not_modulate_a_steady_tone() {
+    let a = measure(|t| [0.1 + sine(40.0, t); 2]);
+    assert!(
+        !a.pulsing
+            .iter()
+            .any(|p| p.envelope_band == EnvelopeBand::Whole),
+        "a DC offset does not create amplitude modulation"
+    );
+    assert!(a.low_energy[0].fraction.unwrap() > 0.99);
+    assert!((a.stereo.rms_dbfs[0].unwrap() - 10.0 * 0.015_f64.log10()).abs() < 0.01);
+}
+#[test]
+fn beating_attribution_respects_the_measured_band() {
+    let a = measure(|t| {
+        [sine(3000.0, t) * (1.0 + 0.8 * (std::f64::consts::TAU * 3.0 * t).cos())
+            + 0.4 * (sine(40.0, t) + sine(43.0, t)); 2]
+    });
+    assert!(
+        a.pulsing
+            .iter()
+            .any(|p| p.envelope_band == EnvelopeBand::Above100
+                && (p.hz - 3.0).abs() < a.envelope_resolution_hz
+                && p.cause == PulsingCause::Modulation),
+        "low tones cannot explain the high-band envelope"
+    );
+    assert!(
+        a.pulsing
+            .iter()
+            .any(|p| p.envelope_band == EnvelopeBand::Below100
+                && (p.hz - 3.0).abs() < a.envelope_resolution_hz
+                && matches!(p.cause, PulsingCause::Beating { harmonic: 1, .. }))
+    );
+}

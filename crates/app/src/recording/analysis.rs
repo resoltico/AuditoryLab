@@ -74,6 +74,13 @@ pub enum EnvelopeBand {
 impl EnvelopeBand {
     /// Measurement and presentation order for every envelope band.
     pub const ALL: [Self; 3] = [Self::Whole, Self::Below100, Self::Above100];
+    pub(super) fn includes(self, hz: f64) -> bool {
+        match self {
+            Self::Whole => true,
+            Self::Below100 => hz <= 100.0,
+            Self::Above100 => hz > 100.0,
+        }
+    }
 }
 /// A significant analytic-envelope rate.
 #[derive(Debug, Clone, PartialEq, Serialize)]

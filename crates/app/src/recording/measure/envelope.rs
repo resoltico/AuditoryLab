@@ -27,6 +27,18 @@ impl AnalyticEnvelope {
         let n = audio.window.len();
         // The tone spectrum already apodizes the same ordered samples with a
         // periodic Hann window. Reuse it to avoid a discontinuous FFT boundary.
+        let reference = spectral_power(&audio.output, EnvelopeBand::Whole, audio.resolution());
+        // Remove the Hann-weighted DC estimate before envelope analysis. The
+        // periodic Hann's only nonzero DFT coefficients are N/2 at DC and −N/4
+        // at ±1. Level/PSD statistics already retain the original DC energy.
+        let dc = 2.0 * audio.output[0].re / usize_f64(n);
+        audio.output[0] = Complex::new(0.0, 0.0);
+        audio.output[1].re += dc * usize_f64(n) / 4.0;
+        let total = spectral_power(&audio.output, EnvelopeBand::Whole, audio.resolution());
+        if total <= reference * 1e-8 || reference == 0.0 {
+            return;
+        }
+        let low_energy = spectral_power(&audio.output, EnvelopeBand::Below100, audio.resolution());
         self.transform(&audio.output, audio.resolution(), true, false);
         inverse(
             &self.inverse,
@@ -48,19 +60,11 @@ impl AnalyticEnvelope {
             &mut self.low_quadrature,
             &mut self.scratch,
         );
-        let total: f64 = audio.psd.iter().sum();
-        let low_energy: f64 = audio
-            .psd
-            .iter()
-            .enumerate()
-            .take_while(|(bin, _)| usize_f64(*bin) * audio.resolution() <= 100.0)
-            .map(|(_, power)| *power)
-            .sum();
         let energy = [total, low_energy, (total - low_energy).max(0.0)];
         for ((index, envelope), band) in envelopes.iter_mut().enumerate().zip(EnvelopeBand::ALL) {
             // Do not interpret filter leakage or numerical noise as a separate band.
             // This is the same −80 dB relative power floor used for tone detection.
-            if energy[index] <= total * 1e-8 || total == 0.0 {
+            if energy[index] <= reference * 1e-8 {
                 continue;
             }
             let (mut clock, mut count, mut sum) = (0_u64, 0_u32, 0.0);
@@ -68,7 +72,7 @@ impl AnalyticEnvelope {
             // adjacent windows and avoids interpreting periodic extension edges.
             for i in n / 8..n - n / 8 {
                 let scale = usize_f64(n) * audio.window[i];
-                let x = audio.buffer[(i + audio.position) % n];
+                let x = audio.buffer[(i + audio.position) % n] - dc;
                 let q = self.quadrature[i] / scale;
                 let low = self.low[i] / scale;
                 let low_q = self.low_quadrature[i] / scale;
@@ -93,7 +97,7 @@ impl AnalyticEnvelope {
     fn transform(&mut self, source: &[Complex<f64>], resolution: f64, hilbert: bool, low: bool) {
         let last = source.len() - 1;
         for (bin, (target, value)) in self.bins.iter_mut().zip(source).enumerate() {
-            *target = if (low && usize_f64(bin) * resolution > 100.0)
+            *target = if (low && !EnvelopeBand::Below100.includes(usize_f64(bin) * resolution))
                 || (hilbert && (bin == 0 || bin == last))
             {
                 Complex::new(0.0, 0.0)
@@ -104,6 +108,16 @@ impl AnalyticEnvelope {
             };
         }
     }
+}
+// Unnormalized one-sided Parseval power; common normalization cancels in ratios.
+fn spectral_power(spectrum: &[Complex<f64>], band: EnvelopeBand, resolution: f64) -> f64 {
+    let last = spectrum.len() - 1;
+    spectrum
+        .iter()
+        .enumerate()
+        .filter(|(bin, _)| band.includes(usize_f64(*bin) * resolution))
+        .map(|(bin, value)| value.norm_sqr() * if bin == 0 || bin == last { 1.0 } else { 2.0 })
+        .sum()
 }
 fn inverse(
     plan: &Arc<dyn ComplexToReal<f64>>,

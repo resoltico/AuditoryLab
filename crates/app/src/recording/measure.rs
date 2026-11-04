@@ -235,6 +235,10 @@ impl Measurement {
                 let spectrum = &mut self.envelopes[channel][index];
                 spectrum.finish();
                 let peaks = spectrum.peaks(0.5, 100.0, 15.0);
+                let band_tones: Vec<&Tone> = tones
+                    .iter()
+                    .filter(|tone| tone.channel == channel && band.includes(tone.hz))
+                    .collect();
                 for peak in &peaks {
                     pulsing.push(Pulsing {
                         channel,
@@ -244,8 +248,7 @@ impl Measurement {
                         cause: pulsing_cause(
                             peak,
                             &peaks,
-                            tones,
-                            channel,
+                            &band_tones,
                             2.0 * resolution.max(envelope_resolution),
                         ),
                     });
@@ -530,18 +533,8 @@ fn ear_differences(tones: &[Tone], spectra: &[Welch], resolution: f64) -> Vec<Ea
     }
     pairs
 }
-fn pulsing_cause(
-    peak: &Peak,
-    peaks: &[Peak],
-    tones: &[Tone],
-    channel: usize,
-    tolerance: f64,
-) -> PulsingCause {
+fn pulsing_cause(peak: &Peak, peaks: &[Peak], tones: &[&Tone], tolerance: f64) -> PulsingCause {
     let hz = peak.hz;
-    let tones: Vec<&Tone> = tones
-        .iter()
-        .filter(|tone| tone.channel == channel)
-        .collect();
     // Symmetric sidebands and harmonic trains are consistent with modulation.
     // Their origin is not identifiable from samples, so reports disclose this convention.
     if tones.iter().any(|center| {
