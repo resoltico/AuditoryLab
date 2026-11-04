@@ -67,14 +67,18 @@ Set device volume low, then run `auditorylab device-check`. It plays a 440 Hz to
 
 Ctrl-C stops the tone that is playing; while the command waits for an answer, Ctrl-C ends it with status 130.
 
-## Identify a recording
+## Analyze a recording
 
 ```text
 auditorylab analyze recording.m4a
-auditorylab analyze --format json recording.m4a
+auditorylab analyze --seconds 30 --format json recording.m4a
 ```
 
-`analyze` reads a regular file's size and its first 12 bytes and reports the container format they name: `wav` (including RF64 and BW64), `aiff`, `flac`, `mp3`, `adts_aac`, `mp4` (M4A/MP4), `ogg`, `matroska` (including WebM) or `unknown`. It does not decode or measure the audio. A missing or non-regular file exits with status 1.
+`analyze` decodes a local mono or stereo recording and measures tones, channel-exclusive pitch differences, analytic-envelope rates, low-frequency energy and stereo levels. It opens no audio device. WAV/PCM, AIFF, FLAC up to 24 bits, MP3, AAC-LC (including M4A), Vorbis, ALAC and CAF are supported through Symphonia; containers also include Ogg and Matroska/WebM. Opus, HE-AAC/SBR and 32-bit FLAC are not supported; convert to 16- or 24-bit WAV or FLAC first. A decoder defect in Symphonia 0.6.1 requires refusing 32-bit FLAC before decoding.
+
+The window starts at 10% of the decoded track duration and ends at the recording's end or ten minutes later. `--seconds N` overrides the length with an integer of at least 2; it does not change the offset. The report states the actual window, frequency resolutions and whether compression is lossy. Files with fewer than two seconds in the window are refused. Progress goes to stderr; Ctrl-C cancels with status 130. Failed decoding exits with status 1 and a typed diagnostic. JSON keeps envelope schema 3 and adds `recording.analysis`; input that previously returned only file facts can now fail decoding.
+
+A pitch is not a rhythm. Envelope rates matching two detected tones are labeled consistent with beating; symmetric sidebands are labeled a modulation pattern. These are signal descriptions, not proof of deliberate modulation, playback at the ears or measured brain activity. Quiet pairs may be missed. See the [measurement contract](formats.md#recording-measurements) for thresholds and limits.
 
 ## Root and lifecycle
 

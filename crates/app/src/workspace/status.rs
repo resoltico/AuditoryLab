@@ -22,6 +22,8 @@ pub enum FileAction {
     Import,
     /// Identify a recording for analysis.
     OpenRecording,
+    /// Decode and measure recording samples.
+    AnalyzeRecording,
     /// Read or mutate the persistent managed library.
     Library(crate::vocabulary::Operation),
     /// Publish captured portable content with unchanged identity and history.
@@ -37,6 +39,7 @@ impl FileAction {
         match self {
             Self::Import => Operation::OpenRecipe,
             Self::OpenRecording => Operation::OpenRecording,
+            Self::AnalyzeRecording => Operation::AnalyzeRecording,
             Self::Library(operation) => operation,
             Self::RecipeExport => Operation::ExportRecipe,
             Self::AudioExport => Operation::Export,
@@ -60,6 +63,12 @@ impl FileActivity {
         match kind {
             FileKind::Import(path) => Self {
                 kind: FileAction::Import,
+                path: path.clone(),
+                title: None,
+                may_publish: false,
+            },
+            FileKind::AnalyzeRecording { path, .. } => Self {
+                kind: FileAction::AnalyzeRecording,
                 path: path.clone(),
                 title: None,
                 may_publish: false,

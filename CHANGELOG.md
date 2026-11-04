@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- `analyze FILE` now decodes and measures audio; files that previously returned identity alone can fail. Opus, HE-AAC/SBR and 32-bit FLAC need conversion to WAV or FLAC.
+- Recordings shows tones, channel differences, pulsing, low-tone energy and stereo levels, with native charts, cancellable analysis and a window-length field.
+- CLI `--seconds N` selects analysis length; schema-3 JSON adds `recording.analysis` and the `caf` container key. Reports state the actual window, resolution, codec loss and measurement limits.
+- Recording reports compare low-frequency energy with completed Device check answers; failed or cancelled re-analysis keeps the previous complete findings.
+
 ## [0.10.0] - 2026-11-03
 
 - Device check: a new desktop tab and `auditorylab device-check` play left, right and low test tones and explain what your answers mean for binaural pairs and low tones.

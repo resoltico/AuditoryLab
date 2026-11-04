@@ -57,8 +57,7 @@ fn recordings_render_identity_and_json_without_claiming_measurements() {
     assert_eq!(
         recording::recording_description(&file),
         "Recording: take.flac\nFile: /music/take.flac\nSize: 999 bytes\nFormat: FLAC\n\
-        Measurements: Auditory Lab identifies the format from the file's first bytes. It does \
-        not decode or measure the audio."
+        Measurements: Choose Analyze to measure this recording. No samples have been measured yet."
     );
     let json = serde_json::to_value(Report::recording(&file)).unwrap();
     assert_eq!(json["operation"], "analyze_recording");
@@ -71,4 +70,33 @@ fn recordings_render_identity_and_json_without_claiming_measurements() {
         ..file
     };
     assert_eq!(recording::recording_size(&bigger), "4.4 MB (4398933 bytes)");
+}
+
+#[test]
+fn measured_findings_state_the_device_check_comparison_and_all_measurement_limits() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../app/tests/fixtures/recording/tone.flac");
+    let measured = auditorylab_app::services::analyze_recording(
+        &path,
+        auditorylab_app::recording::AnalysisOptions::default(),
+        &auditorylab_app::job::Cancel::default(),
+        &auditorylab_app::job::Progress::default(),
+    )
+    .unwrap();
+    let f = recording::findings(&measured.analysis, Some(60.0));
+    assert!(
+        f.low_tones
+            .contains("lowest tone you reported hearing (60 Hz)")
+    );
+    assert!(f.facts.contains("Envelope window:"));
+    for limit in [
+        "Digital samples only",
+        "creator intent",
+        "-60 dB",
+        "FFT window edges",
+    ] {
+        assert!(f.limits.contains(limit), "{}", f.limits);
+    }
+    let without_check = recording::findings(&measured.analysis, None);
+    assert!(!without_check.low_tones.contains("reported hearing"));
 }

@@ -43,11 +43,19 @@ impl FileState {
     }
     pub(super) fn cancel_admission(&self) -> Result<&Cancel, Refusal> {
         match self.slot.as_ref().map(|task| &task.kind) {
-            Some(FileKind::Export { cancel, .. }) => Ok(cancel),
+            Some(FileKind::Export { cancel, .. } | FileKind::AnalyzeRecording { cancel, .. }) => {
+                Ok(cancel)
+            }
             _ => Err(Refusal::NoExport),
         }
     }
     pub(super) fn cancel_export(&self) -> Result<(), Refusal> {
+        if !self.exporting() {
+            return Err(Refusal::NoExport);
+        }
+        self.cancel_active()
+    }
+    pub(super) fn cancel_active(&self) -> Result<(), Refusal> {
         self.cancel_admission()?.request();
         Ok(())
     }
@@ -74,6 +82,18 @@ impl FileState {
         Ok(match command {
             FileCommand::Import => Some(FileRequest::Import),
             FileCommand::OpenRecording => Some(FileRequest::OpenRecording),
+            FileCommand::AnalyzeRecording(options) => Some(FileRequest::AnalyzeRecording(options)),
+            FileCommand::CancelAnalysis => {
+                if !self
+                    .slot
+                    .as_ref()
+                    .is_some_and(|task| matches!(task.kind, FileKind::AnalyzeRecording { .. }))
+                {
+                    return Err(Refusal::FileBusy);
+                }
+                self.cancel_active()?;
+                None
+            }
             FileCommand::Save => Some(FileRequest::Save),
             FileCommand::SaveCopy => Some(FileRequest::SaveCopy),
             FileCommand::ExportRecipe => Some(FileRequest::ExportRecipe),
@@ -116,6 +136,7 @@ impl PreparedExport {
 pub(super) enum FileRequest {
     Import,
     OpenRecording,
+    AnalyzeRecording(crate::recording::AnalysisOptions),
     Save,
     SaveCopy,
     ExportRecipe,

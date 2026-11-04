@@ -100,7 +100,9 @@ Software cannot observe which ear hears a channel or whether a speaker reproduce
 
 ## Recordings
 
-**Recordings** identifies an audio file. **Open recording…** reads the file's size and its first 12 bytes, which name the container: WAV (including RF64 and BW64), AIFF, FLAC, MP3, AAC (ADTS), MPEG-4 (M4A/MP4), Ogg or Matroska/WebM; other files show as unrecognized. The audio is not decoded or measured. The most recently opened recording stays shown until another one opens; a failed open keeps it and reports the problem. Nothing in Recordings plays or exports.
+**Recordings** opens a local file and identifies its size and container. Choose **Analyze recording** to decode and measure its tones, channel differences, pulsing, low-frequency energy and stereo levels. Enter a window length in seconds, or leave it blank for up to ten minutes; the offset is always 10% of the track duration. **Cancel analysis** requests cancellation without discarding the last complete findings. A failed re-analysis also keeps them. Opening another recording clears the old report so it cannot be mistaken for findings about the new input. Nothing in Recordings plays or exports.
+
+Every findings section stays expanded. The spectrum overlays left (blue) and right (orange) from 20–2000 Hz on a log frequency axis; low-tone bars show cumulative energy below 50, 60, 100 and 300 Hz per channel. Completed Device check answers add the energy share below the lowest tone you reported hearing; changing answers does not change recording measurements. Read the **Limits** section: compression, finite resolution and detection thresholds restrict what can be concluded. Mono/stereo WAV, AIFF, FLAC up to 24 bits, MP3, AAC-LC, Vorbis, ALAC and CAF are supported. Opus, HE-AAC/SBR and 32-bit FLAC need conversion first. See [measurement details](formats.md#recording-measurements).
 
 ## View timing and output
 

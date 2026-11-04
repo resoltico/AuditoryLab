@@ -34,15 +34,15 @@ impl Cancel {
     }
 }
 
-/// A file export's written frame count.
+/// A file job's processed frame count and optional known total.
 #[derive(Clone, Default)]
 pub struct Progress {
     frames: Arc<AtomicU64>,
+    total: Arc<AtomicU64>,
     notification: Option<Arc<ProgressNotification>>,
 }
 struct ProgressNotification {
     wake: Arc<dyn Fn() + Send + Sync>,
-    total: u64,
     percent: AtomicU64,
 }
 impl std::fmt::Debug for Progress {
@@ -54,17 +54,25 @@ impl std::fmt::Debug for Progress {
 }
 
 impl Progress {
-    /// Frames written so far.
+    /// Frames processed so far.
     #[must_use]
     pub fn frames(&self) -> u64 {
         self.frames.load(Ordering::Relaxed)
     }
+    /// Total frames when the decoder or exporter has established them.
+    pub fn total(&self) -> u64 {
+        self.total.load(Ordering::Relaxed)
+    }
+    pub(crate) fn set_total(&self, total: u64) {
+        self.total.store(total, Ordering::Relaxed);
+    }
     pub(crate) fn with_waker(&self, wake: Arc<dyn Fn() + Send + Sync>, total: u64) -> Self {
+        self.set_total(total);
         Self {
             frames: self.frames.clone(),
+            total: self.total.clone(),
             notification: Some(Arc::new(ProgressNotification {
                 wake,
-                total,
                 percent: AtomicU64::new(0),
             })),
         }
@@ -74,7 +82,7 @@ impl Progress {
         if let Some(notification) = &self.notification {
             let percent = n
                 .saturating_mul(100)
-                .checked_div(notification.total)
+                .checked_div(self.total())
                 .unwrap_or(100)
                 .min(100);
             if notification.percent.fetch_max(percent, Ordering::Relaxed) < percent {

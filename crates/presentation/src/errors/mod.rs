@@ -412,6 +412,7 @@ impl Explain for auditorylab_app::services::OperationError {
             E::Identity(error) => error.explain(),
             E::Query(error) => error.explain(),
             E::File(error) => error.explain(),
+            E::Recording(error) => error.explain(),
             E::Recipe(error) => recipe_error(error),
         }
     }
@@ -699,5 +700,28 @@ fn library_layout_text(error: &LibraryError) -> String {
             .into(),
 
         _ => unreachable!("handled by library_text"),
+    }
+}
+
+impl Explain for auditorylab_app::recording::RecordingError {
+    fn explain(&self) -> String {
+        use auditorylab_app::recording::RecordingError as E;
+        match self {
+            E::File(error) => error.explain(),
+            E::UnsupportedCodec { codec } => {
+                format!("{codec} audio is not decoded; convert to WAV or FLAC first")
+            }
+            E::Decode { packet, cause } => format!(
+                "cannot decode recording at packet {packet}: {}",
+                crate::display_scalar(cause)
+            ),
+            E::NoAudioTrack => "the recording contains no audio track".into(),
+            E::TooShort => "the analysis window needs at least two seconds of audio".into(),
+            E::InvalidWindow => "analysis duration must be at least two seconds".into(),
+            E::UnsupportedChannels { channels } => {
+                format!("recording has {channels} channels; analysis supports mono or stereo")
+            }
+            E::Cancelled => "recording analysis cancelled; previous findings retained".into(),
+        }
     }
 }

@@ -1,6 +1,10 @@
-//! Recordings opened for analysis: the file's identity and container format.
-//!
-//! The format comes from the leading signature bytes alone; nothing is decoded.
+//! Recording identity and measurements of decoded digital samples.
+mod analysis;
+pub use analysis::*;
+mod error;
+pub(crate) use error::CODES;
+pub use error::RecordingError;
+pub mod measure;
 use auditorylab_core::vocabulary;
 use std::path::PathBuf;
 
@@ -23,6 +27,8 @@ pub enum ContainerFormat {
     Ogg,
     /// A Matroska file, including `WebM`.
     Matroska,
+    /// Core Audio Format.
+    Caf,
     /// No recognized signature.
     Unknown,
 }
@@ -35,6 +41,7 @@ vocabulary! {ContainerFormat,"container_format" {
     Mp4 => ("mp4","MPEG-4 (M4A/MP4)","MPEG-4 (M4A/MP4)"),
     Ogg => ("ogg","Ogg","Ogg"),
     Matroska => ("matroska","Matroska/WebM","Matroska/WebM"),
+    Caf => ("caf","CAF","CAF"),
     Unknown => ("unknown","Unrecognized format","unrecognized format"),
 }}
 
@@ -51,6 +58,7 @@ impl ContainerFormat {
             Self::Mp4 => &["m4a", "mp4", "m4b"],
             Self::Ogg => &["ogg", "oga", "opus"],
             Self::Matroska => &["webm", "mka", "mkv"],
+            Self::Caf => &["caf"],
             Self::Unknown => &[],
         }
     }
@@ -67,6 +75,8 @@ impl ContainerFormat {
             Self::Aiff
         } else if at(0, b"fLaC") {
             Self::Flac
+        } else if at(0, b"caff") {
+            Self::Caf
         } else if at(0, b"OggS") {
             Self::Ogg
         } else if at(0, &[0x1A, 0x45, 0xDF, 0xA3]) {

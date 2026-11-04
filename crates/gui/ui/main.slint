@@ -1,3 +1,4 @@
+import { RecordingFindings, RecordingEnergy } from "models.slint";
 export { DateInput } from "models.slint";
 import { DateInput } from "models.slint";
 import { ControlOption } from "models.slint";
@@ -345,6 +346,13 @@ export component MainWindow inherits Window {
     in property <bool> has-recording;
     in property <RecordingFacts> recording;
     in property <string> recording-measurements;
+    in property <bool> has-recording-analysis;
+    in property <bool> analyzing-recording;
+    in property <float> recording-progress;
+    in property <RecordingFindings> recording-findings;
+    in property <[RecordingEnergy]> recording-energy;
+    callback analyze-recording(string);
+    callback cancel-recording-analysis();
     callback play-device-test(string);
     callback answer-device-test(string, string);
     callback clear-device-answers();
@@ -938,6 +946,13 @@ export component MainWindow inherits Window {
                 has-recording: root.has-recording;
                 recording: root.recording;
                 measurements: root.recording-measurements;
+                has-analysis: root.has-recording-analysis;
+                analyzing: root.analyzing-recording;
+                progress: root.recording-progress;
+                findings: root.recording-findings;
+                energy: root.recording-energy;
+                analyze-recording(seconds) => { root.analyze-recording(seconds); }
+                cancel-analysis() => { root.cancel-recording-analysis(); }
                 tab-index: root.tab-index;
                 ui-size: root.ui-size;
                 open-recording() => { root.open-recording(); }

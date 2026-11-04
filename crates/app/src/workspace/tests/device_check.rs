@@ -174,3 +174,58 @@ fn an_opened_recording_is_identified_by_a_file_job_and_failures_keep_the_previou
         status::FileStatus::Failed(_)
     ));
 }
+
+#[test]
+fn analysis_admission_capture_cancellation_and_failure_preserve_complete_findings() {
+    use crate::recording::{AnalysisOptions, RecordingError};
+    let mut workspace = workspace();
+    let request = Command::File(FileCommand::AnalyzeRecording(AnalysisOptions::default()));
+    assert!(matches!(
+        workspace.apply(request.clone()),
+        Err(Refusal::NoSelection)
+    ));
+    let path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/recording/tone.flac");
+    workspace
+        .apply(Command::File(FileCommand::OpenRecording))
+        .unwrap();
+    answer_path(&mut workspace, PathPurpose::OpenRecording, Some(path));
+    let job = take_file_job(&mut workspace);
+    workspace.respond(execute_file(job));
+    workspace.apply(request.clone()).unwrap();
+    assert!(workspace.analyzing_recording());
+    assert!(matches!(
+        workspace.apply(request.clone()),
+        Err(Refusal::FileBusy)
+    ));
+    let job = take_file_job(&mut workspace);
+    assert!(workspace.recording_analysis().is_none());
+    workspace.respond(execute_file(job));
+    let previous = workspace.recording_analysis().cloned().unwrap();
+    workspace.apply(request).unwrap();
+    let job = take_file_job(&mut workspace);
+    workspace
+        .apply(Command::File(FileCommand::CancelAnalysis))
+        .unwrap();
+    assert!(
+        workspace.analyzing_recording(),
+        "cancellation does not release an unjoined worker"
+    );
+    workspace.respond(execute_file(job));
+    assert!(!workspace.analyzing_recording());
+    assert_eq!(workspace.recording_analysis(), Some(&previous));
+    assert!(matches!(
+        workspace.action_view().file_status,
+        status::FileStatus::Failed(crate::services::OperationError::Recording(
+            RecordingError::Cancelled
+        ))
+    ));
+    workspace
+        .apply(Command::File(FileCommand::AnalyzeRecording(
+            AnalysisOptions { seconds: Some(0) },
+        )))
+        .unwrap();
+    let job = take_file_job(&mut workspace);
+    workspace.respond(execute_file(job));
+    assert_eq!(workspace.recording_analysis(), Some(&previous));
+}

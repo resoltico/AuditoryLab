@@ -17,6 +17,8 @@ product-name = "Auditory Lab"
 copyright = "Copyright © 2026 Ervins Strauhmanis"
 
 [workspace.dependencies]
+realfft = { version = "=3.5.1", default-features = false }
+symphonia = { version = "=0.6.1", default-features = false, features = ["wav", "aiff", "flac", "mp3", "aac", "isomp4", "ogg", "vorbis", "mkv", "pcm", "alac", "caf"] }
 auditorylab-presentation = { path = "crates/presentation" }
 same-file = "1"
 cap-std = "4"

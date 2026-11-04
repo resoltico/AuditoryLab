@@ -70,6 +70,12 @@ pub(crate) struct AudioTask {
 pub(crate) enum FileKind {
     Import(PathBuf),
     OpenRecording(PathBuf),
+    AnalyzeRecording {
+        path: PathBuf,
+        options: crate::recording::AnalysisOptions,
+        cancel: Cancel,
+        progress: Progress,
+    },
     Managed(super::library::LibraryJob),
     ExportRecipe {
         text: std::sync::Arc<str>,
@@ -91,6 +97,10 @@ pub enum FileOutcome {
     Imported(Result<RecipeSnapshot, LoadError>),
     /// Identified recording file.
     RecordingOpened(Result<crate::recording::RecordingFile, crate::services::FileError>),
+    /// Measured recording; complete findings only.
+    RecordingAnalyzed(
+        Result<Box<crate::recording::AnalyzedRecording>, crate::recording::RecordingError>,
+    ),
     /// Managed library operation.
     Managed(Result<super::library::LibraryOutcome, Error>),
     /// Published portable bytes.
@@ -110,6 +120,10 @@ impl FileOutcome {
                 .as_ref()
                 .err()
                 .map(crate::services::LoadError::outcome),
+            Self::RecordingAnalyzed(result) => result
+                .as_ref()
+                .err()
+                .map(crate::recording::RecordingError::outcome),
             Self::RecordingOpened(result) => result
                 .as_ref()
                 .err()
@@ -145,6 +159,7 @@ impl FileKind {
             (Self::Managed(job), FileOutcome::Managed(Ok(outcome))) => job.accepts(outcome),
             (Self::Import(_), FileOutcome::Imported(_))
             | (Self::OpenRecording(_), FileOutcome::RecordingOpened(_))
+            | (Self::AnalyzeRecording { .. }, FileOutcome::RecordingAnalyzed(_))
             | (Self::ExportRecipe { .. }, FileOutcome::RecipeExported(_))
             | (Self::Export { .. }, FileOutcome::Exported(_))
             | (Self::Managed(_), FileOutcome::Managed(Err(_))) => true,
@@ -158,6 +173,15 @@ impl FileKind {
             ),
             Self::Managed(job) => FileOutcome::Managed(job.execute()),
             Self::Import(path) => FileOutcome::Imported(crate::services::open_file(&path)),
+            Self::AnalyzeRecording {
+                path,
+                options,
+                cancel,
+                progress,
+            } => FileOutcome::RecordingAnalyzed(
+                crate::services::analyze_recording(&path, options, &cancel, &progress)
+                    .map(Box::new),
+            ),
             Self::OpenRecording(path) => {
                 FileOutcome::RecordingOpened(crate::services::open_recording(&path))
             }
@@ -231,6 +255,7 @@ impl JobOutcome {
             Self::File(outcome) => match outcome {
                 FileOutcome::Imported(Err(error)) => error.clone().into(),
                 FileOutcome::RecordingOpened(Err(error)) => error.clone().into(),
+                FileOutcome::RecordingAnalyzed(Err(error)) => error.clone().into(),
                 FileOutcome::Managed(Err(error)) => error.clone(),
                 FileOutcome::RecipeExported(Err(error)) => error.clone().into(),
                 FileOutcome::Exported(Err(error)) => error.clone().into(),
@@ -463,6 +488,9 @@ impl Runner {
         }) = job.work.as_mut()
         {
             *progress = progress.with_waker(wake.clone(), *frames);
+        }
+        if let Work::File(FileKind::AnalyzeRecording { progress, .. }) = job.work.as_mut() {
+            *progress = progress.with_waker(wake.clone(), 0);
         }
         let id = job.id;
         let (tx, prepared) = mpsc::channel();

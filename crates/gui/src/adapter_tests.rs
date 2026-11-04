@@ -5971,6 +5971,10 @@ fn selected_construction(ui: &MainWindow) -> Option<String> {
 }
 
 fn reveal_lesson_control(h: &Harness, label: &str) -> ItemRc {
+    reveal_scrolled_control(h, label, "Lesson content")
+}
+fn reveal_scrolled_control(h: &Harness, label: &str, reader_label: &str) -> ItemRc {
+    let mut observed = Vec::new();
     for _ in 0..8 {
         let item = find_control(h.ui(), |item| {
             item.accessible_string_property(AccessibleStringProperty::Label)
@@ -5978,11 +5982,12 @@ fn reveal_lesson_control(h: &Harness, label: &str) -> ItemRc {
                 == Some(label)
         })
         .unwrap_or_else(|| panic!("lesson control exists: {label}"));
-        let reader = labelled(h.ui(), "Lesson content");
+        let reader = labelled(h.ui(), reader_label);
         let center = centre(&item);
         let viewport = centre(&reader);
         let height = reader.geometry().size.height;
         let item_height = item.geometry().size.height;
+        observed.push((center, viewport, height, item_height, item.is_visible()));
         if item.is_visible()
             && center.y - item_height / 2.0 >= viewport.y - height / 2.0
             && center.y + item_height / 2.0 <= viewport.y + height / 2.0
@@ -5998,7 +6003,7 @@ fn reveal_lesson_control(h: &Harness, label: &str) -> ItemRc {
             });
         h.settle();
     }
-    panic!("lesson control can be revealed through its real scroll view: {label}");
+    panic!("control can be revealed through its real scroll view: {label}: {observed:?}");
 }
 
 #[test]
@@ -6215,5 +6220,103 @@ fn device_check_and_recordings_tabs_drive_their_production_callbacks() {
     assert_eq!(facts.name, "take.ogg");
     assert_eq!(facts.size, "12 bytes");
     assert_eq!(facts.format, "Ogg");
-    assert!(ui.get_recording_measurements().contains("does not decode"));
+    assert!(ui.get_recording_measurements().contains("Choose Analyze"));
+}
+
+#[test]
+fn recording_analysis_callbacks_project_all_findings_at_compact_large_text_size() {
+    let h = Harness::new();
+    let ui = h.ui();
+    ui.invoke_tab_changed(3);
+    h.settle();
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../app/tests/fixtures/recording/tone.flac");
+    ui.invoke_open_recording();
+    let [Request::Path(prompt, PathPurpose::OpenRecording, None)] = h.take()[..] else {
+        panic!("recording dialog");
+    };
+    h.adapter.respond(prompt, PromptAnswer::Path(Some(path)));
+    h.wait_for_files();
+    h.settle();
+    ui.invoke_analyze_recording("2".into());
+    h.wait_for_files();
+    h.settle();
+    assert!(ui.get_has_recording_analysis());
+    let findings = ui.get_recording_findings();
+    assert!(findings.tones.contains("1000.0"), "{}", findings.tones);
+    assert!(findings.limits.contains("Digital samples only"));
+    assert!(!findings.left_trace.is_empty());
+    assert_eq!(ui.get_recording_energy().row_count(), 8);
+    for (width, height, size) in [(1280, 900, 13.0), (680, 600, 26.0)] {
+        ui.set_ui_size(size);
+        ui.window()
+            .set_size(slint::PhysicalSize::new(width, height));
+        h.settle();
+        let analyze = labelled(ui, "Analyze recording");
+        assert!(analyze.geometry().size.width > 0.0);
+        for label in [
+            "Summary",
+            "Tones",
+            "Left versus right",
+            "Pulsing",
+            "Low tones",
+            "Stereo and level",
+            "Limits",
+        ] {
+            let item = reveal_scrolled_control(&h, label, "Recording content");
+            assert!(
+                centre(&item).x >= 0.0
+                    && centre(&item).x <= f32::from(u16::try_from(width).unwrap())
+            );
+        }
+        assert!(ui.window().take_snapshot().is_ok());
+    }
+    ui.invoke_analyze_recording("invalid".into());
+    h.wait_for_files();
+    h.settle();
+    assert_eq!(ui.get_recording_findings(), findings);
+    assert!(
+        ui.get_status().contains("at least two seconds"),
+        "{}",
+        ui.get_status()
+    );
+    assert!(!h.adapter.inspect(|w| w.audio_busy()));
+}
+
+#[test]
+#[ignore = "explicit silent recording visual evidence"]
+fn recording_analysis_review_screenshots() {
+    let h = Harness::new();
+    let ui = h.ui();
+    ui.set_monitor_open(false);
+    ui.invoke_tab_changed(3);
+    h.settle();
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../app/tests/fixtures/recording/tone.flac");
+    ui.invoke_open_recording();
+    let [Request::Path(prompt, PathPurpose::OpenRecording, None)] = h.take()[..] else {
+        panic!("recording dialog");
+    };
+    h.adapter.respond(prompt, PromptAnswer::Path(Some(path)));
+    h.wait_for_files();
+    ui.invoke_analyze_recording("".into());
+    h.wait_for_files();
+    h.settle();
+    let destination =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp/recording-visuals");
+    std::fs::create_dir_all(&destination).unwrap();
+    for (width, height, size, name) in [(1280, 900, 13.0, "wide"), (680, 600, 26.0, "compact")] {
+        ui.set_ui_size(size);
+        ui.window()
+            .set_size(slint::PhysicalSize::new(width, height));
+        h.settle();
+        for (label, section) in [
+            ("Tones", "tones"),
+            ("Low tones", "low-tones"),
+            ("Limits", "limits"),
+        ] {
+            reveal_scrolled_control(&h, label, "Recording content");
+            save_desktop_review_frame(ui, &destination, &format!("{name}-{section}"));
+        }
+    }
 }

@@ -346,6 +346,7 @@ pub struct Workspace {
     editor: EditorState,
     device_check: device_check::DeviceCheckState,
     recording: Option<crate::recording::RecordingFile>,
+    recording_analysis: Option<crate::recording::AnalyzedRecording>,
     audio: AudioState,
     files: FileState,
     prompts: Prompts,
@@ -387,6 +388,7 @@ impl Workspace {
             editor: EditorState::new()?,
             device_check: device_check::DeviceCheckState::new()?,
             recording: None,
+            recording_analysis: None,
             audio: AudioState::new(capabilities),
             files: FileState::default(),
             prompts: Prompts::default(),
@@ -711,7 +713,7 @@ impl Workspace {
             let _ = self.audio.stop();
         }
         if file {
-            let _ = self.files.cancel_export();
+            let _ = self.files.cancel_active();
         }
         let pending = Pending {
             audio: if audio {
@@ -959,8 +961,15 @@ impl Workspace {
             (_, FileOutcome::Exported(Err(error))) if error.outcome() == Outcome::Cancelled => {
                 FileStatus::Notice(FileNotice::ExportCancelled)
             }
+            (_, FileOutcome::RecordingAnalyzed(Ok(recording))) => {
+                self.recording = Some(recording.file.clone());
+                self.recording_analysis = Some(*recording);
+                FileStatus::Idle
+            }
+            (_, FileOutcome::RecordingAnalyzed(Err(error))) => FileStatus::Failed(error.into()),
             (_, FileOutcome::RecordingOpened(Ok(recording))) => {
                 self.recording = Some(recording);
+                self.recording_analysis = None;
                 FileStatus::Idle
             }
             (_, FileOutcome::Imported(Err(error))) => FileStatus::Failed(error.into()),
@@ -1037,7 +1046,7 @@ impl Workspace {
         self.prompts.clear();
         self.closing = false;
         let _ = self.audio.stop();
-        let _ = self.files.cancel_export();
+        let _ = self.files.cancel_active();
     }
     fn job_context(&self, job: TaskId) -> JobContext {
         if let Some(task) = self.files.task().filter(|task| task.id == job) {
@@ -1045,6 +1054,7 @@ impl Workspace {
                 FileKind::Managed(job) => JobContext::Library(job.context()),
                 FileKind::Import(path)
                 | FileKind::OpenRecording(path)
+                | FileKind::AnalyzeRecording { path, .. }
                 | FileKind::ExportRecipe { path, .. }
                 | FileKind::Export { path, .. } => JobContext::File(path.clone()),
             };

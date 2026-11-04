@@ -170,6 +170,10 @@ pub enum AudioCommand {
 pub enum FileCommand {
     Import,
     OpenRecording,
+    /// Measure the opened recording with captured options.
+    AnalyzeRecording(crate::recording::AnalysisOptions),
+    /// Cancel the active measurement.
+    CancelAnalysis,
     Save,
     SaveCopy,
     ExportRecipe,
@@ -233,6 +237,9 @@ impl Workspace {
                 match self.files.apply(command)? {
                     Some(file::FileRequest::Import) => self.import(),
                     Some(file::FileRequest::OpenRecording) => self.open_recording(),
+                    Some(file::FileRequest::AnalyzeRecording(options)) => {
+                        self.analyze_recording(options)
+                    }
                     Some(file::FileRequest::Save) => self.save(),
                     Some(file::FileRequest::SaveCopy) => self.save_independent_copy(),
                     Some(file::FileRequest::ExportRecipe) => self.export_recipe(),
@@ -334,6 +341,53 @@ impl Workspace {
                 .collect(),
             assessment: check.assessment(),
             answered: check.started(),
+        }
+    }
+    fn analyze_recording(
+        &mut self,
+        options: crate::recording::AnalysisOptions,
+    ) -> Result<(), Refusal> {
+        self.import_admission()?;
+        let path = self
+            .recording
+            .as_ref()
+            .ok_or(Refusal::NoSelection)?
+            .path
+            .clone();
+        // Options are validated again by the worker against its captured input.
+        self.start_file(FileKind::AnalyzeRecording {
+            path,
+            options,
+            cancel: crate::job::Cancel::default(),
+            progress: crate::job::Progress::default(),
+        });
+        Ok(())
+    }
+    /// Last complete findings, retained through failed or cancelled re-analysis.
+    pub fn recording_analysis(&self) -> Option<&crate::recording::AnalyzedRecording> {
+        self.recording_analysis.as_ref()
+    }
+    /// Whether a recording measurement currently occupies the file slot.
+    pub fn analyzing_recording(&self) -> bool {
+        self.files
+            .task()
+            .is_some_and(|task| matches!(task.kind, FileKind::AnalyzeRecording { .. }))
+    }
+    /// Completed fraction once the decoder has established the selected window.
+    pub fn recording_progress(&self) -> f64 {
+        if let Some(super::FileTask {
+            kind: FileKind::AnalyzeRecording { progress, .. },
+            ..
+        }) = self.files.task()
+        {
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "frame counts form a display-only progress ratio"
+            )]
+            let ratio = progress.frames() as f64 / progress.total().max(1) as f64;
+            ratio.clamp(0.0, 1.0)
+        } else {
+            0.0
         }
     }
     /// The most recently opened recording, kept until another one opens.
@@ -1195,6 +1249,7 @@ impl Workspace {
                     O::ClearDeviceAnswers => self.device_check.check().started(),
                     O::Stop => view.playback_busy(),
                     O::CancelExport => view.exporting,
+                    O::AnalyzeRecording => view.can_import() && self.recording.is_some(),
                     O::AddComponent | O::RemoveComponent => view.can_edit(),
                     O::UndoRemove => view.can_restore_component(),
                     O::LibraryAdd => view.can_add_to_library(),
@@ -1215,8 +1270,7 @@ impl Workspace {
                     | O::LibraryRead
                     | O::CloseOpenFile
                     | O::ShowSaved
-                    | O::DeviceCheck
-                    | O::AnalyzeRecording => true,
+                    | O::DeviceCheck => true,
                 };
                 ActionView { operation, enabled }
             })
