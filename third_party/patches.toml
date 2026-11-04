@@ -27,3 +27,9 @@ name = "winit"
 version = "0.30.13"
 url = "https://static.crates.io/crates/winit/winit-0.30.13.crate"
 sha256 = "a6755fa58a9f8350bd1e472d4c3fcc25f824ec358933bba33306d0b63df5978d"
+
+[[patch]]
+name = "symphonia-codec-aac"
+version = "0.6.1"
+url = "https://static.crates.io/crates/symphonia-codec-aac/symphonia-codec-aac-0.6.1.crate"
+sha256 = "f5bf8e39552d34a3c4c98333370e62f48c92456d2e814f273b5c3ad7c4a5f45c"

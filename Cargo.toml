@@ -128,3 +128,5 @@ i-slint-core = { path = "third_party/i-slint-core" }
 i-slint-compiler = { path = "third_party/i-slint-compiler" }
 i-slint-backend-winit = { path = "third_party/i-slint-backend-winit" }
 winit = { path = "third_party/winit" }
+# Reject unsupported AAC profiles and SBR before reporting incomplete decoded audio.
+symphonia-codec-aac = { path = "third_party/symphonia-codec-aac" }

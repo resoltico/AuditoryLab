@@ -310,3 +310,89 @@ fn exported_pairs_keep_channel_routing_through_the_decoder() {
         }
     }
 }
+
+#[test]
+fn unsupported_aac_profiles_name_the_supported_profile() {
+    let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/recording/tone.aac");
+    let mut bytes = std::fs::read(base).unwrap();
+    // ADTS profile bits 11 denote AAC LTP, outside the enabled AAC-LC decoder.
+    bytes[2] |= 0xC0;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("profile.aac");
+    std::fs::write(&path, bytes).unwrap();
+    let error = analyze(
+        &path,
+        AnalysisOptions::default(),
+        &Cancel::default(),
+        &Progress::default(),
+    )
+    .unwrap_err();
+    assert!(matches!(error, RecordingError::UnsupportedCodec { codec }
+        if codec.contains("AAC-LC only")));
+}
+
+#[test]
+fn in_band_sbr_is_refused_instead_of_returning_only_the_lc_core() {
+    let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/recording/tone.aac");
+    let original = std::fs::read(base).unwrap();
+    let frame_len = (usize::from(original[3] & 3) << 11)
+        | (usize::from(original[4]) << 3)
+        | usize::from(original[5] >> 5);
+    // ID_FIL=6, count=1, EXT_SBR_DATA=13, four payload bits. Preserve the
+    // actual LC frame after the declaration: a decoder ignoring SBR would accept it.
+    let mut bits = vec![
+        true, true, false, false, false, false, true, true, true, false, true, false, false, false,
+        false,
+    ];
+    for byte in &original[7..frame_len] {
+        bits.extend((0..8).rev().map(|shift| byte & (1 << shift) != 0));
+    }
+    let payload: Vec<u8> = bits
+        .chunks(8)
+        .map(|bits| {
+            bits.iter()
+                .enumerate()
+                .fold(0, |value, (i, bit)| value | (u8::from(*bit) << (7 - i)))
+        })
+        .collect();
+    let length = u16::try_from(7 + payload.len()).unwrap();
+    let mut bytes = original[..7].to_vec();
+    bytes[3] = (bytes[3] & 0xFC) | u8::try_from((length >> 11) & 3).unwrap();
+    bytes[4] = u8::try_from((length >> 3) & 0xFF).unwrap();
+    bytes[5] = (bytes[5] & 0x1F) | (u8::try_from(length & 7).unwrap() << 5);
+    bytes.extend(payload);
+    bytes.extend_from_slice(&original[frame_len..]);
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("sbr.aac");
+    std::fs::write(&path, bytes).unwrap();
+    match analyze(
+        &path,
+        AnalysisOptions::default(),
+        &Cancel::default(),
+        &Progress::default(),
+    ) {
+        Err(RecordingError::UnsupportedCodec { codec }) => assert!(codec.contains("AAC-LC only")),
+        Err(error) => panic!("SBR must have a codec refusal, got {error:?}"),
+        Ok(_) => panic!("SBR must not be accepted as a complete LC decode"),
+    }
+}
+
+#[test]
+fn known_multichannel_input_is_refused_by_the_analysis_policy_before_codec_setup() {
+    let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/recording/tone.aac");
+    let mut bytes = std::fs::read(base).unwrap();
+    // ADTS channel configuration 110 means 5.1; the original fixture is 010 (stereo).
+    bytes[2] |= 1;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("surround.aac");
+    std::fs::write(&path, bytes).unwrap();
+    assert!(matches!(
+        analyze(
+            &path,
+            AnalysisOptions::default(),
+            &Cancel::default(),
+            &Progress::default()
+        ),
+        Err(RecordingError::UnsupportedChannels { channels: 6 })
+    ));
+}

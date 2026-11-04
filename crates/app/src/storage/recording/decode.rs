@@ -38,6 +38,18 @@ struct Decoder {
     packet: u64,
     samples: Vec<f32>,
 }
+fn media_error(packet: u64, error: symphonia::core::errors::Error) -> RecordingError {
+    match error {
+        symphonia::core::errors::Error::Unsupported(message)
+            if message.starts_with("aac:") || message.starts_with("adts:") =>
+        {
+            RecordingError::UnsupportedCodec {
+                codec: "AAC stream (AAC-LC only)".into(),
+            }
+        }
+        error => decode_error(packet, error),
+    }
+}
 fn decode_error(packet: u64, error: impl std::fmt::Display) -> RecordingError {
     RecordingError::Decode {
         packet,
@@ -48,6 +60,18 @@ impl Decoder {
     fn new(mut file: File) -> Result<Self, RecordingError> {
         file.seek(SeekFrom::Start(0))
             .map_err(|error| decode_error(0, error))?;
+        let mut head = [0; 3];
+        file.read_exact(&mut head)
+            .map_err(|error| decode_error(0, error))?;
+        // Probe may skip an unsupported first ADTS header and find a later LC
+        // frame. Preserve that refusal; the decoder patch checks subsequent headers.
+        if head[0] == 0xFF && head[1] & 0xF6 == 0xF0 && head[2] >> 6 != 1 {
+            return Err(RecordingError::UnsupportedCodec {
+                codec: "AAC profile (AAC-LC only)".into(),
+            });
+        }
+        file.seek(SeekFrom::Start(0))
+            .map_err(|error| decode_error(0, error))?;
         let format = symphonia::default::get_probe()
             .probe(
                 &Hint::new(),
@@ -55,7 +79,7 @@ impl Decoder {
                 FormatOptions::default(),
                 MetadataOptions::default(),
             )
-            .map_err(|error| decode_error(0, error))?;
+            .map_err(|error| media_error(0, error))?;
         let track = format
             .default_track(TrackType::Audio)
             .ok_or(RecordingError::NoAudioTrack)?;
@@ -69,10 +93,26 @@ impl Decoder {
                 codec: "Opus".into(),
             });
         }
+        if let Some(channels) = &params.channels
+            && !(1..=2).contains(&channels.count())
+        {
+            return Err(RecordingError::UnsupportedChannels {
+                channels: channels.count(),
+            });
+        }
         let decoder = symphonia::default::get_codecs()
             .make_audio_decoder(params, &AudioDecoderOptions::default())
-            .map_err(|_| RecordingError::UnsupportedCodec {
-                codec: params.codec.to_string(),
+            .map_err(|error| match error {
+                symphonia::core::errors::Error::Unsupported(_) => {
+                    RecordingError::UnsupportedCodec {
+                        codec: if params.codec == CODEC_ID_AAC {
+                            "AAC profile (AAC-LC only)".into()
+                        } else {
+                            params.codec.to_string()
+                        },
+                    }
+                }
+                error => decode_error(0, error),
             })?;
         let params = decoder.codec_params();
         // A 32-bit FLAC stereo difference channel needs 33 bits. Symphonia
@@ -105,7 +145,13 @@ impl Decoder {
         } else {
             decoder.codec_info().long_name.into()
         };
-        let (id, frames) = (track.id, track.num_frames);
+        // Native MPEG/ADTS readers may estimate num_frames from bitrate. A
+        // counted pass establishes the exact timeline before choosing its 10% offset.
+        let estimated = matches!(
+            format.format_info().short_name,
+            "aac" | "mp1" | "mp2" | "mp3"
+        );
+        let (id, frames) = (track.id, if estimated { None } else { track.num_frames });
         Ok(Self {
             format,
             audio: decoder,
@@ -127,7 +173,7 @@ impl Decoder {
             let packet = self
                 .format
                 .next_packet()
-                .map_err(|error| decode_error(self.packet, error))?;
+                .map_err(|error| media_error(self.packet, error))?;
             let Some(packet) = packet else {
                 return Ok(false);
             };
@@ -138,7 +184,7 @@ impl Decoder {
             let audio = self
                 .audio
                 .decode(&packet)
-                .map_err(|error| decode_error(self.packet, error))?;
+                .map_err(|error| media_error(self.packet, error))?;
             if audio.spec().rate() != self.rate || audio.spec().channels().count() != self.channels
             {
                 return Err(decode_error(
