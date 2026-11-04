@@ -105,11 +105,12 @@ impl Measurement {
             return Err(RecordingError::Cancelled);
         }
         for channel in 0..self.channels {
-            if self.spectra[channel].since_window > 0 {
+            let tail = self.spectra[channel].since_window > 0;
+            self.spectra[channel].finish();
+            if tail {
                 self.analytic
                     .measure(&mut self.spectra[channel], &mut self.envelopes[channel]);
             }
-            self.spectra[channel].finish();
         }
         let resolution = self.spectra[0].resolution();
         let envelope_resolution = self.envelopes[0][0].resolution();
@@ -233,14 +234,16 @@ impl Measurement {
                 }
                 let spectrum = &mut self.envelopes[channel][index];
                 spectrum.finish();
-                for peak in spectrum.peaks(0.5, 100.0, 15.0) {
+                let peaks = spectrum.peaks(0.5, 100.0, 15.0);
+                for peak in &peaks {
                     pulsing.push(Pulsing {
                         channel,
                         envelope_band: band,
                         hz: peak.hz,
                         band: Band::of(peak.hz),
                         cause: pulsing_cause(
-                            peak.hz,
+                            peak,
+                            &peaks,
                             tones,
                             channel,
                             2.0 * resolution.max(envelope_resolution),
@@ -527,7 +530,14 @@ fn ear_differences(tones: &[Tone], spectra: &[Welch], resolution: f64) -> Vec<Ea
     }
     pairs
 }
-fn pulsing_cause(hz: f64, tones: &[Tone], channel: usize, tolerance: f64) -> PulsingCause {
+fn pulsing_cause(
+    peak: &Peak,
+    peaks: &[Peak],
+    tones: &[Tone],
+    channel: usize,
+    tolerance: f64,
+) -> PulsingCause {
+    let hz = peak.hz;
     let tones: Vec<&Tone> = tones
         .iter()
         .filter(|tone| tone.channel == channel)
@@ -544,13 +554,37 @@ fn pulsing_cause(hz: f64, tones: &[Tone], channel: usize, tolerance: f64) -> Pul
     }) {
         return PulsingCause::Modulation;
     }
-    // Prefer an actual pair difference before attributing higher envelope harmonics.
-    // Differences below 0.5 Hz fall outside the measured envelope range.
-    for harmonic in 1..=200 {
+    for (i, first) in tones.iter().enumerate() {
+        for second in &tones[i + 1..] {
+            if ((first.hz - second.hz).abs() - hz).abs() <= tolerance {
+                return PulsingCause::Beating {
+                    first_hz: first.hz,
+                    second_hz: second.hz,
+                    harmonic: 1,
+                };
+            }
+        }
+    }
+    // For two equal tones, squared envelope harmonic/DC ratio is
+    // 2/(4*n²-1)² and harmonic/fundamental power ratio is 9/(4*n²-1)².
+    // Unequal levels reduce high harmonics. Require a detected fundamental,
+    // a harmonic above the report floor, and a 3 dB allowance on this model.
+    for harmonic in 2_u32.. {
+        let denominator = 4.0 * f64::from(harmonic).powi(2) - 1.0;
+        if 2.0 / denominator.powi(2) < MIN_ENVELOPE_RELATIVE_POWER {
+            break;
+        }
         for (i, first) in tones.iter().enumerate() {
             for second in &tones[i + 1..] {
                 let difference = (first.hz - second.hz).abs();
-                if difference >= 0.5 && (difference * f64::from(harmonic) - hz).abs() <= tolerance {
+                if difference < 0.5 || (difference * f64::from(harmonic) - hz).abs() > tolerance {
+                    continue;
+                }
+                if let Some(fundamental) = peaks
+                    .iter()
+                    .find(|p| (p.hz - difference).abs() <= tolerance)
+                    && peak.power <= fundamental.power * 18.0 / denominator.powi(2)
+                {
                     return PulsingCause::Beating {
                         first_hz: first.hz,
                         second_hz: second.hz,

@@ -140,5 +140,38 @@ fn mono_and_fractional_millisecond_rates_preserve_the_modulation_rate() {
         assert_eq!(a.ear_differences, Vec::new());
         assert!(a.envelope_window.start_seconds > a.window.start_seconds);
         assert!(a.envelope_window.end_seconds < a.window.end_seconds);
+        let mut plain = Measurement::new(rate, 1, frames).unwrap();
+        for frame in 0..rate * 3 {
+            plain
+                .push(&[sine(40.0, f64::from(frame) / f64::from(rate)) as f32])
+                .unwrap();
+        }
+        let plain = plain.finish(&Cancel::default()).unwrap();
+        assert!(
+            !plain
+                .pulsing
+                .iter()
+                .any(|p| p.envelope_band == EnvelopeBand::Whole),
+            "{rate}: a plain low carrier is not modulation: {:?}",
+            plain.pulsing
+        );
     }
+}
+
+#[test]
+fn strong_modulation_is_not_attributed_to_an_unrelated_weak_beat_harmonic() {
+    // The modulated carrier lies above the tone table's 2 kHz ceiling. Its
+    // 30 Hz envelope must not become a supposed third harmonic of the weak 10 Hz pair.
+    let a = measure(|t| {
+        [sine(3000.0, t) * (1.0 + 0.8 * (std::f64::consts::TAU * 30.0 * t).cos())
+            + 0.1 * (sine(200.0, t) + sine(210.0, t)); 2]
+    });
+    assert!(
+        has_rate(&a, 10.0, false),
+        "the weak beat is observed before harmonic attribution"
+    );
+    assert!(
+        has_rate(&a, 30.0, true),
+        "strong AM must retain its modulation attribution"
+    );
 }

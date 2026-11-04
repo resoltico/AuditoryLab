@@ -25,16 +25,8 @@ impl AnalyticEnvelope {
     }
     pub(super) fn measure(&mut self, audio: &mut Welch, envelopes: &mut [Welch]) {
         let n = audio.window.len();
-        for (i, input) in audio.input.iter_mut().enumerate() {
-            *input = audio.buffer[(i + audio.position) % n];
-        }
-        if audio
-            .fft
-            .process_with_scratch(&mut audio.input, &mut audio.output, &mut audio.scratch)
-            .is_err()
-        {
-            unreachable!("FFT buffers created by their plan");
-        }
+        // The tone spectrum already apodizes the same ordered samples with a
+        // periodic Hann window. Reuse it to avoid a discontinuous FFT boundary.
         self.transform(&audio.output, audio.resolution(), true, false);
         inverse(
             &self.inverse,
@@ -75,7 +67,7 @@ impl AnalyticEnvelope {
             // Discard FFT boundary regions. The remaining central 75% overlaps
             // adjacent windows and avoids interpreting periodic extension edges.
             for i in n / 8..n - n / 8 {
-                let scale = usize_f64(n);
+                let scale = usize_f64(n) * audio.window[i];
                 let x = audio.buffer[(i + audio.position) % n];
                 let q = self.quadrature[i] / scale;
                 let low = self.low[i] / scale;
