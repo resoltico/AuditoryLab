@@ -107,3 +107,100 @@ fn opus_and_malformed_media_are_typed_failures() {
     let invalid = analyze(&[path.to_str().unwrap(), "--seconds", "0"]);
     assert_eq!(invalid.status.code(), Some(2));
 }
+
+#[test]
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "independent float-WAV oracle quantizes to f32"
+)]
+fn lower_boundary_right_only_modulation_agrees_in_summary_and_json() {
+    let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp");
+    fs::create_dir_all(&base).unwrap();
+    let dir = tempfile::tempdir_in(base).unwrap();
+    let path = dir.path().join("right-am.wav");
+    let rate = 8000_u32;
+    let mut data = Vec::new();
+    for i in 0..rate * 20 {
+        let t = f64::from(i) / f64::from(rate);
+        let carrier = 0.1 * (std::f64::consts::TAU * 1000.0 * t).sin();
+        for sample in [
+            carrier,
+            carrier * (1.0 + 0.8 * (std::f64::consts::TAU * 0.5 * t).cos()),
+        ] {
+            data.extend_from_slice(&(sample as f32).to_le_bytes());
+        }
+    }
+    let length = u32::try_from(data.len()).unwrap();
+    let mut wav = b"RIFF".to_vec();
+    wav.extend_from_slice(&(36 + length).to_le_bytes());
+    wav.extend_from_slice(b"WAVEfmt ");
+    wav.extend_from_slice(&16_u32.to_le_bytes());
+    wav.extend_from_slice(&3_u16.to_le_bytes());
+    wav.extend_from_slice(&2_u16.to_le_bytes());
+    wav.extend_from_slice(&rate.to_le_bytes());
+    wav.extend_from_slice(&(rate * 8).to_le_bytes());
+    wav.extend_from_slice(&8_u16.to_le_bytes());
+    wav.extend_from_slice(&32_u16.to_le_bytes());
+    wav.extend_from_slice(b"data");
+    wav.extend_from_slice(&length.to_le_bytes());
+    wav.extend(data);
+    fs::write(&path, wav).unwrap();
+    let output = analyze(&[path.to_str().unwrap()]);
+    assert!(output.status.success(), "{output:?}");
+    let text = String::from_utf8(output.stdout).unwrap();
+    let summary = text
+        .split("\nSummary\n")
+        .nth(1)
+        .unwrap()
+        .split("\n\nTones\n")
+        .next()
+        .unwrap();
+    assert!(
+        summary.contains(
+            "In Right, the whole signal has loudness variation at 0.50 Hz; \
+        this is a modulation pattern."
+        ),
+        "{summary}"
+    );
+    assert!(!summary.contains("In Left,"), "{summary}");
+    let output = analyze(&[path.to_str().unwrap(), "--format", "json"]);
+    assert!(output.status.success(), "{output:?}");
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(json["output_schema_version"], 3);
+    let pulses = json["recording"]["analysis"]["pulsing"].as_array().unwrap();
+    assert!(pulses.iter().any(|p| p["channel"] == 1
+        && p["envelope_band"] == "whole"
+        && (p["hz"].as_f64().unwrap() - 0.5).abs() < 0.003
+        && p["cause"]["kind"] == "modulation"));
+    assert!(
+        !pulses
+            .iter()
+            .any(|p| p["channel"] == 0 && p["envelope_band"] == "whole")
+    );
+    assert_eq!(
+        json["recording"]["analysis"]["minimum_resolved_envelope_hz"],
+        0.5
+    );
+    let short = analyze(&[path.to_str().unwrap(), "--seconds", "2", "--format", "json"]);
+    assert!(short.status.success(), "{short:?}");
+    let short: serde_json::Value = serde_json::from_slice(&short.stdout).unwrap();
+    assert_eq!(
+        short["recording"]["analysis"]["pulsing"],
+        serde_json::json!([])
+    );
+    assert!(
+        short["recording"]["analysis"]["minimum_resolved_envelope_hz"]
+            .as_f64()
+            .unwrap()
+            > 1.9
+    );
+    let text = analyze(&[path.to_str().unwrap(), "--seconds", "2"]);
+    assert!(
+        String::from_utf8(text.stdout)
+            .unwrap()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .contains("Envelope rates below 3.91 Hz are unresolved")
+    );
+}

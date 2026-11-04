@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-11-04
+
+- Recording analysis leaves slow rates unresolved when the window cannot separate them from DC; text and JSON state the lowest resolved rate.
+- RF64 and BW64 recordings, including large WAV exports, now decode through a bounded streaming container reader.
+- Starting desktop recording analysis immediately exposes progress and Cancel; Device check answers expose their selected state to accessibility clients.
+- Invalid Library dates identify the field and calendar or midnight error beside Apply filters, retaining the previous query until correction.
+- Recording analysis detects resolved 0.5 Hz and 100 Hz envelope-range boundaries; tone and envelope range checks now use interpolated frequencies with a narrow boundary allowance.
+- Recording summaries explain beating, harmonics and modulation patterns for both channels, including additional band-specific findings and the limits of inferred intent.
+- Update bundled dependencies and release tooling, including a ring-buffer memory-safety fix and replacements for yanked packages.
+
 ## [0.11.0] - 2026-11-04
 
 - `analyze FILE` now decodes and measures audio; files that previously returned identity alone can fail. Opus, HE-AAC/SBR and 32-bit FLAC need conversion to WAV or FLAC.

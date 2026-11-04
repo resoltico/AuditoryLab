@@ -388,6 +388,8 @@ export component MainWindow inherits Window {
     in property <bool> library-trashed;
     in property <string> library-status;
     in property <string> library-alert;
+    in property <string> filter-error;
+    in property <string> filter-error-field;
     callback collection-filter(int, int);
     in property <string> library-count;
     // Committed restrictions, shown beside the results instead of in a popup.
@@ -478,6 +480,8 @@ export component MainWindow inherits Window {
         group-choice <=> root.group-choice;
         group-labels: root.group-labels;
         library-alert: root.library-alert;
+        filter-error: root.filter-error;
+        filter-error-field: root.filter-error-field;
         library-count: root.library-count;
         method-choice <=> root.method-choice;
         method-labels: root.method-labels;

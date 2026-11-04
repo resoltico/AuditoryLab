@@ -1,10 +1,13 @@
 //! Reproduce maintained patches from authenticated published archives.
 use crate::{Result, capture, run};
 use sha2::{Digest, Sha256};
-use std::{collections::BTreeMap, fs, path::Path, process::Command};
+use std::{collections::BTreeMap, fmt::Write as _, fs, path::Path, process::Command};
 
 fn digest(bytes: &[u8], expected: &str) -> Result<()> {
-    let actual = format!("{:x}", Sha256::digest(bytes));
+    let mut actual = String::with_capacity(64);
+    for byte in Sha256::digest(bytes) {
+        write!(actual, "{byte:02x}")?;
+    }
     if actual != expected {
         return Err(format!("archive SHA-256 mismatch: {actual}, expected {expected}").into());
     }
@@ -175,7 +178,9 @@ mod tests {
     }
     #[test]
     fn incorrect_archive_and_unexpected_or_missing_source_fail_closed() {
-        assert!(digest(b"changed", &format!("{:x}", Sha256::digest(b"original"))).is_err());
+        let original = "0682c5f2076f099c34cfdd15a9e063849ed437a49677e6fcc5b4198c76575be5";
+        digest(b"original", original).unwrap();
+        assert!(digest(b"changed", original).is_err());
         let a = tempfile::tempdir().unwrap();
         let b = tempfile::tempdir().unwrap();
         fs::write(a.path().join("patch.rs"), "reviewed").unwrap();

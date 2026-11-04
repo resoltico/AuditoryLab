@@ -189,6 +189,7 @@ impl Measurement {
             low_energy,
             stereo,
             spectrum,
+            minimum_resolved_envelope_hz: self.minimum_envelope_hz(),
             minimum_envelope_relative_power: MIN_ENVELOPE_RELATIVE_POWER,
             limits: vec![
                 super::MeasurementLimit::DigitalSamplesOnly,
@@ -219,6 +220,12 @@ impl Measurement {
         }
         low_energy
     }
+    // A periodic Hann main lobe extends two bins on either side. Peaks closer
+    // to DC overlap the removed mean / negative-frequency image and cannot be
+    // interpreted as resolved periodicity by three-bin interpolation.
+    fn minimum_envelope_hz(&self) -> f64 {
+        (2.0 * self.envelopes[0][0].resolution()).max(0.5)
+    }
     fn pulsing_findings(
         &mut self,
         tones: &[Tone],
@@ -226,6 +233,7 @@ impl Measurement {
     ) -> Result<Vec<Pulsing>, RecordingError> {
         let resolution = self.spectra[0].resolution();
         let envelope_resolution = self.envelopes[0][0].resolution();
+        let minimum = self.minimum_envelope_hz();
         let mut pulsing = Vec::new();
         for channel in 0..self.channels {
             for (index, band) in EnvelopeBand::ALL.into_iter().enumerate() {
@@ -234,7 +242,11 @@ impl Measurement {
                 }
                 let spectrum = &mut self.envelopes[channel][index];
                 spectrum.finish();
-                let peaks = spectrum.peaks(0.5, 100.0, 15.0);
+                let peaks = if minimum <= 100.0 {
+                    spectrum.peaks(minimum, 100.0, 15.0)
+                } else {
+                    Vec::new()
+                };
                 let band_tones: Vec<&Tone> = tones
                     .iter()
                     .filter(|tone| tone.channel == channel && band.includes(tone.hz))
@@ -304,6 +316,10 @@ struct Welch {
     since_window: usize,
     position: usize,
 }
+// Log-parabolic interpolation of a Hann peak has a small sub-bin bias.
+// Snap estimates within 0.02 bin of an inclusive search edge; reject farther outside.
+const PEAK_EDGE_TOLERANCE_BINS: f64 = 0.02;
+
 struct Peak {
     hz: f64,
     power: f64,
@@ -411,6 +427,8 @@ impl Welch {
     }
     fn peaks(&self, low: f64, high: f64, prominence_db: f64) -> Vec<Peak> {
         let resolution = self.resolution();
+        let tolerance = resolution * PEAK_EDGE_TOLERANCE_BINS;
+        let accepted = (low - tolerance)..=(high + tolerance);
         let strongest = self.psd.iter().copied().fold(0.0, f64::max);
         let mut peaks = Vec::new();
         let envelope_median = if self.centered {
@@ -426,8 +444,8 @@ impl Welch {
         for bin in 1..self.psd.len() - 1 {
             let hz = usize_f64(bin) * resolution;
             let power = self.psd[bin];
-            if hz < low
-                || hz > high
+            if hz + resolution / 2.0 < *accepted.start()
+                || hz - resolution / 2.0 > *accepted.end()
                 || power <= self.psd[bin - 1]
                 || power < self.psd[bin + 1]
                 || power <= strongest * 1e-8
@@ -461,6 +479,10 @@ impl Welch {
                 self.psd[bin + 1].max(1e-300).ln(),
             );
             let offset = (0.5 * (a - c) / (a - 2.0 * b + c)).clamp(-0.5, 0.5);
+            let interpolated = (usize_f64(bin) + offset) * resolution;
+            if !accepted.contains(&interpolated) {
+                continue;
+            }
             let integrated: f64 = self.psd
                 [bin.saturating_sub(2)..=(bin + 2).min(self.psd.len() - 1)]
                 .iter()
@@ -470,7 +492,7 @@ impl Welch {
                 continue;
             }
             peaks.push(Peak {
-                hz: (usize_f64(bin) + offset) * resolution,
+                hz: interpolated.clamp(low, high),
                 power: integrated,
             });
         }

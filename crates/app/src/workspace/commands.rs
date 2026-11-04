@@ -361,6 +361,7 @@ impl Workspace {
             cancel: crate::job::Cancel::default(),
             progress: crate::job::Progress::default(),
         });
+        self.changed();
         Ok(())
     }
     /// Last complete findings, retained through failed or cancelled re-analysis.

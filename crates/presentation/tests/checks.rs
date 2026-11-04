@@ -100,3 +100,140 @@ fn measured_findings_state_the_device_check_comparison_and_all_measurement_limit
     let without_check = recording::findings(&measured.analysis, None);
     assert!(!without_check.low_tones.contains("reported hearing"));
 }
+
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "independent synthetic samples use decoder f32 precision"
+)]
+fn summary_signal(
+    channels: usize,
+    signal: impl Fn(f64) -> [f64; 2],
+) -> auditorylab_app::recording::Analysis {
+    let mut m =
+        auditorylab_app::recording::measure::Measurement::new(8000, channels, 160_000).unwrap();
+    for frame in 0..160_000 {
+        let samples = signal(f64::from(frame) / 8000.0).map(|x| x as f32);
+        m.push(&samples[..channels]).unwrap();
+    }
+    m.finish(&auditorylab_app::job::Cancel::default()).unwrap()
+}
+fn tone(hz: f64, t: f64) -> f64 {
+    0.1 * (std::f64::consts::TAU * hz * t).sin()
+}
+
+#[test]
+fn summary_explains_beating_harmonics_and_differing_channel_modulation() {
+    let a = summary_signal(2, |t| {
+        [
+            tone(200.0, t) + tone(210.0, t),
+            tone(1000.0, t) * (1.0 + 0.8 * (std::f64::consts::TAU * 40.0 * t).cos()),
+        ]
+    });
+    let f = recording::findings(&a, None);
+    assert!(
+        f.summary.contains(
+            "In Left, the whole signal has loudness variation at 10.00 Hz; these rates match \
+        pitch differences between detected tones (beating)."
+        ),
+        "{}",
+        f.summary
+    );
+    assert!(f.summary.contains("beating harmonics"), "{}", f.summary);
+    assert!(
+        f.summary.contains(
+            "In Right, the whole signal has loudness variation at 40.00 Hz; \
+        this is a modulation pattern."
+        ),
+        "{}",
+        f.summary
+    );
+    assert!(f.summary.contains("not creator intent"));
+    assert!(
+        f.pulsing
+            .contains("beating consistent with 200.00 and 210.00 Hz")
+    );
+    assert!(f.pulsing.contains("modulation pattern"));
+    let report = Report::analyzed_recording(&auditorylab_app::recording::AnalyzedRecording {
+        file: RecordingFile {
+            path: "synthetic.wav".into(),
+            bytes: 0,
+            format: ContainerFormat::Wav,
+        },
+        analysis: a,
+    });
+    let json = serde_json::to_value(report).unwrap();
+    assert!(
+        json["recording"]["analysis"]["pulsing"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|p| p["channel"] == 1 && p["cause"]["kind"] == "modulation")
+    );
+}
+#[test]
+fn summary_includes_right_only_and_additional_band_specific_findings() {
+    let right_only = summary_signal(2, |t| {
+        [
+            tone(1000.0, t),
+            tone(1000.0, t) * (1.0 + 0.8 * (std::f64::consts::TAU * 40.0 * t).cos()),
+        ]
+    });
+    let summary = recording::findings(&right_only, None).summary;
+    assert!(
+        summary.contains(
+            "In Right, the whole signal has loudness variation at 40.00 Hz; \
+        this is a modulation pattern."
+        ),
+        "{summary}"
+    );
+    assert!(!summary.contains("In Left,"), "{summary}");
+    let a = summary_signal(2, |t| {
+        [
+            tone(1000.0, t),
+            tone(3000.0, t) * (1.0 + 0.8 * (std::f64::consts::TAU * 3.0 * t).cos())
+                + 0.4 * (tone(40.0, t) + tone(43.0, t)),
+        ]
+    });
+    let s = recording::findings(&a, None).summary;
+    assert!(s.contains("In Right, the whole signal"), "{s}");
+    assert!(
+        s.contains("In Right, the signal above 100 Hz") && s.contains("modulation pattern"),
+        "{s}"
+    );
+    assert!(!s.contains("In Left,"), "{s}");
+    assert!(
+        s.lines()
+            .any(|line| line.starts_with("In Right, the signal below 100 Hz")
+                && line.contains("18.00")
+                && line.contains("beating harmonics")),
+        "{s}"
+    );
+    assert!(
+        !s.contains("In Right, the signal below 100 Hz has loudness variation at 3.00 Hz;"),
+        "whole-band attribution already covers this rate: {s}"
+    );
+}
+#[test]
+fn summary_names_mono_modulation_and_does_not_invent_silent_rates() {
+    let a = summary_signal(1, |t| {
+        [
+            tone(1000.0, t) * (1.0 + 0.8 * (std::f64::consts::TAU * 40.0 * t).cos()),
+            0.0,
+        ]
+    });
+    let s = recording::findings(&a, None).summary;
+    assert!(
+        s.contains(
+            "In Mono, the whole signal has loudness variation at 40.00 Hz; \
+        this is a modulation pattern."
+        ),
+        "{s}"
+    );
+    assert!(
+        !s.contains("In Mono, the signal above 100 Hz"),
+        "duplicate band rate: {s}"
+    );
+    let silent = summary_signal(2, |_| [0.0; 2]);
+    let s = recording::findings(&silent, None).summary;
+    assert!(!s.contains("loudness variation"), "{s}");
+}

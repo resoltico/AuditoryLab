@@ -91,6 +91,8 @@ export component DeviceCheckPane inherits Rectangle {
                         for choice in test.answers: Button {
                             text: choice.label;
                             primary: choice.selected;
+                            accessible-checkable: true;
+                            accessible-checked: choice.selected;
                             accessible-description: test.label;
                             triggered => { root.answer-test(test.key, choice.key); }
                         }

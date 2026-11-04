@@ -210,3 +210,96 @@ fn beating_attribution_respects_the_measured_band() {
                 && matches!(p.cause, PulsingCause::Beating { harmonic: 1, .. }))
     );
 }
+
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "independent test samples quantized to f32"
+)]
+fn boundary_signal(hz: f64, modulation: bool) -> Analysis {
+    let mut m = Measurement::new(8000, 1, 160_000).unwrap();
+    for frame in 0..160_000 {
+        let t = f64::from(frame) / 8000.0;
+        let sample = if modulation {
+            sine(1000.0, t) * (1.0 + 0.8 * (std::f64::consts::TAU * hz * t).cos())
+        } else {
+            sine(hz, t)
+        };
+        m.push(&[sample as f32]).unwrap();
+    }
+    m.finish(&Cancel::default()).unwrap()
+}
+#[test]
+fn envelope_range_includes_both_interpolated_boundaries() {
+    for hz in [0.5, 0.51, 99.99, 100.0] {
+        let a = boundary_signal(hz, true);
+        assert!(
+            a.pulsing
+                .iter()
+                .any(|p| p.envelope_band == EnvelopeBand::Whole && (p.hz - hz).abs() < 0.003),
+            "{hz}: {:?}",
+            a.pulsing
+        );
+        assert!(a.pulsing.iter().all(|p| (0.5..=100.0).contains(&p.hz)));
+    }
+}
+#[test]
+fn envelope_range_rejects_nearby_outside_rates() {
+    for hz in [0.49, 100.01] {
+        let a = boundary_signal(hz, true);
+        assert!(
+            !a.pulsing
+                .iter()
+                .any(|p| p.envelope_band == EnvelopeBand::Whole && (p.hz - hz).abs() < 0.02),
+            "{hz}: {:?}",
+            a.pulsing
+        );
+    }
+}
+#[test]
+fn tone_ceiling_is_checked_after_interpolation() {
+    for hz in [1999.99, 2000.0] {
+        let a = boundary_signal(hz, false);
+        assert!(
+            a.tones.iter().any(|t| (t.hz - hz).abs() < 0.002),
+            "{hz}: {:?}",
+            a.tones
+        );
+    }
+    let a = boundary_signal(2000.01, false);
+    assert!(!a.tones.iter().any(|t| t.hz > 1999.9), "{:?}", a.tones);
+}
+
+#[test]
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "test samples quantized to decoder precision"
+)]
+fn short_envelopes_keep_unresolved_trends_out_of_periodic_findings() {
+    for rate in [8000, 48000] {
+        for seconds in [2, 4] {
+            for hz in [0.2, 0.5, 40.0] {
+                for phase in [0.0, 0.7, 1.9] {
+                    let frames = rate * seconds;
+                    let mut m = Measurement::new(rate, 1, u64::from(frames)).unwrap();
+                    for n in 0..frames {
+                        let t = f64::from(n) / f64::from(rate);
+                        let x = sine(1000.0, t)
+                            * (1.0 + 0.8 * (std::f64::consts::TAU * hz * t + phase).cos());
+                        m.push(&[x as f32]).unwrap();
+                    }
+                    let a = m.finish(&Cancel::default()).unwrap();
+                    assert!(a.minimum_resolved_envelope_hz > 0.5);
+                    if hz < 1.0 {
+                        assert!(
+                            a.pulsing.is_empty(),
+                            "{rate}/{seconds}/{hz}/{phase}: {:?}",
+                            a.pulsing
+                        );
+                    } else {
+                        assert!(a.pulsing.iter().any(|p| (p.hz - 40.0).abs() < 0.05));
+                    }
+                }
+            }
+        }
+    }
+}

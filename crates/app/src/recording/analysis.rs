@@ -134,6 +134,8 @@ pub struct Analysis {
     pub envelope_window: AnalysisWindow,
     pub resolution_hz: f64,
     pub envelope_resolution_hz: f64,
+    /// Rates below this frequency are unresolved, not absent.
+    pub minimum_resolved_envelope_hz: f64,
     pub minimum_envelope_relative_power: f64,
     pub tones: Vec<Tone>,
     pub ear_differences: Vec<EarDifference>,

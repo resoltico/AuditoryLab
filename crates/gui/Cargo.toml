@@ -14,7 +14,7 @@ auditorylab-presentation.workspace = true
 auditorylab-app.workspace = true
 slint.workspace = true
 rfd.workspace = true
-fontique = "=0.11.1"
+fontique = "=0.12.0"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 block2 = "=0.6.2"
@@ -24,7 +24,7 @@ objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libloading = "=0.9.0"
-zbus = "=6.0.0"
+zbus = "=6.2.1"
 async-io = "=2.6.0"
 futures-lite = "=2.6.1"
 

@@ -4,7 +4,7 @@ use crate::discovery::collection::DateRange;
 use crate::discovery::query::QueryError as Error;
 use chrono::{Local, NaiveDate, TimeZone};
 
-use crate::discovery::query::CalendarField;
+use crate::discovery::query::{CalendarField, LocalDateProblem};
 
 /// Convert inclusive YYYY-MM-DD calendar bounds in the current native timezone.
 /// The upper bound is the next local midnight, including DST offset changes.
@@ -36,23 +36,34 @@ fn in_zone<T: TimeZone>(
         if text.trim().is_empty() {
             return Ok(None);
         }
-        let invalid = || Error::LocalDate { value: text.into() };
-        let date = NaiveDate::parse_from_str(text, "%Y-%m-%d").map_err(|_| invalid())?;
+        let invalid = |problem| Error::LocalDate {
+            field,
+            through: next,
+            value: text.into(),
+            problem,
+        };
+        let date = NaiveDate::parse_from_str(text, "%Y-%m-%d")
+            .map_err(|_| invalid(LocalDateProblem::InvalidDate))?;
         if date.format("%Y-%m-%d").to_string() != text {
-            return Err(invalid());
+            return Err(invalid(LocalDateProblem::InvalidDate));
         }
         let date = if next {
-            date.succ_opt().ok_or_else(invalid)?
+            date.succ_opt()
+                .ok_or_else(|| invalid(LocalDateProblem::OutOfRange))?
         } else {
             date
         };
         let midnight = zone
-            .from_local_datetime(&date.and_hms_opt(0, 0, 0).ok_or_else(invalid)?)
+            .from_local_datetime(
+                &date
+                    .and_hms_opt(0, 0, 0)
+                    .ok_or_else(|| invalid(LocalDateProblem::OutOfRange))?,
+            )
             .single()
-            .ok_or_else(invalid)?;
+            .ok_or_else(|| invalid(LocalDateProblem::Midnight))?;
         Timestamp::from_unix(midnight.timestamp(), 0)
             .map(Some)
-            .ok_or_else(invalid)
+            .ok_or_else(|| invalid(LocalDateProblem::OutOfRange))
     };
     let range = DateRange {
         from: boundary(from, false)?,
@@ -79,7 +90,14 @@ mod tests {
             Self
         }
         fn offset_from_local_date(&self, date: &NaiveDate) -> LocalResult<FixedOffset> {
-            LocalResult::Single(self.offset_from_utc_date(date))
+            if (date.month(), date.day()) == (12, 1) {
+                LocalResult::Ambiguous(
+                    FixedOffset::east_opt(7200).unwrap(),
+                    FixedOffset::east_opt(10800).unwrap(),
+                )
+            } else {
+                LocalResult::Single(self.offset_from_utc_date(date))
+            }
         }
         fn offset_from_local_datetime(&self, date: &NaiveDateTime) -> LocalResult<FixedOffset> {
             self.offset_from_local_date(&date.date())
@@ -97,6 +115,19 @@ mod tests {
         fn offset_from_utc_datetime(&self, date: &NaiveDateTime) -> FixedOffset {
             self.offset_from_utc_date(&date.date())
         }
+    }
+    #[test]
+    fn invalid_calendar_bounds_keep_field_side_value_and_reason() {
+        assert!(
+            matches!(in_zone(&Transition, CalendarField::Created, "2026-02-30", ""),
+            Err(Error::LocalDate { field: CalendarField::Created, through: false,
+                problem: LocalDateProblem::InvalidDate, value }) if value == "2026-02-30")
+        );
+        assert!(
+            matches!(in_zone(&Transition, CalendarField::Added, "", "2026-11-30"),
+            Err(Error::LocalDate { field: CalendarField::Added, through: true,
+                problem: LocalDateProblem::Midnight, value }) if value == "2026-11-30")
+        );
     }
     #[test]
     fn inclusive_calendar_days_use_next_local_midnight_not_24_hours() {

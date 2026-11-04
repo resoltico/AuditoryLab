@@ -166,13 +166,25 @@ pub enum QueryError {
     /// A study identity is empty or malformed.
     Study { value: String },
     /// A local date or midnight cannot be resolved uniquely.
-    LocalDate { value: String },
+    LocalDate {
+        field: CalendarField,
+        through: bool,
+        value: String,
+        problem: LocalDateProblem,
+    },
     /// A local through date predates its from date.
     LocalOrder {
         field: crate::discovery::query::CalendarField,
         from: String,
         through: String,
     },
+}
+/// Why a local calendar bound could not be resolved.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LocalDateProblem {
+    InvalidDate,
+    Midnight,
+    OutOfRange,
 }
 impl QueryError {
     /// Failure category.
@@ -230,8 +242,20 @@ crate::core::diagnostic_codes! {
                         "before"=>before.to_string(),
                     }
                 }
-                Self::Study { value } | Self::LocalDate { value } => {
+                Self::Study { value } => {
                     crate::core::diagnostic_params! {"value"=>value.clone()}
+                }
+                Self::LocalDate { field, through, value, problem } => {
+                    crate::core::diagnostic_params! {
+                        "field"=>field.key(),
+                        "through"=>*through,
+                        "value"=>value.clone(),
+                        "reason"=>match problem {
+                            LocalDateProblem::InvalidDate => "invalid_date",
+                            LocalDateProblem::Midnight => "nonunique_midnight",
+                            LocalDateProblem::OutOfRange => "out_of_range",
+                        },
+                    }
                 }
                 Self::LocalOrder {
                     field,

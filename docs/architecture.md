@@ -64,6 +64,14 @@ Teaching construction projections compile component forms without recipe UUIDs, 
 
 The [onboarding preference](../crates/app/src/onboarding.rs) stores one seen flag under the native application configuration identity. GUI startup reads it before installing the workspace; an app-owned deliberate-departure effect publishes it atomically without replacing existing content. It is independent of library resolution; `--version` returns before startup UI and device work. Unknown bytes and publication failures remain nonblocking. Problems retain the actual path, operation and typed filesystem cause; shared presentation supplies actionable native notices. A bounded trigger opens selectable full details without moving the reading layout; the popup retains the same explicit Stop/Cancel actions as the guide footer. Learning reference URLs are app-owned typed choices independent of release-document URL fallbacks.
 
+## Recording analysis
+
+The CLI captures an analysis request directly; the desktop first identifies an admitted local file and starts a captured file task. [Recording storage](../crates/app/src/storage/recording/decode.rs) owns the opened handle, codec admission, decoded timeline, cancellation and bounded packet delivery. Symphonia performs sample decoding; the [dependency integration](../third_party/README.md) defines the maintained AAC and RIFF reader patches.
+
+[Measurement](../crates/app/src/recording/measure.rs) owns Welch spectra, interpolated peak admission, analytic envelopes, resolution-dependent rate admission, attribution and stereo/energy statistics. Its [typed result](../crates/app/src/recording/analysis.rs) carries findings and measurement limits independently of presentation. [Shared recording presentation](../crates/presentation/src/recording.rs) explains those results; GUI charts project the same bounded spectrum and energy data. [Formats](formats.md#recording-measurements) defines the numerical contract.
+
+Starting desktop analysis advances workspace revision so action availability, progress visibility and Cancel immediately reflect the occupied file slot. Progress updates use the existing worker notification path. Only joined completion releases the slot. Failed or cancelled re-analysis retains the last complete report; opening a different recording clears it. Device-check answers add interpretation without changing measured samples or findings.
+
 ## One CLI command end to end
 
 For `auditorylab list --collection builtin --band alpha --format json`:

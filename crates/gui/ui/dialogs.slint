@@ -35,6 +35,8 @@ export component Dialogs inherits Rectangle {
     in-out property <int> group-choice;
     in property <[string]> group-labels;
     in property <string> library-alert;
+    in property <string> filter-error;
+    in property <string> filter-error-field;
     in property <string> library-count;
     in-out property <int> method-choice;
     in property <[string]> method-labels;
@@ -233,48 +235,61 @@ export component Dialogs inherits Rectangle {
 
                         LineEdit {
                             text <=> root.created-from;
+                            accessible-description: root.filter-error-field == "created"
+                                ? root.filter-error : "";
                             placeholder-text: ViewCaptions.created-from-yyyy-mm-dd;
                             accessible-label: ViewCaptions.created-from-local-calendar-date;
                         }
 
                         LineEdit {
                             text <=> root.created-through;
+                            accessible-description: root.filter-error-field == "created"
+                                ? root.filter-error : "";
                             placeholder-text: ViewCaptions.created-through-yyyy-mm-dd;
                             accessible-label: ViewCaptions.created-through-date;
                         }
 
                         LineEdit {
                             text <=> root.modified-from;
+                            accessible-description: root.filter-error-field == "modified"
+                                ? root.filter-error : "";
                             placeholder-text: ViewCaptions.modified-from-yyyy-mm-dd;
                             accessible-label: ViewCaptions.modified-from-local-calendar-date;
                         }
 
                         LineEdit {
                             text <=> root.modified-through;
+                            accessible-description: root.filter-error-field == "modified"
+                                ? root.filter-error : "";
                             placeholder-text: ViewCaptions.modified-through-yyyy-mm-dd;
                             accessible-label: ViewCaptions.modified-through-date;
                         }
 
                         LineEdit {
                             text <=> root.added-from;
+                            accessible-description: root.filter-error-field == "added"
+                                ? root.filter-error : "";
                             placeholder-text: ViewCaptions.added-here-from-yyyy-mm-dd;
                             accessible-label: ViewCaptions.added-from-date;
                         }
 
                         LineEdit {
                             text <=> root.added-through;
+                            accessible-description: root.filter-error-field == "added"
+                                ? root.filter-error : "";
                             placeholder-text: ViewCaptions.added-here-through-yyyy-mm-dd;
                             accessible-label: ViewCaptions.added-through-date;
                         }
-
-                        if root.library-alert != "": Text {
-                            text: root.library-alert;
-                            wrap: word-wrap;
-                            min-width: 0px;
-                            vertical-stretch: 0;
-                            accessible-live-region: polite;
-                        }
                     }
+                }
+
+                if root.filter-error != "": Text {
+                    text: root.filter-error;
+                    wrap: word-wrap;
+                    min-width: 0px;
+                    vertical-stretch: 0;
+                    accessible-role: text;
+                    accessible-live-region: polite;
                 }
 
                 HorizontalBox {

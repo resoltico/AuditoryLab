@@ -1,6 +1,6 @@
 # Dependency integration
 
-The workspace patches the native toolkit for accessibility, focus, multiline editing, modeless windows and macOS application menus, and the AAC decoder to refuse unsupported profiles and SBR rather than report an incomplete LC-only decode. Font shaping and X11 DPI use the toolkit's upstream policy. The application embeds no fonts and uses system fonts; on Linux, Winit's Wayland window decorations embed the Cantarell title font, which packaging credits under its SIL Open Font License.
+The workspace patches the native toolkit for accessibility, focus, multiline editing, modeless windows and macOS application menus, the RIFF reader for bounded RF64/BW64 lengths, and the AAC decoder to refuse unsupported profiles and SBR rather than report an incomplete LC-only decode. Font shaping and X11 DPI use the toolkit's upstream policy. The application embeds no fonts and uses system fonts; on Linux, Winit's Wayland window decorations embed the Cantarell title font, which packaging credits under its SIL Open Font License.
 
 [patches.toml](patches.toml) defines archive URLs, versions and SHA-256 digests. [patches/](patches/) contains the exact unified diffs. Vendored source must equal its authenticated archive with the corresponding patch applied. Each vendored package includes its authenticated archive’s `Cargo.lock`.
 
@@ -14,6 +14,7 @@ The verifier authenticates archives before extraction, compares every source byt
 
 | Patch | Retirement condition | Proof required on the replacement |
 | --- | --- | --- |
+| Symphonia RIFF | Upstream reads RF64/BW64 ds64 lengths with checked bounds and bounded table metadata. | RF64/BW64 export-sample equivalence, invalid-size refusals and sparse seeking beyond 4 GiB in [recording decoder tests](../crates/app/src/storage/recording/decode/tests.rs). |
 | Symphonia AAC | Upstream rejects non-LC ADTS profiles and in-band SBR before returning incomplete samples. | The AAC-profile and in-band SBR service refusals in [recording decoder tests](../crates/app/src/storage/recording/decode/tests.rs), with AAC-LC fixture positive controls. |
 | AccessKit Unix | A compatible Slint/AccessKit graph resolves `accesskit_unix` 0.24.1 or newer and emits each cache payload as one structured D-Bus argument. | Linux `cache_add_carries_one_complete_struct_argument` and `cache_remove_carries_one_object_reference_struct` in [bus.rs](accesskit_unix/src/atspi/bus.rs); removed/reinserted accessible controls refresh correctly. |
 | Slint core | Upstream provides equivalent aggregate modifier synchronization, complete shaped multiline extents/cursor height, semantic focus reveal, key focus for scroll-clipped editors and active-row focus validation. Retire individual hunks only when their behavior is covered. | `platform_modifiers_drive_text_shortcuts`, `text_edit_cursor_scrolls_into_view`, `control_focus_scrolls_into_view` and `partly_scrolled_editor_keeps_focus_through_keys` in [window tests](../crates/gui/src/window_tests.rs), plus both [focus/reflow tests](../crates/gui/src/focus_reflow_tests.rs) and retired-row callback tests in [adapter tests](../crates/gui/src/adapter_tests.rs). |

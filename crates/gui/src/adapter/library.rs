@@ -5,6 +5,7 @@ use super::{
 };
 use auditorylab_app::document::origin::LibraryKey;
 use auditorylab_app::workspace::{ChoiceView, FacetCounts, QueryFacet};
+use auditorylab_presentation::Explain;
 
 struct EntryHandles(Vec<Option<auditorylab_app::workspace::EntryHandle>>);
 impl slint::Model for EntryHandles {
@@ -274,6 +275,16 @@ impl SlintAdapter {
             ui.set_library_status(read_only(
                 &auditorylab_presentation::library::workspace_library_status(w),
             ));
+            let filter = w.library_data().filter_error;
+            ui.set_filter_error(filter.map_or_else(Default::default, |e| read_only(&e.explain())));
+            let field = match filter {
+                Some(
+                    auditorylab_app::discovery::query::QueryError::LocalDate { field, .. }
+                    | auditorylab_app::discovery::query::QueryError::LocalOrder { field, .. },
+                ) => field.key(),
+                _ => "",
+            };
+            ui.set_filter_error_field(field.into());
             ui.set_library_alert(read_only(
                 &auditorylab_presentation::library::workspace_library_alert(w),
             ));

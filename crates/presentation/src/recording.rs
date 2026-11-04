@@ -1,5 +1,8 @@
 //! An opened recording's identity, as text.
-use auditorylab_app::recording::RecordingFile;
+use auditorylab_app::recording::{EnvelopeBand, RecordingFile};
+
+const PULSING_ATTRIBUTION_LIMIT: &str =
+    "Beating/modulation labels describe spectral patterns, not creator intent.";
 
 /// What recording analysis reports about the audio itself.
 pub const MEASUREMENTS: &str =
@@ -54,7 +57,6 @@ pub struct Findings {
 }
 /// Render findings from samples alone. Device-check answers add context, never change measurements.
 pub fn findings(a: &auditorylab_app::recording::Analysis, lowest: Option<f64>) -> Findings {
-    use auditorylab_app::recording::EnvelopeBand;
     let facts = format!(
         "{} · {} Hz · {} channel(s) · {:.1} s\n\
         Analyzed: {:.1}–{:.1} s · resolution {:.3} Hz · envelope {:.3} Hz\n\
@@ -82,19 +84,14 @@ pub fn findings(a: &auditorylab_app::recording::Analysis, lowest: Option<f64>) -
         summary.push("No tones met the detection thresholds.".into());
     }
     summary.push(ears.clone());
-    let rates: Vec<String> = a
-        .pulsing
-        .iter()
-        .filter(|p| p.channel == 0 && p.envelope_band == EnvelopeBand::Whole)
-        .map(|p| format!("{:.2}", p.hz))
-        .collect();
-    if !rates.is_empty() {
+    if a.minimum_resolved_envelope_hz > 0.5 {
         summary.push(format!(
-            "The loudness rises and falls at {} Hz in {}.",
-            rates.join(", "),
-            channel_label(0, a.channels)
+            "Envelope rates below {:.2} Hz are unresolved in this analysis; \
+            use a longer window when possible. No rates in that region are classified.",
+            a.minimum_resolved_envelope_hz
         ));
     }
+    summary.extend(pulsing_summary(a));
     if let Some(share) = a
         .low_energy
         .iter()
@@ -179,6 +176,71 @@ fn ear_findings(a: &auditorylab_app::recording::Analysis) -> String {
             .join("\n")
     }
 }
+fn pulsing_summary(a: &auditorylab_app::recording::Analysis) -> Vec<String> {
+    use auditorylab_app::recording::PulsingCause;
+    let mut sentences = Vec::new();
+    for channel in 0..a.channels {
+        let whole: Vec<_> = a
+            .pulsing
+            .iter()
+            .filter(|p| p.channel == channel && p.envelope_band == EnvelopeBand::Whole)
+            .collect();
+        for band in EnvelopeBand::ALL {
+            let mut beating = Vec::new();
+            let mut harmonics = Vec::new();
+            let mut modulation = Vec::new();
+            for p in a
+                .pulsing
+                .iter()
+                .filter(|p| p.channel == channel && p.envelope_band == band)
+            {
+                // Keep distinct attributions at the same rate. Filtered bands add
+                // information when the whole-band finding does not already cover it.
+                if band != EnvelopeBand::Whole
+                    && whole.iter().any(|w| {
+                        w.cause == p.cause && (w.hz - p.hz).abs() <= a.envelope_resolution_hz
+                    })
+                {
+                    continue;
+                }
+                let rate = format!("{:.2}", p.hz);
+                match p.cause {
+                    PulsingCause::Beating { harmonic: 1, .. } => beating.push(rate),
+                    PulsingCause::Beating { .. } => harmonics.push(rate),
+                    PulsingCause::Modulation => modulation.push(rate),
+                }
+            }
+            let scope = match band {
+                EnvelopeBand::Whole => "the whole signal",
+                EnvelopeBand::Below100 => "the signal below 100 Hz",
+                EnvelopeBand::Above100 => "the signal above 100 Hz",
+            };
+            for (rates, meaning) in [
+                (
+                    beating,
+                    "these rates match pitch differences between detected tones (beating)",
+                ),
+                (
+                    harmonics,
+                    "these rates match multiples of pitch differences (beating harmonics)",
+                ),
+                (modulation, "this is a modulation pattern"),
+            ] {
+                if !rates.is_empty() {
+                    sentences.push(format!(
+                        "In {}, {scope} has loudness variation at {} Hz; {meaning}.",
+                        channel_label(channel, a.channels),
+                        rates.join(", ")
+                    ));
+                }
+            }
+        }
+    }
+    if !sentences.is_empty() {
+        sentences.push(PULSING_ATTRIBUTION_LIMIT.into());
+    }
+    sentences
+}
 fn pulsing_findings(a: &auditorylab_app::recording::Analysis) -> String {
     use auditorylab_app::recording::{EnvelopeBand, PulsingCause};
     if a.pulsing.is_empty() {
@@ -250,10 +312,12 @@ fn low_tone_findings(a: &auditorylab_app::recording::Analysis, lowest: Option<f6
 fn analysis_limits(a: &auditorylab_app::recording::Analysis) -> String {
     format!(
         "Window {:.1}–{:.1} s; tone resolution {:.3} Hz; envelope resolution {:.3} Hz. \
-        {}. Digital samples only; device output and hearing are not measured. Quiet pairs \
-        under other sounds may be missed. Beating/modulation labels describe spectral \
-        patterns, not creator intent; symmetric sidebands can also be synthesized as \
-        separate tones. Peaks below −80 dB relative to the strongest are omitted. \
+        Envelope rates below {minimum:.2} Hz are unresolved. {}. Digital samples only; \
+        device output and hearing are not measured. \
+        Quiet pairs \
+        under other sounds may be missed. {PULSING_ATTRIBUTION_LIMIT} \
+        Symmetric sidebands can also be synthesized as separate tones. \
+        Peaks below −80 dB relative to the strongest are omitted. \
         Envelope peaks below {contrast:.0} dB of squared mean amplitude are omitted. \
         The analytic envelope excludes DC and FFT window edges. \
         Only the selected window is measured; later corruption may not be found. \
@@ -267,6 +331,7 @@ fn analysis_limits(a: &auditorylab_app::recording::Analysis) -> String {
         } else {
             "Lossless decoded samples"
         },
+        minimum = a.minimum_resolved_envelope_hz,
         contrast = 10.0 * a.minimum_envelope_relative_power.log10(),
     )
 }

@@ -291,8 +291,23 @@ fn query_text(error: &QueryError) -> String {
         QueryError::Study { .. } => {
             "study must be a nonempty source key or valid DOI identity".into()
         }
-        QueryError::LocalDate { .. } => {
-            "Use YYYY-MM-DD dates with a unique local midnight and an ordered range.".into()
+        QueryError::LocalDate {
+            field,
+            through,
+            value,
+            problem,
+        } => {
+            use auditorylab_app::discovery::query::LocalDateProblem;
+            let bound = if *through { "through" } else { "from" };
+            let reason = match problem {
+                LocalDateProblem::InvalidDate => "must be a valid calendar date in YYYY-MM-DD form",
+                LocalDateProblem::Midnight => "has an ambiguous or nonexistent local midnight",
+                LocalDateProblem::OutOfRange => "is outside the supported calendar range",
+            };
+            format!(
+                "{} {bound} ({value}) {reason}. Previous filters remain applied.",
+                field.label()
+            )
         }
         QueryError::LocalOrder {
             field,

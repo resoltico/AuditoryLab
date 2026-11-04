@@ -33,3 +33,9 @@ name = "symphonia-codec-aac"
 version = "0.6.1"
 url = "https://static.crates.io/crates/symphonia-codec-aac/symphonia-codec-aac-0.6.1.crate"
 sha256 = "f5bf8e39552d34a3c4c98333370e62f48c92456d2e814f273b5c3ad7c4a5f45c"
+
+[[patch]]
+name = "symphonia-format-riff"
+version = "0.6.1"
+url = "https://static.crates.io/crates/symphonia-format-riff/symphonia-format-riff-0.6.1.crate"
+sha256 = "1ff70929083a8c1a5f6cd7c904b6071c7914ad04739b510c2f7239dfc9b7dabe"

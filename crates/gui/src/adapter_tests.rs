@@ -2241,6 +2241,34 @@ fn reveal_library_control(h: &Harness, prefix: &str) -> ItemRc {
     panic!("control {prefix} did not scroll into view");
 }
 
+fn assert_filter_error_visible_and_accessible(h: &Harness) {
+    let ui = h.ui();
+    for (width, height, size) in [(1280_u16, 900_u16, 13.0), (680, 600, 26.0)] {
+        ui.set_ui_size(size);
+        ui.window()
+            .set_size(slint::LogicalSize::new(f32::from(width), f32::from(height)));
+        h.settle();
+        // find_control searches the active popup before the underlying results.
+        let explanation = labelled(ui, ui.get_filter_error().as_str());
+        let geometry = explanation.geometry();
+        let origin = explanation.map_to_native_window(geometry.origin);
+        assert!(origin.x >= 0.0 && origin.y >= 0.0);
+        assert!(origin.y + geometry.size.height <= f32::from(height));
+        assert!(origin.x + geometry.size.width <= f32::from(width));
+        let apply = centre(&labelled(ui, "Apply filters"));
+        assert!(apply.x < f32::from(width) && apply.y < f32::from(height));
+    }
+    ui.set_ui_size(13.0);
+    ui.window().set_size(slint::LogicalSize::new(800.0, 900.0));
+    h.settle();
+    assert_eq!(
+        labelled(ui, "Created from local calendar date")
+            .accessible_string_property(AccessibleStringProperty::Description)
+            .as_deref(),
+        Some(ui.get_filter_error().as_str())
+    );
+}
+
 #[test]
 fn compact_empty_filters_and_recovery_remain_reachable_through_real_controls() {
     use slint::private_unstable_api::re_exports::AccessibilityAction;
@@ -2307,6 +2335,11 @@ fn compact_empty_filters_and_recovery_remain_reachable_through_real_controls() {
         ui.get_library_tools_open(),
         "invalid filters stay open for correction"
     );
+    assert!(
+        ui.get_filter_error()
+            .contains("Created from (invalid) must be a valid calendar date")
+    );
+    assert_filter_error_visible_and_accessible(&h);
     ui.invoke_close_library_filters();
     h.settle();
     assert!(!ui.get_library_detail());
@@ -6197,9 +6230,39 @@ fn device_check_and_recordings_tabs_drive_their_production_callbacks() {
             .unwrap()
             .selected
     );
+    let choice = || {
+        find_control(ui, |item| {
+            item.accessible_string_property(AccessibleStringProperty::Label)
+                .as_deref()
+                == Some("Left only")
+                && item
+                    .accessible_string_property(AccessibleStringProperty::Description)
+                    .as_deref()
+                    == Some("Left channel")
+        })
+        .unwrap()
+    };
+    assert_eq!(
+        choice()
+            .accessible_string_property(AccessibleStringProperty::Checkable)
+            .as_deref(),
+        Some("true")
+    );
+    assert_eq!(
+        choice()
+            .accessible_string_property(AccessibleStringProperty::Checked)
+            .as_deref(),
+        Some("true")
+    );
     ui.invoke_clear_device_answers();
     h.settle();
     assert!(!h.adapter.inspect(|w| w.device_check_view().answered));
+    assert_eq!(
+        choice()
+            .accessible_string_property(AccessibleStringProperty::Checked)
+            .as_deref(),
+        Some("false")
+    );
 
     ui.invoke_tab_changed(3);
     h.settle();
@@ -6239,12 +6302,19 @@ fn recording_analysis_callbacks_project_all_findings_at_compact_large_text_size(
     h.wait_for_files();
     h.settle();
     ui.invoke_analyze_recording("2".into());
+    assert!(
+        ui.get_analyzing_recording(),
+        "start must project before completion"
+    );
     h.wait_for_files();
     h.settle();
     assert!(ui.get_has_recording_analysis());
     let findings = ui.get_recording_findings();
     assert!(findings.tones.contains("1000.0"), "{}", findings.tones);
     assert!(findings.limits.contains("Digital samples only"));
+    assert!(findings.summary.contains("In Right, the whole signal"));
+    assert!(findings.summary.contains("modulation pattern"));
+    assert!(findings.summary.contains("not creator intent"));
     assert!(!findings.left_trace.is_empty());
     assert_eq!(ui.get_recording_energy().row_count(), 8);
     for (width, height, size) in [(1280, 900, 13.0), (680, 600, 26.0)] {
