@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-04
+
 - `analyze FILE` now decodes and measures audio; files that previously returned identity alone can fail. Opus, HE-AAC/SBR and 32-bit FLAC need conversion to WAV or FLAC.
 - Recordings shows tones, channel differences, pulsing, low-tone energy and stereo levels, with native charts, cancellable analysis and a window-length field.
 - CLI `--seconds N` selects analysis length; schema-3 JSON adds `recording.analysis` and the `caf` container key. Reports state the actual window, resolution, codec loss and measurement limits.
