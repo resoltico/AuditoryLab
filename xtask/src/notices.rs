@@ -46,7 +46,7 @@ fn source_location(package: &Value, name: &str, version: &str) -> Result<String>
         Some("registry+https://github.com/rust-lang/crates.io-index") => {
             Ok(format!("https://crates.io/crates/{name}/{version}"))
         }
-        // Patched toolkit sources are part of this repository's corresponding source.
+        // Patched dependency sources are part of this repository's corresponding source.
         None => Ok("Auditory Lab corresponding source (SOURCE.txt)".into()),
         Some(other) => {
             Err(format!("{name} {version} comes from unsupported source {other}").into())

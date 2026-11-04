@@ -187,3 +187,14 @@ pub use crate::storage::warning::StorageWarning;
 
 #[cfg(test)]
 mod tests;
+
+/// Decode and measure a captured window without opening an audio device.
+/// Cancellation or failure returns no partial report.
+pub fn analyze_recording(
+    path: &Path,
+    options: crate::recording::AnalysisOptions,
+    cancel: &Cancel,
+    progress: &Progress,
+) -> Result<crate::recording::AnalyzedRecording, crate::recording::RecordingError> {
+    crate::storage::recording::analyze(path, options, cancel, progress)
+}

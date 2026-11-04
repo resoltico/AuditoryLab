@@ -279,6 +279,8 @@ report_struct!(RecordingReport {
     path: PathBuf,
     bytes: u64,
     format: auditorylab_app::recording::ContainerFormat,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    analysis: Option<auditorylab_app::recording::Analysis>,
 });
 impl Report {
     fn new(operation: Operation, complete: bool) -> Self {
@@ -310,7 +312,16 @@ impl Report {
             path: recording.path.clone(),
             bytes: recording.bytes,
             format: recording.format,
+            analysis: None,
         });
+        report
+    }
+    /// Measurements added to the existing schema-3 recording identity.
+    pub fn analyzed_recording(recording: &auditorylab_app::recording::AnalyzedRecording) -> Self {
+        let mut report = Self::recording(&recording.file);
+        if let Some(file) = &mut report.recording {
+            file.analysis = Some(recording.analysis.clone());
+        }
         report
     }
     fn with_entries(mut self, entries: Vec<EntryReport>) -> Self {

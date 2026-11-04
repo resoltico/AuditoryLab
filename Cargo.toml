@@ -17,6 +17,8 @@ product-name = "Auditory Lab"
 copyright = "Copyright © 2026 Ervins Strauhmanis"
 
 [workspace.dependencies]
+realfft = { version = "=3.5.1", default-features = false }
+symphonia = { version = "=0.6.1", default-features = false, features = ["wav", "aiff", "flac", "mp3", "aac", "isomp4", "ogg", "vorbis", "mkv", "pcm", "alac", "caf"] }
 auditorylab-presentation = { path = "crates/presentation" }
 same-file = "1"
 cap-std = "4"
@@ -126,3 +128,5 @@ i-slint-core = { path = "third_party/i-slint-core" }
 i-slint-compiler = { path = "third_party/i-slint-compiler" }
 i-slint-backend-winit = { path = "third_party/i-slint-backend-winit" }
 winit = { path = "third_party/winit" }
+# Reject unsupported AAC profiles and SBR before reporting incomplete decoded audio.
+symphonia-codec-aac = { path = "third_party/symphonia-codec-aac" }

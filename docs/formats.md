@@ -136,7 +136,7 @@ These are the vocabulary keys used by queries, portable choices and JSON values.
 | `channel_routing` | `both`, `left`, `right` |
 | `completeness` | `complete`, `invalid` |
 | `condition_role` | `test`, `comparison`, `mixed`, `unspecified` |
-| `container_format` | `wav`, `aiff`, `flac`, `mp3`, `adts_aac`, `mp4`, `ogg`, `matroska`, `unknown` |
+| `container_format` | `wav`, `aiff`, `flac`, `mp3`, `adts_aac`, `mp4`, `ogg`, `matroska`, `caf`, `unknown` |
 | `device_answer` | `left`, `right`, `both`, `heard`, `not_heard` |
 | `device_test` | `left_channel`, `right_channel`, `tone_100_hz`, `tone_60_hz`, `tone_40_hz` |
 | `direction` | `asc`, `desc` |
@@ -169,7 +169,7 @@ Every envelope contains `output_schema_version`, `operation`, `complete`, `conve
 | Initialization | Root result and published/unchanged `status`. |
 | Library check | Bounded inventory, diagnostics and retained stages. |
 | Mutation | Confirmed `status`, `selector`, `version_token`, affected entry and diagnostics. |
-| Analyze recording | `recording` with the opened `path`, size in `bytes` and recognized container `format`. |
+| Analyze recording | `recording` with opened `path`, size in `bytes`, recognized container `format` and optional `analysis` findings. |
 | Failure | Outcome `status` and operation diagnostics. |
 
 The [diagnostic contract](#diagnostic-codes) applies to nominal diagnostics, rate-validation diagnostics, declared-history warnings and publication warnings. Inspection exposes generator lanes under `voices`; authored components remain in recipe TOML. Pulse facts retain requested width mode/quantity and shape, resolved window/edge frames, and rate. Pair facts retain signed requested and resolved differences; unresolved pair checks have no resolved difference. Digital routes use `route`, and peak diagnostics name a `channel`.
@@ -320,6 +320,13 @@ For example, an out-of-range rate reports `sample_rate.range` with `hz`, `min_hz
 | `query.range_order` |
 | `query.study` |
 | `query.temporary_files_scope` |
+| `recording.cancelled` |
+| `recording.decode` |
+| `recording.invalid_window` |
+| `recording.no_audio_track` |
+| `recording.too_short` |
+| `recording.unsupported_channels` |
+| `recording.unsupported_codec` |
 | `recipe.format` |
 | `recipe.schema_version` |
 | `recipe.size` |
@@ -460,3 +467,23 @@ Trash/Restore use a no-clobber link then unlink. Same-file links in both directo
 | 130 | Cooperative cancellation before completion, or forced interrupt exit. |
 
 Read-only broken pipes are quiet success. A confirmed mutation remains successful if printing its result fails; stderr reports confirmed publication and the reporting failure. [CLI workflows](cli.md) describe commands and interrupts.
+
+## Recording measurements
+
+CLI JSON schema 3 adds an optional `recording.analysis` object. The previous `path`, `bytes` and `format` keep their meaning. Successful CLI analysis includes `codec`, `lossy`, `duration_seconds`, `sample_rate`, `channels`, `window` and `envelope_window` (`start_seconds`, `end_seconds`), `resolution_hz`, `envelope_resolution_hz`, `minimum_envelope_relative_power`, `tones`, `ear_differences`, `coincident_tones`, `pulsing`, `low_energy`, `stereo`, chart `spectrum` and machine `limits`. Failed work emits a diagnostic without partial analysis. Desktop identification alone still opens undecodable files; Analyze performs decoding.
+
+Measurements stream decoded f32 frames at their native sample rate. The default interval starts at 10% of the duration and lasts up to 600 seconds; an explicit integer duration of at least two seconds overrides its length. Duration is taken from container metadata when available; decoding validates the selected interval, not unexamined later packets. Raw MPEG/ADTS streams and streams lacking duration metadata are counted first and decoded again through the same file handle. Mono and stereo at rates of at least 1000 Hz are accepted. Format/rate/channel changes within a track and nonfinite samples are refused. No whole-file sample buffer is retained.
+
+Tone spectra use periodic Hann Welch windows up to 2²⁰ samples with 50% overlap and a final full window covering any remaining tail. Short inputs use the largest power of two that fits, without padding. Resolution is sample rate divided by actual window length. Each channel reports at most 16 strongest local peaks below 2 kHz, at least 12 dB above the median within ±2 Hz (at least four bins for coarse resolutions). Peaks below −80 dB relative to the strongest PSD bin are omitted. Log-parabolic interpolation locates peaks; integrating the surrounding five bins gives RMS dBFS. Closely spaced main lobes can overlap and cannot be reliably separated by interpolation alone.
+
+A binaural-difference candidate has 0.5–100 Hz separation exceeding two tone bins, levels within 6 dB, and each pitch at least 15 dB stronger in its own channel. `coincident_tones` is true only for stereo when every detected peak matches in the other channel within two bins. Neither an empty candidate list nor silence establishes identical channels. IFCN rhythm bands come from core's existing classifier.
+
+Analytic amplitude envelopes reuse each Hann-windowed tone spectrum to form the Hilbert analytic signal. A Hann-weighted DC estimate is removed first; DC remains in level and low-energy statistics. Analytic magnitude is divided by the Hann window within the retained central region, avoiding periodic-extension discontinuities without interpreting the taper as modulation. Frequency-domain bands split below/above 100 Hz; whole-band and both band envelopes are averaged in 1 ms blocks. The central 75% of each audio window is retained to avoid periodic-extension edges; overlapping windows cover the interval disclosed as `envelope_window`. Envelopes use mean-centered Hann Welch spectra with the largest fitting power-of-two window up to 2¹⁸ samples at 1 kHz. Rates from 0.5–100 Hz require 15 dB prominence over that range's median and peak power at least `minimum_envelope_relative_power` (10⁻⁶, −60 dB) times squared mean envelope amplitude. This contrast floor excludes tiny FFT-boundary fluctuations; very shallow modulation may be missed. Bands carrying less than 10⁻⁸ of the original window’s one-sided Hann spectral energy are omitted to avoid interpreting filter leakage as a separate signal.
+
+Attribution uses only tones in the measured envelope band (the 100 Hz boundary belongs to the lower band). Symmetric sidebands are labeled `modulation`; otherwise a match to two reported pitches within two bins is `beating` with both pitches and `harmonic` (1 for the fundamental). Higher beat harmonics require an observed fundamental and power consistent with the equal-tone envelope model (3 dB allowance), and stop when that model falls below the contrast floor; unmatched rates are `modulation`. Matching uses the coarser tone/envelope resolution. These structural labels cannot establish creator intent; separately synthesized symmetric tones can be mathematically identical to AM.
+
+`low_energy` holds per-channel cumulative PSD fractions below 40, 50, 60, 100 and 300 Hz; the 40 Hz threshold supports device-check comparison. `stereo` holds per-channel peak/RMS dBFS, mean-centered channel correlation and side/mid energy in dB. Undefined or nonfinite logarithmic values serialize as null (including digital silence and zero side energy). Fractions are null for silence. `spectrum` is a bounded log-frequency peak-preserving display projection in dBFS/Hz. Machine limits disclose digital-sample-only measurement, possible missed quiet pairs, pattern attribution rather than intent, and the relative peak floor. Codec loss and both resolutions are explicit fields.
+
+Symphonia 0.6.1 decodes PCM WAV, AIFF, FLAC up to 24 bits, MP3, AAC-LC, Vorbis, ALAC and CAF in enabled containers. Opus and 32-bit FLAC receive `recording.unsupported_codec`; the latter avoids a confirmed 33-bit stereo-side-channel decoder defect. HE-AAC/SBR is unsupported; the checked AAC patch rejects non-LC ADTS profiles and in-band SBR before samples can be mistaken for a complete LC decode. Decoder failures include packet position and preserve any previous desktop findings. Tests compare frequencies within one bin and levels within 0.5 dB; synthesis's bit-level contract is unchanged.
+
+In recording findings, `channel` is zero-based: 0 means mono or left, and 1 means right. Tone `dbfs` is RMS, while `relative_db` compares with the strongest reported tone in that channel. `envelope_band` is `whole`, `below100` or `above100`; a pulsing `cause` is tagged `modulation` or `beating`. Beating includes `first_hz`, `second_hz` and `harmonic` (1 means their direct difference). Band assignments use the existing IFCN convention. Channel correlation ranges from −1 to 1; side/mid uses summed squared L−R versus L+R samples, whose common scaling cancels.

@@ -90,14 +90,17 @@ enum Command {
     Play(Source),
     /// Play short test tones and report whether left, right and low tones reach you.
     DeviceCheck,
-    /// Identify an audio recording's format and size.
+    /// Measure tones, stereo differences, pulsing and low-frequency energy in a recording.
     Analyze {
-        /// Audio file to identify.
+        /// Local audio file to decode and measure.
         #[arg(value_name = "FILE")]
         file: PathBuf,
         /// Output as readable text or JSON for scripts.
         #[arg(long, value_enum, default_value = "text")]
         format: library_cli::ReadFormat,
+        /// Analyze this many seconds after the 10% offset (default: up to ten minutes).
+        #[arg(long, value_name = "N", value_parser = clap::value_parser!(u32).range(2..))]
+        seconds: Option<u32>,
     },
     /// Save a sound as a stereo WAV file (32-bit float); an existing file is never replaced.
     Export {
@@ -220,6 +223,7 @@ operation_errors! {
     auditorylab_app::services::OperationError,
     auditorylab_app::services::LoadError,
     auditorylab_app::services::FileError,
+    auditorylab_app::recording::RecordingError,
     auditorylab_app::services::library::LibraryError,
     auditorylab_app::services::SaveError,
     auditorylab_app::services::ExportError,
@@ -546,7 +550,11 @@ fn run(cli: Cli) -> Result<Ended, CliError> {
             return play(&resolved);
         }
         Command::DeviceCheck => return device_check_cli::device_check(),
-        Command::Analyze { file, format } => recording_cli::analyze(&file, format)?,
+        Command::Analyze {
+            file,
+            format,
+            seconds,
+        } => recording_cli::analyze(&file, format, seconds)?,
     }
     Ok(Ended::Normally)
 }

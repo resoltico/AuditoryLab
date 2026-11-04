@@ -1,0 +1,26 @@
+--- a/src/adts.rs
++++ b/src/adts.rs
+@@ -151,6 +151,12 @@
+             None => return decode_error("adts: invalid audio object type"),
+         };
+ 
++        // The AAC decoder otherwise assumes LC when no ASC is provided.
++        // Validate every ADTS header before dropping its profile information.
++        if profile != AudioObjectType::Lc {
++            return unsupported_error("adts: only AAC-LC is decoded");
++        }
++
+         // Sample rate from sample rate index.
+         let sample_rate = match get_mpeg4_audio_sample_rate_by_index(bs.read_bits_leq32(4)?) {
+             Mpeg4AudioSampleRate::SampleRate(rate) => rate,
+--- a/src/aac/mod.rs
++++ b/src/aac/mod.rs
+@@ -191,7 +191,7 @@
+                         match ext_type {
+                             // EXT_SBR_DATA (0xd)
+                             // EXT_SBR_DATA_CRC (0xe)
+-                            0xd | 0xe => self.asc.sbr_present = true,
++                            0xd | 0xe => return unsupported_error("aac: SBR is not decoded"),
+                             // EXT_FILL (0x0)
+                             // EXT_FILL_DATA (0x1)
+                             // EXT_DATA_ELEMENT (0x2)

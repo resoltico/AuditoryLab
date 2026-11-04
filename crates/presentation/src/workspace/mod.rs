@@ -726,7 +726,9 @@ pub(crate) fn file_activity(
             "Later edits remain independent of the captured library operation."
         }
         FileAction::AudioExport => "Cancel export is separate from Stop audio.",
-        FileAction::Import | FileAction::OpenRecording => "The playing source remains unchanged.",
+        FileAction::Import | FileAction::OpenRecording | FileAction::AnalyzeRecording => {
+            "The playing source remains unchanged."
+        }
     };
     format!("{} · {context}", kind.operation().label())
 }

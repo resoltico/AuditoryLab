@@ -71,7 +71,7 @@ Prefer removing unnecessary work over lint suppression. For a necessary numeric 
 
 ## Dependencies and native toolkit
 
-Review graph changes with Cargo.lock. `cargo deny check` covers advisories, source policy, duplicates and licenses. [Toolkit integration](third_party/README.md) records archive pins, patch behavior and retirement conditions. Update source, patch, digest and affected consumer checks together. `cargo xtask verify-vendor` authenticates, applies and compares every source byte and checks target/product resolution.
+Review graph changes with Cargo.lock. `cargo deny check` covers advisories, source policy, duplicates and licenses. [Dependency integration](third_party/README.md) records archive pins, patch behavior and retirement conditions. Update source, patch, digest and affected consumer checks together. `cargo xtask verify-vendor` authenticates, applies and compares every source byte and checks target/product resolution.
 
 ## Build storage and cleanup
 

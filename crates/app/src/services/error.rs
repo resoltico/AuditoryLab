@@ -56,6 +56,8 @@ pub enum OperationError {
     Query(QueryError),
     /// Filesystem adapter failed.
     File(FileError),
+    /// Recording decoding or measurement failed.
+    Recording(crate::recording::RecordingError),
     /// A pure portable candidate failed validation.
     Recipe(crate::core::RecipeError),
 }
@@ -74,6 +76,7 @@ impl OperationError {
             Self::Identity(error) => error.outcome(),
             Self::Query(error) => error.outcome(),
             Self::File(error) => error.outcome(),
+            Self::Recording(error) => error.outcome(),
             Self::Recipe(_) => Outcome::InvalidRecipe,
         }
     }
@@ -103,6 +106,7 @@ operation_from! {
     IdentityError => Identity,
     QueryError => Query,
     FileError => File,
+    crate::recording::RecordingError => Recording,
     crate::core::RecipeError => Recipe,
     crate::core::SampleRateError => SampleRate,
 }
@@ -145,6 +149,7 @@ impl std::error::Error for crate::services::OperationError {
             E::Identity(error) => error,
             E::Query(error) => error,
             E::File(error) => error,
+            E::Recording(error) => error,
             E::Recipe(error) => error,
             E::SampleRate(error) => error,
         })
@@ -185,6 +190,7 @@ crate::core::diagnostic_codes! {
             Self::Identity(error) => error,
             Self::Query(error) => error,
             Self::File(error) => error,
+            Self::Recording(error) => error,
             Self::Recipe(error) => error,
         }
     }

@@ -99,7 +99,7 @@ chrome! {
         AudioRecording => ("caption-audio-recording", "Audio recording"),
         DeviceCheckResults => ("caption-device-check-results", "What your answers mean"),
         RecordingsIntroduction => ("caption-recordings-introduction", "Open an audio file to \
-            see its format and size."),
+            measure its tones, channel differences, pulsing and low-frequency energy."),
         NoRecording => ("caption-no-recording", "No recording is open."),
         RecordingLocation => ("caption-recording-location", "Location"),
         RecordingSize => ("caption-recording-size", "Size"),

@@ -100,3 +100,18 @@ export struct DeviceTestRow {
 }
 // An opened recording's identity, rendered by shared presentation.
 export struct RecordingFacts { name: string, path: string, size: string, format: string }
+
+// Shared finding text and native spectrum geometry.
+export struct RecordingFindings {
+    facts: string,
+    summary: string,
+    tones: string,
+    ears: string,
+    pulsing: string,
+    low-tones: string,
+    stereo: string,
+    limits: string,
+    left-trace: string,
+    right-trace: string,
+}
+export struct RecordingEnergy { label: string, fraction: float }

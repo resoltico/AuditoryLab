@@ -255,6 +255,13 @@ impl SlintAdapter {
         ui.set_motion_reason(read_only(&transport_text.motion));
         ui.set_motion_overridden(transport.hold_override.is_some());
         ui.set_held(output.held);
+        if let Some(workspace) = self.workspace.borrow().as_ref() {
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "bounded display-only progress fraction"
+            )]
+            ui.set_recording_progress(workspace.recording_progress() as f32);
+        }
         #[expect(
             clippy::cast_possible_truncation,
             reason = "A 0..=1 display ratio rounds to the renderer's f32"

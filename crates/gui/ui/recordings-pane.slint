@@ -3,9 +3,29 @@ import { ViewCaptions } from "view-captions.slint";
 import { Actions } from "actions.slint";
 import { Button } from "button.slint";
 import { Terms } from "vocabulary.slint";
-import { Palette, VerticalBox, ScrollView } from "std-widgets.slint";
-import { RecordingFacts } from "models.slint";
+import {
+    Palette,
+    VerticalBox,
+    ScrollView,
+    LineEdit,
+    ProgressIndicator,
+} from "std-widgets.slint";
+import {
+    RecordingFacts,
+    RecordingFindings,
+    RecordingEnergy,
+} from "models.slint";
 import { Section } from "editor.slint";
+
+component FindingSection inherits Section {
+    in property <string> content;
+    Text {
+        text: root.content;
+        wrap: word-wrap;
+        min-width: 0px;
+        accessible-role: text;
+    }
+}
 
 // The opened recording's identity and what is measured, shown together.
 export component RecordingsPane inherits Rectangle {
@@ -15,12 +35,22 @@ export component RecordingsPane inherits Rectangle {
     in property <int> tab-index;
     in property <length> ui-size;
     callback open-recording();
+    in property <bool> has-analysis;
+    in property <bool> analyzing;
+    in property <float> progress;
+    in property <RecordingFindings> findings;
+    in property <[RecordingEnergy]> energy;
+    callback analyze-recording(string);
+    callback cancel-analysis();
 
     accessible-role: tab-panel;
     accessible-label: ViewCaptions.recordings;
     visible: root.tab-index == 3;
 
     recordings-scroll := ScrollView {
+        accessible-role: tab-panel;
+        accessible-label: "Recording content";
+        content-width: self.visible-width;
         width: parent.width;
         height: parent.height;
         VerticalBox {
@@ -105,15 +135,189 @@ export component RecordingsPane inherits Rectangle {
                     }
                 }
             }
-            Section {
-                title: Terms.caption-recording-measurements;
-                ui-size: root.ui-size;
+            if root.has-recording: VerticalLayout {
+                spacing: 8px;
                 Text {
-                    text: root.measurements;
+                    text: "Window length in seconds (blank: up to ten minutes)";
                     wrap: word-wrap;
                     min-width: 0px;
                     accessible-role: text;
                 }
+
+                seconds := LineEdit {
+                    placeholder-text: "600";
+                    enabled: !root.analyzing;
+                    accessible-label: "Analysis window length in seconds";
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+                    Button {
+                        text: Actions.analyze-recording.label;
+                        enabled: Actions.analyze-recording.enabled;
+                        triggered => { root.analyze-recording(seconds.text); }
+                    }
+
+                    Button {
+                        text: "Cancel analysis";
+                        enabled: root.analyzing;
+                        triggered => { root.cancel-analysis(); }
+                    }
+                }
+
+                if root.analyzing: ProgressIndicator {
+                    progress: root.progress;
+                }
+            }
+            if !root.has-analysis: Text {
+                text: root.measurements;
+                wrap: word-wrap;
+                min-width: 0px;
+                accessible-role: text;
+            }
+            if root.has-analysis: FindingSection {
+                title: "Recording";
+                content: root.findings.facts;
+                ui-size: root.ui-size;
+            }
+
+            if root.has-analysis: FindingSection {
+                title: "Summary";
+                content: root.findings.summary;
+                ui-size: root.ui-size;
+            }
+
+            if root.has-analysis: Section {
+                title: "Tones";
+                ui-size: root.ui-size;
+                VerticalLayout {
+                    spacing: 8px;
+                    Text {
+                        text: "Spectrum · 20–2000 Hz (log scale) · left blue, right orange";
+                        wrap: word-wrap;
+                        min-width: 0px;
+                        accessible-role: text;
+                    }
+
+                    Rectangle {
+                        height: 160px;
+                        background: Palette.background;
+                        Path {
+                            width: parent.width;
+                            height: parent.height;
+                            viewbox-width: 1000;
+                            viewbox-height: 160;
+                            fit: fill;
+                            commands: root.findings.left-trace;
+                            stroke: #4e8fe8;
+                            stroke-width: 2px;
+                        }
+
+                        Path {
+                            width: parent.width;
+                            height: parent.height;
+                            viewbox-width: 1000;
+                            viewbox-height: 160;
+                            fit: fill;
+                            commands: root.findings.right-trace;
+                            stroke: #e58a45;
+                            stroke-width: 2px;
+                        }
+                    }
+
+                    HorizontalLayout {
+                        Text {
+                            text: "20 Hz";
+                        }
+
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
+
+                        Text {
+                            text: "200 Hz";
+                        }
+
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
+
+                        Text {
+                            text: "2000 Hz";
+                        }
+                    }
+
+                    Text {
+                        text: "PSD · 0 dBFS/Hz at top · −160 dBFS/Hz at bottom";
+                        wrap: word-wrap;
+                        min-width: 0px;
+                    }
+
+                    Text {
+                        text: root.findings.tones;
+                        wrap: word-wrap;
+                        min-width: 0px;
+                        accessible-role: text;
+                    }
+                }
+            }
+
+            if root.has-analysis: FindingSection {
+                title: "Left versus right";
+                content: root.findings.ears;
+                ui-size: root.ui-size;
+            }
+
+            if root.has-analysis: FindingSection {
+                title: "Pulsing";
+                content: root.findings.pulsing;
+                ui-size: root.ui-size;
+            }
+
+            if root.has-analysis: Section {
+                title: "Low tones";
+                ui-size: root.ui-size;
+                VerticalLayout {
+                    spacing: 6px;
+                    for share in root.energy: VerticalLayout {
+                        Text {
+                            text: share.label;
+                            wrap: word-wrap;
+                            min-width: 0px;
+                            accessible-role: text;
+                        }
+
+                        Rectangle {
+                            height: 8px;
+                            background: Palette.border;
+                            Rectangle {
+                                x: 0px;
+                                height: parent.height;
+                                width: parent.width * share.fraction;
+                                background: #4e8fe8;
+                            }
+                        }
+                    }
+                    Text {
+                        text: root.findings.low-tones;
+                        wrap: word-wrap;
+                        min-width: 0px;
+                        accessible-role: text;
+                    }
+                }
+            }
+
+            if root.has-analysis: FindingSection {
+                title: "Stereo and level";
+                content: root.findings.stereo;
+                ui-size: root.ui-size;
+            }
+
+            if root.has-analysis: FindingSection {
+                title: "Limits";
+                content: root.findings.limits;
+                ui-size: root.ui-size;
             }
         }
     }

@@ -1,7 +1,9 @@
 //! Bounded identification of a recording file: its size and leading signature.
+mod decode;
 use super::input_admission;
 use crate::recording::{ContainerFormat, RecordingFile};
 use crate::storage::error::{FileError, IoFailure, IoOperation};
+pub(crate) use decode::analyze;
 use std::{io::Read, path::Path};
 
 pub(crate) fn identify(path: &Path) -> Result<RecordingFile, FileError> {
