@@ -187,19 +187,17 @@ try {
         $dialogOwners += $owner.ToInt64()
         if ($attempt -lt 2) { Invoke-Native (Find-Named $dialog 'Cancel') }
         else {
-            $dialog.SetFocus()
-            Native-Keys '^l'
-            $location = Wait-Native 'actual focused native location control' {
-                $focused = $uia::FocusedElement
-                if ($null -ne $focused -and $focused.Current.ProcessId -eq $process.Id -and $focused.Current.ControlType -eq [System.Windows.Automation.ControlType]::Edit) { return $focused }
-                return $null
-            }
+            $location = Wait-Native 'actual native File name EDIT' { Find-NativeFileNameField $dialog }
+            $location.SetFocus()
+            Wait-Native 'actual File name keyboard focus' {
+                $location.Current.HasKeyboardFocus -and $location.Current.ProcessId -eq $process.Id
+            } | Out-Null
             Native-Keys '^a'
             Native-Text $Fixture
-            Wait-Native 'native location received the exact fixture path' {
+            Wait-Native 'native File name received the exact fixture path' {
                 $location.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).Current.Value -eq $Fixture
             } | Out-Null
-            Native-Keys '{ENTER}'
+            Invoke-Native (Find-Named $dialog 'Open')
         }
         Wait-Native 'native chooser closed and application recovered' {
             try { return -not $dialog.Current.IsEnabled -or $dialog.Current.IsOffscreen } catch [System.Windows.Automation.ElementNotAvailableException] { return $true }
