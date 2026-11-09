@@ -79,24 +79,9 @@ function Invoke-Native($Item) {
     if ($Item.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern,[ref]$pattern)) { $pattern.Select(); return }
     throw "OS-provider action unavailable: $($Item.Current.Name)"
 }
-function Read-NativeText($Item) {
-    $pattern = $null
-    if ($Item.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern,[ref]$pattern)) { return $pattern.Current.Value }
-    if ($Item.TryGetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern,[ref]$pattern)) { return $pattern.DocumentRange.GetText(-1).TrimEnd("`r","`n") }
-    throw 'Multiline field exposes neither Value nor Text UIA pattern'
-}
-function Observe-NativeSelection($Pattern, [string]$Stage) {
-    $ranges = $Pattern.GetSelection()
-    $count = if ($null -eq $ranges) { 0 } else { $ranges.Length }
-    Write-Host "Native observation: $Stage range_count=$count"
-    if ($count -ne 1) { return @{Count=$count} }
-    $document = $Pattern.DocumentRange
-    Write-Host "Native observation: $Stage comparing actual range endpoints"
-    $start = $ranges[0].CompareEndpoints([System.Windows.Automation.Text.TextPatternRangeEndpoint]::Start,$document,[System.Windows.Automation.Text.TextPatternRangeEndpoint]::Start)
-    $startAtEnd = $ranges[0].CompareEndpoints([System.Windows.Automation.Text.TextPatternRangeEndpoint]::Start,$document,[System.Windows.Automation.Text.TextPatternRangeEndpoint]::End)
-    $end = $ranges[0].CompareEndpoints([System.Windows.Automation.Text.TextPatternRangeEndpoint]::End,$document,[System.Windows.Automation.Text.TextPatternRangeEndpoint]::End)
-    Write-Host "Native observation: $Stage start_vs_doc_start=$start start_vs_doc_end=$startAtEnd end_vs_doc_end=$end"
-    return @{Count=$count;Start=$start;StartAtEnd=$startAtEnd;End=$end}
+function Read-NativeValue($Item) {
+    # A supported COM string getter can encode the empty string as a null BSTR.
+    return [string]$Item.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).Current.Value
 }
 function Invoke-SdkTextRangeControl($Window, [string]$Stage, [string]$ExpectedState) {
     $probe = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../../target/native-ui-control/text-range-control.exe'))
@@ -166,34 +151,16 @@ try {
     Wait-Native 'actual visible multiline keyboard focus' { $notes.Current.HasKeyboardFocus -and -not $notes.Current.IsOffscreen } | Out-Null
     Native-Text "first native line`nsecond native line"
     Write-Host 'Native witness: multiline keys delivered; reading actual provider text'
-    Wait-Native 'native multiline text input' { (Read-NativeText $notes).Replace("`r",'') -eq "first native line`nsecond native line" } | Out-Null
-    Write-Host 'Native witness: multiline provider text verified; reading explicit TextPattern document range'
-    $textPattern = $notes.GetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern)
-    Wait-Native 'actual TextPattern document range text' {
-        $textPattern.DocumentRange.GetText(-1).Replace("`r",'').TrimEnd("`n") -eq "first native line`nsecond native line"
-    } | Out-Null
-    Write-Host 'Native witness: explicit TextPattern document range verified'
+    Wait-Native 'native multiline text input' { (Read-NativeValue $notes).Replace("`r",'') -eq "first native line`nsecond native line" } | Out-Null
+    Write-Host 'Native witness: actual provider value verified'
+    # The supported public COM SDK client independently checks actual document
+    # text, end-caret/empty GetText and native Ctrl+A/full exact selection.
     Invoke-SdkTextRangeControl $handle 'caret-before-Ctrl+A' 'caret'
     Native-Keys '^a'
     Invoke-SdkTextRangeControl $handle 'full-selection-after-native-Ctrl+A' 'selection'
-    # Restore the real end-caret before the still-mandatory managed controls.
-    Native-Keys '{RIGHT}'
-    Wait-Native 'actual native caret endpoints' {
-        $position = Observe-NativeSelection $textPattern 'caret-before-Ctrl+A'
-        $position.Count -eq 1 -and $position.StartAtEnd -eq 0 -and $position.End -eq 0
-    } | Out-Null
-    Write-Host 'Native witness: reading actual degenerate caret text'
-    Wait-Native 'actual native caret text is empty' { $textPattern.GetSelection()[0].GetText(-1) -eq '' } | Out-Null
-    Write-Host 'Native witness: actual degenerate caret GetText verified'
-    Native-Keys '^a'
-    Wait-Native 'actual native full-selection endpoints' {
-        $position = Observe-NativeSelection $textPattern 'selection-after-native-Ctrl+A'
-        $position.Count -eq 1 -and $position.Start -eq 0 -and $position.End -eq 0
-    } | Out-Null
-    Wait-Native 'native modifier selection' { $textPattern.GetSelection()[0].GetText(-1).Replace("`r",'').TrimEnd("`n") -eq "first native line`nsecond native line" } | Out-Null
-    Write-Host 'Native witness: actual modifier selection verified'
+    Write-Host 'Native witness: public SDK caret/endpoints/empty and full exact selection verified'
     Native-Keys '{BACKSPACE}'
-    Wait-Native 'cleared multiline field' { (Read-NativeText $notes) -eq '' } | Out-Null
+    Wait-Native 'cleared multiline field' { (Read-NativeValue $notes) -eq '' } | Out-Null
     Invoke-Native (Find-Named $window 'Library')
     $dialogOwners = @()
     for ($attempt=0; $attempt -lt 3; $attempt++) {

@@ -64,6 +64,12 @@ static int inspect(HWND window, bool full_selection) {
     Text document_text;
     if (!checked("DocumentRange", pattern->get_DocumentRange(document.GetAddressOf()))
             || !document.Get() || !read_text("Document.GetText", document.Get(), document_text)) return 1;
+    // Independent literal oracle for the actual native keyboard input recipe.
+    constexpr wchar_t expected[] = L"first native line\nsecond native line";
+    constexpr size_t expected_length = sizeof(expected) / sizeof(expected[0]) - 1;
+    const bool document_matches = SysStringLen(document_text.value) == expected_length
+        && std::memcmp(document_text.value, expected, expected_length * sizeof(wchar_t)) == 0;
+    if (!checked("Document.ExactExpectedText", document_matches ? S_OK : E_FAIL)) return 1;
     ComPtr<IUIAutomationTextRangeArray> selection;
     if (!checked("GetSelection", pattern->GetSelection(selection.GetAddressOf())) || !selection.Get()) return 1;
     int count = 0;
