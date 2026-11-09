@@ -84,6 +84,26 @@ function Read-NativeText($Item) {
     if ($Item.TryGetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern,[ref]$pattern)) { return $pattern.DocumentRange.GetText(-1).TrimEnd("`r","`n") }
     throw 'Multiline field exposes neither Value nor Text UIA pattern'
 }
+function Observe-NativeSelection($Pattern, [string]$Stage) {
+    $ranges = $Pattern.GetSelection()
+    $count = if ($null -eq $ranges) { 0 } else { $ranges.Length }
+    Write-Host "Native observation: $Stage range_count=$count"
+    if ($count -ne 1) { return @{Count=$count} }
+    $document = $Pattern.DocumentRange
+    Write-Host "Native observation: $Stage comparing actual range endpoints"
+    $start = $ranges[0].CompareEndpoints([System.Windows.Automation.Text.TextPatternRangeEndpoint]::Start,$document,[System.Windows.Automation.Text.TextPatternRangeEndpoint]::Start)
+    $startAtEnd = $ranges[0].CompareEndpoints([System.Windows.Automation.Text.TextPatternRangeEndpoint]::Start,$document,[System.Windows.Automation.Text.TextPatternRangeEndpoint]::End)
+    $end = $ranges[0].CompareEndpoints([System.Windows.Automation.Text.TextPatternRangeEndpoint]::End,$document,[System.Windows.Automation.Text.TextPatternRangeEndpoint]::End)
+    Write-Host "Native observation: $Stage start_vs_doc_start=$start start_vs_doc_end=$startAtEnd end_vs_doc_end=$end"
+    return @{Count=$count;Start=$start;StartAtEnd=$startAtEnd;End=$end}
+}
+function Invoke-SdkTextRangeControl($Window, [string]$Stage) {
+    $probe = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../../target/native-ui-control/text-range-control.exe'))
+    if (-not (Test-Path $probe)) { throw 'Required official-SDK text-range reference client is unavailable' }
+    Write-Host "Native independent SDK control: $Stage"
+    & $probe ([string]$Window.ToInt64())
+    if ($LASTEXITCODE -ne 0) { throw "Official-SDK text-range reference client failed at $Stage" }
+}
 function Native-Keys([string]$Keys) {
     $foregroundPid = [uint32]0
     [NativeQaWindow]::GetWindowThreadProcessId([NativeQaWindow]::GetForegroundWindow(),[ref]$foregroundPid) | Out-Null
@@ -152,7 +172,20 @@ try {
         $textPattern.DocumentRange.GetText(-1).Replace("`r",'').TrimEnd("`n") -eq "first native line`nsecond native line"
     } | Out-Null
     Write-Host 'Native witness: explicit TextPattern document range verified'
+    Invoke-SdkTextRangeControl $handle 'caret-before-Ctrl+A'
+    Wait-Native 'actual native caret endpoints' {
+        $position = Observe-NativeSelection $textPattern 'caret-before-Ctrl+A'
+        $position.Count -eq 1 -and $position.StartAtEnd -eq 0 -and $position.End -eq 0
+    } | Out-Null
+    Write-Host 'Native witness: reading actual degenerate caret text'
+    Wait-Native 'actual native caret text is empty' { $textPattern.GetSelection()[0].GetText(-1) -eq '' } | Out-Null
+    Write-Host 'Native witness: actual degenerate caret GetText verified'
     Native-Keys '^a'
+    Invoke-SdkTextRangeControl $handle 'selection-after-native-Ctrl+A'
+    Wait-Native 'actual native full-selection endpoints' {
+        $position = Observe-NativeSelection $textPattern 'selection-after-native-Ctrl+A'
+        $position.Count -eq 1 -and $position.Start -eq 0 -and $position.End -eq 0
+    } | Out-Null
     Wait-Native 'native modifier selection' { $textPattern.GetSelection()[0].GetText(-1).Replace("`r",'').TrimEnd("`n") -eq "first native line`nsecond native line" } | Out-Null
     Write-Host 'Native witness: actual modifier selection verified'
     Native-Keys '{BACKSPACE}'
