@@ -347,14 +347,29 @@ fn report_publication(
             ))
         );
     }
-    if let Err(error) = writeln!(stdout, "{}", prose(text)).and_then(|()| stdout.flush()) {
+    write_confirmed(
+        format!("{}\n", prose(text)).as_bytes(),
+        crate::cli_text::completion_reporting_failed,
+        stdout,
+        stderr,
+    );
+    let _ = stderr.flush();
+}
+/// Keep publication truth independent of a terminal write or flush.
+fn write_confirmed(
+    bytes: &[u8],
+    failure: impl FnOnce(io::Error) -> String,
+    stdout: &mut impl Write,
+    stderr: &mut impl Write,
+) {
+    if let Err(error) = stdout.write_all(bytes).and_then(|()| stdout.flush()) {
         let _ = writeln!(
             stderr,
             "{}",
-            crate::cli_text::completion_reporting_failed(error)
+            auditorylab_presentation::display_text(&failure(error))
         );
+        let _ = stderr.flush();
     }
-    let _ = stderr.flush();
 }
 fn completed(text: &str, warnings: &[lab::services::StorageWarning]) {
     report_publication(
@@ -500,9 +515,12 @@ fn run(cli: Cli) -> Result<Ended, CliError> {
             let recipe = lab::document::construction::new_recipe(kind)?;
             if let Some(path) = path {
                 let saved = lab::services::save_content(&recipe, &path, Replace::Never)?;
-                completed(
-                    &auditorylab_presentation::recipe_exported(&path),
+                // New --output intentionally has no completion stdout; warnings still matter.
+                report_publication(
+                    "",
                     &saved.warnings,
+                    &mut io::sink(),
+                    &mut io::stderr().lock(),
                 );
             } else {
                 output(recipe.to_toml()?.as_bytes())?;
@@ -834,5 +852,39 @@ mod diagnostic_tests {
         assert_eq!(error.code(), "sample_rate.range");
         assert_eq!(error.params()["hz"], ParamValue::Unsigned(0));
         assert_eq!(error.outcome(), Outcome::InvalidArgument);
+    }
+}
+
+#[cfg(test)]
+mod publication_reporting_tests {
+    use super::*;
+    struct RefusingWriter;
+    impl Write for RefusingWriter {
+        fn write(&mut self, _: &[u8]) -> io::Result<usize> {
+            Err(io::Error::other("injected terminal failure"))
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Err(io::Error::other("injected flush failure"))
+        }
+    }
+    #[test]
+    fn confirmed_publication_survives_either_or_both_terminal_failures() {
+        let warnings = [lab::services::StorageWarning::ClockPredatesEdit];
+        let mut stderr = Vec::new();
+        report_publication("Published", &warnings, &mut RefusingWriter, &mut stderr);
+        let text = String::from_utf8(stderr).unwrap();
+        assert!(text.contains("injected terminal failure"));
+        assert!(
+            text.contains("Published") || text.contains("completed") || text.contains("Completion")
+        );
+        let mut stdout = Vec::new();
+        report_publication("Published", &warnings, &mut stdout, &mut RefusingWriter);
+        assert_eq!(stdout, b"Published\n");
+        report_publication(
+            "Published",
+            &warnings,
+            &mut RefusingWriter,
+            &mut RefusingWriter,
+        );
     }
 }

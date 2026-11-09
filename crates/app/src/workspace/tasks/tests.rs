@@ -403,6 +403,19 @@ fn stale_and_duplicate_preparations_cannot_rebind_audio() {
     let (response, _generator3) = prepared(&job, SampleRate::DEFAULT).unwrap();
     assert_eq!(workspace.respond(response), ResponseDisposition::Rejected);
     assert!(workspace.audio.task().unwrap().rejected());
+    assert!(workspace.audio_busy());
+    assert!(matches!(
+        workspace.admission(&Command::Audio(AudioCommand::Play)),
+        Err(crate::workspace::Refusal::AudioPlaying)
+    ));
+    assert!(matches!(
+        workspace.admission(&Command::Editor(EditorCommand::Commit)),
+        Err(crate::workspace::Refusal::AudioPlaying)
+    ));
+    let (response, _generator4) = prepared(&job, SampleRate::DEFAULT).unwrap();
+    assert_eq!(workspace.respond(response), ResponseDisposition::Rejected);
+    assert!(workspace.audio.task().unwrap().rejected());
+
     let response = job.execute(|_| panic!("rejected preparation requested Stop"));
     assert_eq!(workspace.respond(response), ResponseDisposition::Rejected);
     assert!(!workspace.audio_busy());

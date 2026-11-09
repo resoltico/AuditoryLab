@@ -600,34 +600,34 @@ impl Workspace {
         }
     }
 
+    // Captured prompt content does not grant permission to perform later work.
+    fn path_continuation_admission(&self, state: &PromptState) -> Result<(), Refusal> {
+        let command = match state {
+            PromptState::Import => Command::File(FileCommand::Import),
+            PromptState::OpenRecording => Command::File(FileCommand::OpenRecording),
+            PromptState::ExportRecipe(_) => Command::File(FileCommand::ExportRecipe),
+            PromptState::Export(_) => Command::File(FileCommand::ExportWav),
+            _ => return Ok(()),
+        };
+        self.learning_command_admission(&command)?;
+        self.import_admission()?;
+        if matches!(command, Command::File(FileCommand::ExportWav)) {
+            self.audio.idle_admission()?;
+        }
+        Ok(())
+    }
+
     fn respond_prompt(&mut self, prompt: PromptId, response: PromptAnswer) -> bool {
         let Some(state) = self.prompts.take(prompt) else {
             return false;
         };
-        // The prompt held captured content, not a permission to perform later work.
-        // Re-evaluate action-state policy after consuming this exact prompt identity.
-        if matches!(response, PromptAnswer::Path(Some(_))) {
-            let command = match &state {
-                PromptState::Import => Some(Command::File(FileCommand::Import)),
-                PromptState::OpenRecording => Some(Command::File(FileCommand::OpenRecording)),
-                PromptState::ExportRecipe(_) => Some(Command::File(FileCommand::ExportRecipe)),
-                PromptState::Export(_) => Some(Command::File(FileCommand::ExportWav)),
-                _ => None,
-            };
-            let admission = command.as_ref().map_or(Ok(()), |command| {
-                self.learning_command_admission(command)?;
-                self.import_admission()?;
-                if matches!(command, Command::File(FileCommand::ExportWav)) {
-                    self.audio.idle_admission()?;
-                }
-                Ok(())
-            });
-            if let Err(refusal) = admission {
-                self.files.record_status(FileStatus::Refused(refusal));
-                self.deny(matches!(state, PromptState::Unsaved(DocumentAction::Close)));
-                self.changed();
-                return true;
-            }
+        if matches!(response, PromptAnswer::Path(Some(_)))
+            && let Err(refusal) = self.path_continuation_admission(&state)
+        {
+            self.files.record_status(FileStatus::Refused(refusal));
+            self.deny(matches!(state, PromptState::Unsaved(DocumentAction::Close)));
+            self.changed();
+            return true;
         }
         match (state, response) {
             (PromptState::Purge { key, expect }, PromptAnswer::Confirm) => {
@@ -982,14 +982,17 @@ impl Workspace {
                 self.recording_analysis = Some(*recording);
                 FileStatus::Idle
             }
-            (_, FileOutcome::RecordingAnalyzed(Err(error))) => FileStatus::Failed(error.into()),
+            (
+                _,
+                FileOutcome::RecordingAnalyzed(Err(error))
+                | FileOutcome::RecordingOpened(Err(error)),
+            ) => FileStatus::Failed(error.into()),
             (_, FileOutcome::RecordingOpened(Ok(recording))) => {
                 self.recording = Some(recording);
                 self.recording_analysis = None;
                 FileStatus::Idle
             }
             (_, FileOutcome::Imported(Err(error))) => FileStatus::Failed(error.into()),
-            (_, FileOutcome::RecordingOpened(Err(error))) => FileStatus::Failed(error.into()),
             (_, FileOutcome::RecipeExported(Err(error))) => FileStatus::Failed(error.into()),
             (_, FileOutcome::Exported(Err(error))) => FileStatus::Failed(error.into()),
             _ => FileStatus::WorkerFailed {

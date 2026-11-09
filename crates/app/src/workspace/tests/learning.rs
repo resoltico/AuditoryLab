@@ -431,3 +431,43 @@ fn failed_example_capture_retains_work_and_has_a_visible_typed_status() {
     ) if cause == getrandom::Error::UNSUPPORTED));
     assert!(ws.take_effects().is_empty());
 }
+
+#[test]
+fn offered_recording_and_device_actions_use_current_learning_admission() {
+    use crate::vocabulary::Operation;
+    let mut ws = workspace();
+    ws.take_effects();
+    for learning in [false, true, false] {
+        if learning {
+            ws.apply(Command::Learning(L::Open(Topic::Overview)))
+                .unwrap();
+        } else {
+            ws.apply(Command::SetView(View::DeviceCheck)).unwrap();
+        }
+        let revision = ws.revision();
+        let identity = ws.next_id;
+        let effects = ws.effects.len();
+        for _ in 0..3 {
+            let actions = ws.action_view();
+            let offered = actions
+                .operations
+                .iter()
+                .find(|action| action.operation == Operation::OpenRecording)
+                .unwrap();
+            assert_eq!(offered.enabled, !learning);
+            assert_eq!(
+                ws.admission(&Command::File(FileCommand::OpenRecording))
+                    .is_ok(),
+                !learning
+            );
+            assert_eq!(
+                ws.admission(&Command::DeviceCheck(DeviceCheckCommand::Clear))
+                    .is_ok(),
+                !learning
+            );
+        }
+        assert_eq!(ws.revision(), revision);
+        assert_eq!(ws.next_id, identity);
+        assert_eq!(ws.effects.len(), effects);
+    }
+}

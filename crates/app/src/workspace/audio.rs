@@ -181,7 +181,15 @@ impl AudioState {
             Ok(())
         }
     }
+    pub(super) fn rejected_live(&self, document: DocumentId) -> bool {
+        self.slot.as_ref().is_some_and(|task| {
+            task.rejected() && matches!(task.owner, AudioOwner::Live(owner) if owner == document)
+        })
+    }
     pub(super) fn play_admission(&self) -> Result<(), Refusal> {
+        if self.slot.as_ref().is_some_and(AudioTask::rejected) {
+            return Err(Refusal::AudioPlaying);
+        }
         if !self.capabilities.device_playback {
             return Err(Refusal::DevicePlaybackUnavailable);
         }

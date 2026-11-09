@@ -200,12 +200,10 @@ impl Workspace {
     pub fn admission(&mut self, command: &Command) -> Result<(), Refusal> {
         self.learning_command_admission(command)?;
         match command {
-            Command::Answer { .. }
-            | Command::SetView(_)
-            | Command::Close
-            | Command::Learning(_) => Ok(()),
+            Command::File(command) => self.file_admission(*command),
+            Command::Editor(command) => self.editor_command_admission(command),
+            Command::Library(command) => self.library_command_admission(command),
             Command::Output(OutputCommand::Preview) => self.preview_admission(),
-            Command::Output(_) => Ok(()),
             Command::ChooseControl { row, value } => {
                 if self.control_choices().iter().any(|menu| {
                     menu.row == *row
@@ -238,84 +236,86 @@ impl Workspace {
                     ))
                 }
             }
-            Command::DeviceCheck(DeviceCheckCommand::Clear) => Ok(()),
             Command::Audio(AudioCommand::Stop) => self.audio.stop_admission().map(|_| ()),
             Command::Audio(AudioCommand::Toggle) if self.audio.busy() => {
                 self.audio.stop_admission().map(|_| ())
             }
             Command::Audio(AudioCommand::PlaySelected) if self.view != View::Library => Ok(()),
             Command::Audio(_) => self.play_readiness(),
-            Command::File(FileCommand::Import | FileCommand::OpenRecording) => {
-                self.import_admission()
+            Command::Learning(crate::learning::LearningCommand::CreateExample(_)) => {
+                if !self.learning_visible {
+                    return Err(Refusal::SelectionChanged);
+                }
+                self.start_allowed()
             }
-            Command::File(FileCommand::AnalyzeRecording(_)) => {
+            Command::Answer { .. }
+            | Command::SetView(_)
+            | Command::Close
+            | Command::Learning(_)
+            | Command::Output(_)
+            | Command::DeviceCheck(DeviceCheckCommand::Clear) => Ok(()),
+        }
+    }
+
+    fn file_admission(&mut self, command: FileCommand) -> Result<(), Refusal> {
+        match command {
+            FileCommand::Import | FileCommand::OpenRecording => self.import_admission(),
+            FileCommand::AnalyzeRecording(_) => {
                 self.import_admission()?;
                 self.recording
                     .as_ref()
                     .map(|_| ())
                     .ok_or(Refusal::NoSelection)
             }
-            Command::File(FileCommand::CancelExport) => {
+            FileCommand::CancelExport => {
                 if self.exporting() {
                     Ok(())
                 } else {
                     Err(Refusal::NoExport)
                 }
             }
-            Command::File(FileCommand::CancelAnalysis) => {
+            FileCommand::CancelAnalysis => {
                 if self.analyzing_recording() {
                     Ok(())
                 } else {
                     Err(Refusal::FileBusy)
                 }
             }
-            Command::File(FileCommand::Save | FileCommand::SaveCopy)
-                if self.view != View::Workbench =>
-            {
-                Ok(())
-            }
-            Command::File(FileCommand::Save) => self.save_readiness(),
-            Command::File(FileCommand::SaveCopy) => self.save_copy_readiness(),
-            Command::File(FileCommand::ExportRecipe) => self.prepare_export_recipe().map(|_| ()),
-            Command::File(FileCommand::ExportWav) => self.export_readiness(),
-            Command::Editor(EditorCommand::New) => self.start_allowed(),
-            Command::Editor(EditorCommand::CopySelected) => self.copy_admission(),
-            Command::Editor(EditorCommand::ShowBasedOnSource | EditorCommand::SetExportRate(_)) => {
-                Ok(())
-            }
-            Command::Editor(EditorCommand::AddComponent { row, kind }) => {
-                self.component_add_admission(*row, *kind)
-            }
-            Command::Editor(EditorCommand::AddPair { row, kind }) => {
-                self.pair_add_admission(*row, *kind)
-            }
-            Command::Editor(EditorCommand::AddConstruction { row, kind }) => {
+            FileCommand::Save => self.save_readiness(),
+            FileCommand::SaveCopy => self.save_copy_readiness(),
+            FileCommand::ExportRecipe => self.export_recipe_readiness(),
+            FileCommand::ExportWav => self.export_readiness(),
+        }
+    }
+
+    fn editor_command_admission(&self, command: &EditorCommand) -> Result<(), Refusal> {
+        match command {
+            EditorCommand::New => self.start_allowed(),
+            EditorCommand::CopySelected => self.copy_admission(),
+            EditorCommand::ShowBasedOnSource | EditorCommand::SetExportRate(_) => Ok(()),
+            EditorCommand::AddComponent { row, kind } => self.component_add_admission(*row, *kind),
+            EditorCommand::AddPair { row, kind } => self.pair_add_admission(*row, *kind),
+            EditorCommand::AddConstruction { row, kind } => {
                 self.editing_allowed()?;
                 self.editor.addition_admission(*row, kind.component())
             }
-            Command::Editor(EditorCommand::RestoreComponent(row)) => {
-                self.restore_component_admission(*row)
-            }
-            Command::Editor(
-                EditorCommand::Stage { field, .. }
-                | EditorCommand::CommitField { field, .. }
-                | EditorCommand::Restore(field)
-                | EditorCommand::Slide { field, .. },
-            ) => {
+            EditorCommand::RestoreComponent(row) => self.restore_component_admission(*row),
+            EditorCommand::Stage { field, .. }
+            | EditorCommand::CommitField { field, .. }
+            | EditorCommand::Restore(field)
+            | EditorCommand::Slide { field, .. } => {
                 self.editing_allowed()?;
                 self.editor
                     .session()
                     .admit_field(*field)
                     .map_err(Refusal::Edit)
             }
-            Command::Editor(
-                EditorCommand::SetRouting { row, .. }
-                | EditorCommand::SetCarrier { row, .. }
-                | EditorCommand::SetModulation { row, .. }
-                | EditorCommand::SetPulseWidth { row, .. }
-                | EditorCommand::SetPulseShape { row, .. }
-                | EditorCommand::RemoveComponent(row),
-            ) => {
+            EditorCommand::SetRouting { row, .. }
+            | EditorCommand::SetCarrier { row, .. }
+            | EditorCommand::SetModulation { row, .. }
+            | EditorCommand::SetPulseWidth { row, .. }
+            | EditorCommand::SetPulseShape { row, .. }
+            | EditorCommand::RemoveComponent(row) => {
                 self.editing_allowed()?;
                 self.editor
                     .session()
@@ -323,33 +323,53 @@ impl Workspace {
                     .map(|_| ())
                     .map_err(Refusal::Edit)
             }
-            Command::Editor(EditorCommand::Commit) => self.editing_allowed(),
-            Command::Library(LibraryCommand::Initialize) => self.library_job_admission(),
-            Command::Library(LibraryCommand::EditSelected) => {
+            EditorCommand::Commit => self.editing_allowed(),
+        }
+    }
+
+    fn library_command_admission(&self, command: &LibraryCommand) -> Result<(), Refusal> {
+        match command {
+            LibraryCommand::Initialize => self.library_job_admission(),
+            LibraryCommand::EditSelected => {
                 self.start_allowed()?;
                 self.selected().map(|_| ()).ok_or(Refusal::NoSelection)
             }
-            Command::Library(LibraryCommand::AddSelected) => {
-                self.prepare_add_to_library().map(|_| ())
-            }
-            Command::Library(LibraryCommand::Select(entry) | LibraryCommand::CloseEntry(entry)) => {
+            LibraryCommand::AddSelected => self.add_to_library_readiness(),
+            LibraryCommand::Select(entry) | LibraryCommand::CloseEntry(entry) => {
                 self.resolve_entry_handle(entry, false).map(|_| ())
             }
-            Command::Library(
-                LibraryCommand::EditEntry(entry) | LibraryCommand::AddEntry(entry),
-            ) => {
+            LibraryCommand::EditEntry(entry) => {
+                self.start_allowed()?;
+                let (key, version, trashed) = self.resolve_entry_handle(entry, false)?;
+                if self.library.selected_key() != Some(&key) {
+                    return Err(Refusal::SelectionChanged);
+                }
+                if matches!(key, LibraryKey::External(_))
+                    && self
+                        .selected()
+                        .is_some_and(|snapshot| snapshot.external_file().is_some())
+                {
+                    return Ok(());
+                }
+                self.library
+                    .loaded()
+                    .filter(|record| {
+                        record.key == key
+                            && Some(record.version_token) == version
+                            && !trashed
+                            && !self.library.requires_read(&key)
+                    })
+                    .map(|_| ())
+                    .ok_or(Refusal::SelectionChanged)
+            }
+            LibraryCommand::AddEntry(entry) => {
                 let (key, _, _) = self.resolve_entry_handle(entry, false)?;
                 if self.library.selected_key() != Some(&key) {
                     return Err(Refusal::SelectionChanged);
                 }
-                match command {
-                    Command::Library(LibraryCommand::AddEntry(_)) => {
-                        self.prepare_add_to_library().map(|_| ())
-                    }
-                    _ => self.start_allowed(),
-                }
+                self.add_to_library_readiness()
             }
-            Command::Library(LibraryCommand::Mutate { entry, mutation }) => {
+            LibraryCommand::Mutate { entry, mutation } => {
                 let purge = matches!(mutation, EntryMutation::RequestPurge);
                 let (key, version, trashed) = self.resolve_entry_handle(entry, purge)?;
                 crate::storage::library::require_user(&key)
@@ -367,7 +387,18 @@ impl Workspace {
                     self.library_job_admission()
                 }
             }
-            Command::Library(_) => Ok(()),
+            LibraryCommand::SetQuery(_)
+            | LibraryCommand::SetFacets(_)
+            | LibraryCommand::SetFilters(_)
+            | LibraryCommand::ClearFilters
+            | LibraryCommand::ClearRhythmFilters
+            | LibraryCommand::ResetSort
+            | LibraryCommand::Search(_)
+            | LibraryCommand::SetRhythm(_)
+            | LibraryCommand::Navigate(_)
+            | LibraryCommand::Refresh
+            | LibraryCommand::CloseSelected
+            | LibraryCommand::ShowSaved => Ok(()),
         }
     }
 
@@ -376,6 +407,18 @@ impl Workspace {
     /// # Errors
     /// Returns the typed refusal while retaining its owner-specific status.
     pub fn apply(&mut self, command: Command) -> Result<(), Refusal> {
+        self.learning_command_admission(&command)?;
+        // Harmless callbacks for a surface that is no longer current perform no action.
+        if matches!(&command, Command::DeviceCheck(DeviceCheckCommand::Play(_)))
+            && self.view != View::DeviceCheck
+        {
+            return Ok(());
+        }
+        if matches!(&command, Command::Output(OutputCommand::Preview))
+            && self.preview_admission().is_err()
+        {
+            return Ok(());
+        }
         // This is a fresh policy query, never an availability-time permission token.
         // The owner handlers retain their action-state and resource-boundary checks.
         if let Err(refusal) = self.admission(&command) {
@@ -383,11 +426,13 @@ impl Workspace {
                 Command::Audio(_) => self
                     .audio
                     .record_status(AudioStatus::Refused(refusal.clone())),
-                Command::File(_) | Command::Library(_) => self
+                Command::File(_)
+                | Command::Library(_)
+                | Command::Editor(EditorCommand::New | EditorCommand::CopySelected) => self
                     .files
                     .record_status(FileStatus::Refused(refusal.clone())),
                 Command::Editor(_) => self.editor.finish_edit(&Err(refusal.clone())),
-                _ => {}
+                _ => return Err(refusal),
             }
             self.changed();
             return Err(refusal);
@@ -718,6 +763,14 @@ impl Workspace {
             View::DeviceCheck | View::Recordings => Err(Refusal::NoSoundInView),
         }
     }
+    fn export_recipe_readiness(&mut self) -> Result<(), Refusal> {
+        self.import_admission()?;
+        match self.view {
+            View::Library => self.library.recipe_readiness(),
+            View::Workbench => self.editor.recipe_readiness(),
+            View::DeviceCheck | View::Recordings => Err(Refusal::NoSoundInView),
+        }
+    }
     pub(super) fn prepare_export_recipe(&mut self) -> Result<(Arc<str>, String), Refusal> {
         self.import_admission()?;
         match self.view {
@@ -768,6 +821,11 @@ impl Workspace {
     pub(super) fn library_job_admission(&self) -> Result<(), Refusal> {
         self.import_admission()?;
         self.library.save_destination_admission()
+    }
+    fn add_to_library_readiness(&self) -> Result<(), Refusal> {
+        self.library.add_readiness()?;
+        self.library_job_admission()?;
+        self.library.record_destination_admission()
     }
     pub(super) fn prepare_add_to_library(&self) -> Result<Arc<Recipe>, Refusal> {
         let recipe = self.library.prepare_add()?;
@@ -876,6 +934,9 @@ impl Workspace {
     }
 
     pub(super) fn editing_allowed(&self) -> Result<(), Refusal> {
+        if self.audio.rejected_live(self.editor.session().document()) {
+            return Err(Refusal::AudioPlaying);
+        }
         self.prompts.admit_start(self.pending.is_some())?;
         if self.files.blocks_edit() {
             return Err(Refusal::FileBusy);
@@ -1410,8 +1471,8 @@ impl Workspace {
                 }),
             start: self.admission(&Command::Editor(EditorCommand::New)),
             preview: self.admission(&Command::Output(OutputCommand::Preview)),
-            save_copy: save_copy.map(|_| ()),
-            export_recipe: export_recipe.map(|_| ()),
+            save_copy,
+            export_recipe,
             editing: self.admission(&Command::Editor(EditorCommand::Commit)),
             restore_component,
             playing,
@@ -1440,10 +1501,14 @@ impl Workspace {
                     }
                 }
             },
-            play_target: match self.view {
-                View::Workbench => self.editor.session().draft().title().to_owned(),
-                View::Library | View::DeviceCheck | View::Recordings => {
-                    self.shown().map(RecipeSnapshot::title).unwrap_or_default()
+            play_target: if self.learning_visible {
+                String::new()
+            } else {
+                match self.view {
+                    View::Workbench => self.editor.session().draft().title().to_owned(),
+                    View::Library | View::DeviceCheck | View::Recordings => {
+                        self.shown().map(RecipeSnapshot::title).unwrap_or_default()
+                    }
                 }
             },
             progress,
@@ -1459,6 +1524,13 @@ impl Workspace {
         view
     }
 
+    fn selected_mutation_admission(&mut self, mutation: EntryMutation) -> Result<(), Refusal> {
+        let entry = self.selected_entry_handle().ok_or(Refusal::NoSelection)?;
+        self.admission(&Command::Library(LibraryCommand::Mutate {
+            entry,
+            mutation,
+        }))
+    }
     fn operation_views(&mut self, view: &WorkspaceActions) -> Vec<ActionView> {
         crate::vocabulary::Operation::ALL
             .into_iter()
@@ -1469,7 +1541,10 @@ impl Workspace {
                     O::SaveCopy => self.view == View::Workbench && view.can_save_copy(),
                     O::NewSound => view.can_new(),
                     O::EditSavedRecipe | O::EditExternalFile => {
-                        !self.learning_visible && view.can_new()
+                        self.selected_entry_handle().is_some_and(|entry| {
+                            self.admission(&Command::Library(LibraryCommand::EditEntry(entry)))
+                                .is_ok()
+                        })
                     }
                     O::EditCopy => view.can_copy(),
                     O::OpenRecipe => self.admission(&Command::File(FileCommand::Import)).is_ok(),
@@ -1500,11 +1575,33 @@ impl Workspace {
                     O::UndoRemove => view.can_restore_component(),
                     O::LibraryAdd => view.can_add_to_library(),
                     O::LibraryTrash => view.can_request_trash(),
-                    O::LibraryInit
-                    | O::LibraryUpdate
-                    | O::LibraryRename
-                    | O::LibraryRestore
-                    | O::LibraryPurge => view.can_manage_library(),
+                    O::LibraryInit => self
+                        .admission(&Command::Library(LibraryCommand::Initialize))
+                        .is_ok(),
+                    O::LibraryRename => self
+                        .selected_mutation_admission(EntryMutation::Rename {
+                            title: self
+                                .selected()
+                                .map(RecipeSnapshot::title)
+                                .unwrap_or_default(),
+                        })
+                        .is_ok(),
+                    O::LibraryRestore => self
+                        .selected_mutation_admission(EntryMutation::Restore)
+                        .is_ok(),
+                    O::LibraryPurge => self
+                        .selected_mutation_admission(EntryMutation::RequestPurge)
+                        .is_ok(),
+                    O::CloseOpenFile => {
+                        !self.learning_visible
+                            && self
+                                .library
+                                .selected_key()
+                                .is_some_and(|key| matches!(key, LibraryKey::External(_)))
+                    }
+                    O::ShowSaved => !self.learning_visible && self.library.has_saved_entry(),
+                    O::LibraryRefresh | O::LibraryRead => !self.learning_visible,
+                    O::DeviceCheck => true,
                     O::List
                     | O::ListTrash
                     | O::Describe
@@ -1512,11 +1609,7 @@ impl Workspace {
                     | O::Recipe
                     | O::LibraryPath
                     | O::LibraryCheck
-                    | O::LibraryRefresh
-                    | O::LibraryRead
-                    | O::CloseOpenFile
-                    | O::ShowSaved
-                    | O::DeviceCheck => true,
+                    | O::LibraryUpdate => false,
                 };
                 ActionView { operation, enabled }
             })

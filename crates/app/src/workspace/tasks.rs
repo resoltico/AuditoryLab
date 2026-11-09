@@ -269,8 +269,8 @@ impl JobOutcome {
             Self::Audio(Err(error)) => crate::services::OperationError::from(error.clone()),
             Self::File(outcome) => match outcome {
                 FileOutcome::Imported(Err(error)) => error.clone().into(),
-                FileOutcome::RecordingOpened(Err(error)) => error.clone().into(),
-                FileOutcome::RecordingAnalyzed(Err(error)) => error.clone().into(),
+                FileOutcome::RecordingOpened(Err(error))
+                | FileOutcome::RecordingAnalyzed(Err(error)) => error.clone().into(),
                 FileOutcome::Managed(Err(error)) => error.clone(),
                 FileOutcome::RecipeExported(Err(error)) => error.clone().into(),
                 FileOutcome::Exported(Err(error)) => error.clone().into(),

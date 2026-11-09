@@ -187,6 +187,16 @@ impl FileError {
             _ => self.outcome(),
         }
     }
+    /// Independently observed state after a failed filesystem mutation.
+    /// Absence means this error carries no post-mutation uncertainty.
+    #[must_use]
+    pub fn publication_confirmation(&self) -> Option<&Confirmation> {
+        match self {
+            Self::AfterMutation { confirmation, .. } => Some(confirmation),
+            Self::Cleanup { primary, .. } => primary.publication_confirmation(),
+            _ => None,
+        }
+    }
     /// Native I/O classification, when this failure has a direct I/O cause.
     #[must_use]
     pub fn io_kind(&self) -> Option<std::io::ErrorKind> {

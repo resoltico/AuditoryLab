@@ -25,7 +25,7 @@ impl RecordingError {
     /// Frontend-independent failure category.
     pub fn outcome(&self) -> Outcome {
         match self {
-            Self::File(error) => error.outcome(),
+            Self::File(error) => error.input_outcome(),
             Self::Cancelled => Outcome::Cancelled,
             Self::InvalidWindow => Outcome::InvalidArgument,
             _ => Outcome::Unreadable,

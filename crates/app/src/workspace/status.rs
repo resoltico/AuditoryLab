@@ -331,8 +331,7 @@ crate::core::diagnostic_codes! {
                     let mut params = crate::core::diagnostic::Code::params(error);
                     params.extend(crate::core::diagnostic_params! {
                         "cause_code"=>crate::core::diagnostic::Code::code(error),
-                        "diagnostic\
-                        _rate_hz"=>rate.hz(),
+                        "diagnostic_rate_hz"=>rate.hz(),
                     });
                     params
                 }

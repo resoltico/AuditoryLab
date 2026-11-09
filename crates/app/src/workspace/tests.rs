@@ -1811,3 +1811,95 @@ fn editor_rows_keep_component_local_pair_errors_between_other_failures() {
             .is_some()
     );
 }
+
+#[test]
+fn export_job_executes_the_admitted_rendition_after_realization_cache_eviction() {
+    let source = short_silent_source();
+    let mut ws = TestWorkspace::new(vec![source.clone()], Capabilities::available()).unwrap();
+    ws.select(0);
+    ws.take_effects();
+    ws.apply(Command::File(FileCommand::ExportWav)).unwrap();
+    let prompt = ws
+        .take_effects()
+        .into_iter()
+        .find_map(|effect| match effect {
+            Effect::ChoosePath { prompt, .. } => Some(prompt),
+            _ => None,
+        })
+        .unwrap();
+    let path = ws.store.path().parent().unwrap().join("captured.wav");
+    ws.apply(Command::Answer {
+        prompt,
+        answer: PromptAnswer::Path(Some(path.clone())),
+    })
+    .unwrap();
+    let job = ws
+        .take_effects()
+        .into_iter()
+        .find_map(|effect| match effect {
+            Effect::Run(job) => Some(job),
+            _ => None,
+        })
+        .unwrap();
+    source.at(SampleRate::new(96_000).unwrap()).unwrap();
+    source.at(SampleRate::new(192_000).unwrap()).unwrap();
+    let compilations = source.realization_count();
+    let Response::Finished {
+        outcome: JobOutcome::File(FileOutcome::Exported(Ok(exported))),
+        ..
+    } = job.execute(|_| panic!("file job must not prepare audio"))
+    else {
+        panic!("export succeeded")
+    };
+    assert_eq!(exported.warnings, []);
+    assert_eq!(exported.sample_rate, SampleRate::DEFAULT);
+    assert_eq!(source.realization_count(), compilations);
+    let bytes = std::fs::read(path).unwrap();
+    let data = bytes.windows(4).position(|word| word == b"data").unwrap();
+    assert!(bytes[data + 8..].iter().all(|byte| *byte == 0));
+    assert_eq!(
+        bytes.len() - data - 8,
+        usize::try_from(exported.frames * 8).unwrap()
+    );
+}
+
+#[test]
+fn recording_input_failures_keep_their_context_through_worker_completion() {
+    let mut ws = workspace();
+    let missing = ws.store.path().parent().unwrap().join("missing.wav");
+    let error = crate::services::open_recording(&missing).unwrap_err();
+    assert_eq!(error.outcome(), crate::outcome::Outcome::Unreadable);
+    let outcome = JobOutcome::File(FileOutcome::RecordingOpened(Err(error)));
+    let TaskFailure::Operation(error) = outcome.failure().unwrap() else {
+        panic!("operation")
+    };
+    assert_eq!(error.outcome(), crate::outcome::Outcome::Unreadable);
+    ws.take_effects();
+    ws.apply(Command::File(FileCommand::OpenRecording)).unwrap();
+    let prompt = ws
+        .take_effects()
+        .into_iter()
+        .find_map(|effect| match effect {
+            Effect::ChoosePath { prompt, .. } => Some(prompt),
+            _ => None,
+        })
+        .unwrap();
+    ws.apply(Command::Answer {
+        prompt,
+        answer: PromptAnswer::Path(Some(missing)),
+    })
+    .unwrap();
+    let job = ws
+        .take_effects()
+        .into_iter()
+        .find_map(|effect| match effect {
+            Effect::Run(job) => Some(job),
+            _ => None,
+        })
+        .unwrap();
+    ws.respond(job.execute(|_| panic!("no audio")));
+    assert!(
+        matches!(ws.action_view().file_status, FileStatus::Failed(ref error)
+        if error.outcome() == crate::outcome::Outcome::Unreadable)
+    );
+}

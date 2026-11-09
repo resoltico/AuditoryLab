@@ -627,3 +627,61 @@ fn prepare_document_case(ws: &mut TestWorkspace, case: Case) {
             .unwrap();
     }
 }
+
+#[test]
+fn command_policy_matches_independent_state_table_without_work_or_identity_allocation() {
+    for case in Case::ALL {
+        let mut ws = fixture(case);
+        let expected = case.expected();
+        let identity = ws.next_id;
+        let revision = ws.revision();
+        let effects = ws.effects.len();
+        for (command, permission) in [
+            (Command::Audio(AudioCommand::Play), Permission::Play),
+            (Command::File(FileCommand::Import), Permission::Import),
+            (Command::Editor(EditorCommand::New), Permission::New),
+            (
+                Command::Editor(EditorCommand::CopySelected),
+                Permission::Copy,
+            ),
+            (Command::File(FileCommand::Save), Permission::Save),
+            (Command::File(FileCommand::SaveCopy), Permission::SaveCopy),
+            (
+                Command::File(FileCommand::ExportRecipe),
+                Permission::Portable,
+            ),
+            (Command::File(FileCommand::ExportWav), Permission::Export),
+            (Command::Editor(EditorCommand::Commit), Permission::Edit),
+            (
+                Command::Library(LibraryCommand::Initialize),
+                Permission::Manage,
+            ),
+        ] {
+            assert_eq!(
+                ws.admission(&command).is_ok(),
+                expected.allows(permission),
+                "{case:?}: {permission:?}"
+            );
+        }
+        assert_eq!(ws.next_id, identity, "{case:?}");
+        assert_eq!(ws.revision(), revision, "{case:?}");
+        assert_eq!(ws.effects.len(), effects, "{case:?}");
+    }
+}
+
+#[test]
+fn command_policy_refuses_foreign_field_handles_without_mutation() {
+    let mut ws = workspace();
+    let mut foreign = workspace();
+    let (_, field) = document(&mut foreign, 440.0);
+    let command = Command::Editor(EditorCommand::Stage {
+        field,
+        text: "123".into(),
+    });
+    let identity = ws.next_id;
+    let revision = ws.revision();
+    assert!(matches!(ws.admission(&command), Err(Refusal::Edit(_))));
+    assert_eq!(ws.next_id, identity);
+    assert_eq!(ws.revision(), revision);
+    assert!(!ws.editor().has_staged());
+}

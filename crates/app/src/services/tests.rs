@@ -327,3 +327,49 @@ fn export_rendition_uses_the_capture_even_after_its_cache_entry_is_evicted() {
     );
     assert!(!started_again, "a refused destination never starts writing");
 }
+
+#[test]
+fn input_and_publication_owners_classify_the_same_neutral_io_cause_independently() {
+    let cause = FileError::Io(IoFailure::new(
+        IoOperation::Open,
+        None,
+        std::io::Error::new(std::io::ErrorKind::PermissionDenied, "injected refusal"),
+    ));
+    assert_eq!(
+        crate::services::LoadError::from(cause.clone()).outcome(),
+        crate::outcome::Outcome::Unreadable
+    );
+    assert_eq!(
+        crate::recording::RecordingError::from(cause.clone()).outcome(),
+        crate::outcome::Outcome::Unreadable
+    );
+    assert_eq!(
+        SaveError::from(cause.clone()).outcome(),
+        crate::outcome::Outcome::Write
+    );
+    assert_eq!(
+        ExportError::from(cause).outcome(),
+        crate::outcome::Outcome::Write
+    );
+}
+
+#[test]
+fn publication_confirmation_survives_aggregate_error_and_cleanup_context() {
+    let error = FileError::AfterMutation {
+        phase: crate::services::MutationPhase::Publish,
+        path: "output.toml".into(),
+        confirmation: crate::services::Confirmation::Unchanged,
+        cause: IoCause::new(std::io::Error::other("injected publication failure")),
+    }
+    .with_leftover(
+        "stage.toml".into(),
+        std::io::Error::other("injected cleanup failure"),
+    );
+    let error = OperationError::from(SaveError::from(error));
+    assert!(matches!(
+        error.publication_confirmation(),
+        Some(crate::services::Confirmation::Unchanged)
+    ));
+    assert_eq!(error.outcome(), crate::outcome::Outcome::Write);
+    assert_eq!(error.leftover(), Some(std::path::Path::new("stage.toml")));
+}
