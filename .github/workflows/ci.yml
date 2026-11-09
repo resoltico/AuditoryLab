@@ -590,6 +590,13 @@ jobs:
           # retain MTA so its COM model matches the previous client host.
           powershell.exe -MTA -NoProfile -File crates/gui/native/windows.ps1 -Binary target/debug/auditorylab-gui.exe -Fixture crates/core/tests/fixtures/recipes/custom-derived-pair.toml -Scratch $scratch
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Observe the same legacy UIA client on a stock Windows edit control
+        if: always()
+        timeout-minutes: 4
+        shell: pwsh
+        run: |
+          powershell.exe -MTA -NoProfile -File crates/gui/native/windows-reference-control.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: failure()
         with:
