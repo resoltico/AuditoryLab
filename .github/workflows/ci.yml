@@ -89,6 +89,13 @@ jobs:
       - name: Verify maintained dependency patches and target graphs
         if: github.event_name != 'schedule'
         run: cargo xtask verify-vendor
+      - name: Verify patched build executor
+        if: github.event_name != 'schedule'
+        # Cargo 1.99.1 panics when selecting this build-only dependency's tests.
+        # This no_std crate has no dependencies; use the pinned compiler directly.
+        run: |
+          rustc --edition=2018 --test third_party/spin_on/src/lib.rs -o target/debug/spin_on-tests
+          target/debug/spin_on-tests
       - if: github.event_name != 'schedule'
         run: cargo doc --workspace --no-deps --locked
         env:

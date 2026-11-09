@@ -1,0 +1,50 @@
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -12,11 +12,10 @@
+ 
+ [package]
+ edition = "2018"
++rust-version = "1.68"
+ name = "spin_on"
+ version = "0.1.1"
+ authors = ["paulkernfeld <me@paulkernfeld.com>"]
+ description = "A simple, inefficient Future executor"
+ categories = ["asynchronous", "no-std"]
+ license = "Apache-2.0 OR MIT"
+-[dependencies.pin-utils]
+-version = "0.1.0"
+--- a/Cargo.toml.orig
++++ b/Cargo.toml.orig
+@@ -3,6 +3,7 @@
+ version = "0.1.1"
+ authors = ["paulkernfeld <me@paulkernfeld.com>"]
+ edition = "2018"
++rust-version = "1.68"
+ description = "A simple, inefficient Future executor"
+ license = "Apache-2.0 OR MIT"
+ categories = ["asynchronous", "no-std"]
+@@ -10,4 +11,3 @@
+ # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+ 
+ [dependencies]
+-pin-utils = "0.1.0"
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -12,7 +12,7 @@
+ //! - It is really simple
+ //! - It should work on basically any platform
+ //! - It has no dependency on `std` or on an allocator
+-//! - It only has one dependency
++//! - It has no dependencies
+ //!
+ //! ## The Design
+ //!
+@@ -71,7 +71,7 @@
+ /// Continuously poll a future until it returns `Poll::Ready`. This is not normally how an
+ /// executor should work, because it runs the CPU at 100%.
+ pub fn spin_on<F: Future>(future: F) -> F::Output {
+-    pin_utils::pin_mut!(future);
++    let mut future = core::pin::pin!(future);
+     let waker = &unsafe { Waker::from_raw(noop_waker()) };
+     let mut cx = Context::from_waker(waker);
+     loop {
