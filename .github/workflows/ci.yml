@@ -465,7 +465,9 @@ jobs:
     needs: lint
     if: github.event_name != 'schedule' && (inputs.release || needs.lint.outputs.core-changed == 'true')
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    # Core now includes numerical measurement tests. Keep every mutant and the
+    # 60-second per-mutant limit; allow the full single-worker cohort to finish.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
