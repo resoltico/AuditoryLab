@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+- CLI JSON now uses schema 4 with operation-specific fields; consumers must update. Inspection validity, partial inventories and publication states remain distinct.
+- Recording analysis starts at zero by default; `--start` and the desktop start field select an absolute offset. Explicit lengths are 2–3600 s, with bounded cooperative work.
+- Recording analysis streams one admitted file without a full-file counting pass, reports unknown source duration honestly and retains actual window resolution at early EOF.
+- Component diagnostics retain every independent failure and valid lane fact, including pair arithmetic failures; invalid mixes remain unplayable.
+- Copies retain full ancestry up to the existing 65,536-byte portable limit, including the final title, identity and attribution; the 16-generation ceiling is removed.
+- Source HTTP(S) URLs require a valid authority and reject whitespace or controls while preserving valid authored text.
+- Workspace action availability follows current admission policy; poisoned audio preparation retains its task slot until the worker joins.
+- Recording input failures retain their read context. Confirmed publications remain successful when terminal reporting fails, with best-effort notices.
+- Recording energy bars distinguish undefined silence from zero energy; changing Device check answers reinterprets retained findings without re-analysis.
+- Catalog construction and captured WAV export preserve typed content through internal processing, with destination and publication safeguards retained.
+- Contributor checks use formatters without a physical line-width gate; CI separates state checks, native tests, mutations and source-bound packaging.
 - Update bundled dependencies, including thread-safety fixes in triple_buffer, overflow safety in fixedbitset and native file-dialog fixes.
 - Slint build tools no longer resolve the unmaintained pin-utils crate; the patched executor uses Rust's standard pinning macro.
 
