@@ -18,9 +18,20 @@ from PIL import ImageGrab
 from gi.repository import GLib
 
 
+def pump_events():
+    # AT-SPI cache retirement/focus events use the ordinary GLib main context.
+    # Bound each drain so an animated application cannot starve the deadline.
+    context = GLib.MainContext.default()
+    for _ in range(32):
+        if not context.pending():
+            break
+        context.iteration(False)
+
+
 def wait_for(description, probe, seconds=30):
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
+        pump_events()
         result = probe()
         if result is not None and result is not False:
             return result
@@ -77,6 +88,36 @@ def activate(node):
     action = node.queryAction()
     if action.nActions < 1 or not action.doAction(0):
         raise RuntimeError("OS-provider action refused: " + node.name)
+
+
+def current_chooser():
+    cancel = named(pyatspi.Registry.getDesktop(0), "Cancel")
+    if cancel is None:
+        return None
+    try:
+        parent = cancel.parent
+        while parent.parent is not None and parent.getRole() not in (pyatspi.ROLE_DIALOG, pyatspi.ROLE_FILE_CHOOSER):
+            parent = parent.parent
+        if parent.getRole() not in (pyatspi.ROLE_DIALOG, pyatspi.ROLE_FILE_CHOOSER):
+            return None
+        if not cancel.queryComponent().grabFocus():
+            return None
+        pump_events()
+        if not visible(cancel) or not cancel.getState().contains(pyatspi.STATE_FOCUSED):
+            return None
+        return cancel, parent
+    except (GLib.Error, RuntimeError):
+        return None
+
+
+def focused_entry(root):
+    for node in nodes(root):
+        try:
+            if node.getRole() == pyatspi.ROLE_ENTRY and visible(node) and node.getState().contains(pyatspi.STATE_FOCUSED):
+                return node
+        except (GLib.Error, RuntimeError):
+            continue
+    return None
 
 
 def key(*keys):
@@ -159,8 +200,10 @@ def main():
             surface_ids = None
             if args.session == "wayland":
                 activate(named(app, "Open recipe…"))
-                cancel = wait_for("native dialog before surface recreation", lambda: named(pyatspi.Registry.getDesktop(0), "Cancel"))
+                cancel, _ = wait_for("focused native dialog before surface recreation", current_chooser)
                 activate(cancel)
+                wait_for("native dialog dismissed before surface recreation", lambda: not visible(cancel))
+                wait_for("main recovered before surface recreation", lambda: named(app, "Open recipe…"))
                 def first_parent():
                     parents = re.findall(r'string "(wayland:[^"]+)"', portal_path.read_text())
                     return parents[0] if parents else None
@@ -202,23 +245,22 @@ def main():
             dialogs = []
             for attempt in range(2):
                 activate(wait_for("enabled Open recipe", lambda: named(app, "Open recipe…")))
-                desktop = pyatspi.Registry.getDesktop(0)
-                cancel = wait_for("native portal file chooser Cancel", lambda: named(desktop, "Cancel"))
-                # Actual toolkit file chooser must expose editable location/name UI.
-                parent = cancel.parent
-                while parent.parent is not None and parent.getRole() not in (pyatspi.ROLE_DIALOG, pyatspi.ROLE_FILE_CHOOSER):
-                    parent = parent.parent
-                if parent.getRole() not in (pyatspi.ROLE_DIALOG, pyatspi.ROLE_FILE_CHOOSER):
-                    raise RuntimeError("Cancel did not belong to a native file chooser")
+                cancel, parent = wait_for("current focused native file chooser", current_chooser)
                 dialogs.append(parent.name)
                 activate(cancel)
+                wait_for("native dialog actually dismissed", lambda: not visible(cancel))
                 wait_for("native dialog cancelled and app recovered", lambda: named(app, "Open recipe…"))
             # Reopen and use the real location control to open an isolated recipe.
             activate(named(app, "Open recipe…"))
-            wait_for("native chooser reopened", lambda: named(pyatspi.Registry.getDesktop(0), "Cancel"))
+            cancel, chooser = wait_for("current focused native chooser reopened", current_chooser)
             key("ctrl+l")
-            type_text(str(args.fixture.resolve()))
+            location = wait_for("actual focused native location control", lambda: focused_entry(chooser))
+            key("ctrl+a")
+            fixture = str(args.fixture.resolve())
+            type_text(fixture)
+            wait_for("native location received the exact fixture path", lambda: text_of(location) == fixture)
             key("Return")
+            wait_for("native chooser accepted and dismissed", lambda: not visible(cancel))
             wait_for("native chooser accepted location", lambda: named(app, "Open recipe…"))
             wait_for("opened fixture selected in production provider", lambda: named(app, "My 3 Hz pair"))
             time.sleep(0.2)
