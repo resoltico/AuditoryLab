@@ -30,7 +30,7 @@ getrandom = "0.4"
 serde_json = "1"
 sha2 = "0.11.1"
 rtrb = "=0.4.1"
-triple_buffer = "=9.0.0"
+triple_buffer = "=9.0.1"
 unicode-normalization = "0.1.26"
 allocation-counter = "0.8.1"
 auditorylab-app = { path = "crates/app" }
@@ -51,7 +51,7 @@ embed-resource = "=3.0.12"
 slint-build = { version = "=1.18.1", default-features = false, features = ["compat-1-18"] }
 libc = "0.2"
 rustix = { version = "1.1.6", default-features = false, features = ["std", "fs"] }
-rfd = { version = "0.17.2", default-features = false, features = [
+rfd = { version = "0.18.0", default-features = false, features = [
     "xdg-portal",
     "wayland",
     "common-controls-v6",
@@ -132,3 +132,6 @@ winit = { path = "third_party/winit" }
 symphonia-codec-aac = { path = "third_party/symphonia-codec-aac" }
 
 symphonia-format-riff = { path = "third_party/symphonia-format-riff" }
+
+# Slint build tools still use pin-utils through spin_on; use core::pin::pin!.
+spin_on = { path = "third_party/spin_on" }

@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Update bundled dependencies, including thread-safety fixes in triple_buffer, overflow safety in fixedbitset and native file-dialog fixes.
+- Slint build tools no longer resolve the unmaintained pin-utils crate; the patched executor uses Rust's standard pinning macro.
+
 ## [0.11.1] - 2026-11-04
 
 - Recording analysis leaves slow rates unresolved when the window cannot separate them from DC; text and JSON state the lowest resolved rate.

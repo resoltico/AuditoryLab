@@ -89,6 +89,9 @@ jobs:
       - name: Verify maintained dependency patches and target graphs
         if: github.event_name != 'schedule'
         run: cargo xtask verify-vendor
+      - name: Verify patched build executor
+        if: github.event_name != 'schedule'
+        run: cargo test -p spin_on --lib --locked
       - if: github.event_name != 'schedule'
         run: cargo doc --workspace --no-deps --locked
         env:
