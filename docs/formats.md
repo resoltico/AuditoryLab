@@ -1,6 +1,6 @@
 # Formats
 
-Auditory Lab reads recipe schema **5**, emits CLI JSON output **3**, uses nominal classifier revision **3**, and stores User Library layout **1**. These are separate contracts.
+Auditory Lab reads recipe schema **5**, emits CLI JSON output **4**, uses nominal classifier revision **3**, and stores User Library layout **1**. These are separate contracts.
 
 ## Recipe schema
 
@@ -158,7 +158,7 @@ These are the vocabulary keys used by queries, portable choices and JSON values.
 
 ## CLI JSON output
 
-Every envelope contains `output_schema_version`, `operation`, `complete`, `convention`, `query`, `unique_count`, `entries`, `groups` and `diagnostics`. `query` can be null. Optional operation fields are omitted when inapplicable.
+Every schema-4 envelope contains `output_schema_version` and `operation`. Private operation-specific wire payloads define the remaining fields; internal model serialization does not define this protocol. There is no global success/validity flag. `complete` describes discovery/inspection/recording work only; publication uses `status`, while failed operations have a typed failure status. Inapplicable fields are absent. Schema 3 is no longer emitted; consumers must adopt schema 4.
 
 | Operation | Data |
 | --- | --- |
@@ -166,9 +166,9 @@ Every envelope contains `output_schema_version`, `operation`, `complete`, `conve
 | Describe | Entry adds `recipe_toml` and `history_warnings`. |
 | Inspect | `validation.status` is `valid` with rate/frames/peaks/`voices` facts, or `invalid` with rate/diagnostics. |
 | Library path | `root` reports configured path/source, existence, layout and initialization; unavailable existence can be null. |
-| Initialization | Root result and published/unchanged `status`. |
+| Initialization | Root result and published/published-with-warning/unchanged `status`. |
 | Library check | Bounded inventory, diagnostics and retained stages. |
-| Mutation | Confirmed `status`, `selector`, `version_token`, affected entry and diagnostics. |
+| Mutation | Confirmed `status`, `selector`, `version_token`, affected entries and diagnostics; purge has an explicit null token, unrelated payloads omit it. |
 | Analyze recording | `recording` with opened `path`, size in `bytes`, recognized container `format` and optional `analysis` findings. |
 | Failure | Outcome `status` and operation diagnostics. |
 
@@ -470,7 +470,7 @@ Read-only broken pipes are quiet success. A confirmed mutation remains successfu
 
 ## Recording measurements
 
-CLI JSON schema 3 represents recording identity with `path`, `bytes` and container `format`; successful analysis supplies `recording.analysis`. Successful CLI analysis includes `codec`, `lossy`, `duration_seconds`, `sample_rate`, `channels`, `window` and `envelope_window` (`start_seconds`, `end_seconds`), `resolution_hz`, `envelope_resolution_hz`, `minimum_resolved_envelope_hz`, `minimum_envelope_relative_power`, `tones`, `ear_differences`, `coincident_tones`, `pulsing`, `low_energy`, `stereo`, chart `spectrum` and machine `limits`. Failed work emits a diagnostic without partial analysis. Desktop identification can open undecodable files; Analyze performs decoding.
+CLI JSON schema 4 represents recording identity with `path`, `bytes` and container `format`; successful analysis supplies `recording.analysis`. Successful CLI analysis includes `codec`, `lossy`, `duration_seconds`, `sample_rate`, `channels`, `window` and `envelope_window` (`start_seconds`, `end_seconds`), `resolution_hz`, `envelope_resolution_hz`, `minimum_resolved_envelope_hz`, `minimum_envelope_relative_power`, `tones`, `ear_differences`, `coincident_tones`, `pulsing`, `low_energy`, `stereo`, chart `spectrum` and machine `limits`. Failed work emits a diagnostic without partial analysis. Desktop identification can open undecodable files; Analyze performs decoding.
 
 ### Input and selected window
 

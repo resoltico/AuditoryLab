@@ -556,6 +556,7 @@ fn main() -> Result<()> {
     let args: Vec<_> = env::args().skip(1).collect();
     match args.first().map(String::as_str) {
         Some("check-style") if args.len() == 1 => style::check(),
+        Some("check-targets") if args.len() == 1 => targets::check(),
         Some("verify-vendor") if args.len() == 1 => vendor::verify(),
         Some("dist") => run_dist(&args),
         Some("compile-icons") if args.len() == 2 => {
@@ -566,8 +567,7 @@ fn main() -> Result<()> {
             let _ = package::inspect(
                 Path::new(&args[2]),
                 Path::new(
-                    "target/pac\
-            kage-inspection",
+                    "target/package-inspection",
                 ),
                 &args[1],
                 version(&meta)?,
@@ -585,8 +585,7 @@ fn main() -> Result<()> {
                 "{}",
                 section(
                     &fs::read_to_string(
-                        "CHANGELOG.m\
-            d"
+                        "CHANGELOG.md"
                     )?,
                     &args[1]
                 )?
@@ -597,13 +596,11 @@ fn main() -> Result<()> {
         Some("check-release") if args.len() == 2 => {
             let meta = metadata(None)?;
             if version(&meta)? != args[1] {
-                return Err("workspace \
-            version differs from requested release"
+                return Err("workspace version differs from requested release"
                     .into());
             }
             let text = fs::read_to_string(
-                "CHANGELOG.\
-            md",
+                "CHANGELOG.md",
             )?;
             release_notes(&text, &args[1])?;
             rust_standard_library_copyright()?;
@@ -616,7 +613,7 @@ fn main() -> Result<()> {
             Ok(())
         }
         _ => Err(
-            "use cargo xtask check-style, verify-vendor, dist --target TARGET [--out DIR] \
+            "use cargo xtask check-style, check-targets, verify-vendor, dist --target TARGET [--out DIR] \
             [--icons DIR], compile-icons OUTPUT, inspect-package TARGET ARCHIVE, \
             collect-assets VERSION INPUT OUTPUT, notices PRODUCT TARGET OUTPUT [EXECUTABLE], \
             notes VERSION, or check-release VERSION"
@@ -707,36 +704,21 @@ fn build_binaries(target: &str, source: &source::Source) -> Result<()> {
 fn run_dist(args: &[String]) -> Result<()> {
     let mut target = None;
     let mut icons = None;
-    let mut out = PathBuf::from(
-        "target/dis\
-            t",
-    );
+    let mut out = PathBuf::from("target/dist");
     let mut i = 1;
     while i < args.len() {
-        let value = args.get(i + 1).ok_or(
-            "missing \
-            option value",
-        )?;
+        let value = args.get(i + 1).ok_or("missing option value")?;
         match args[i].as_str() {
             "--target" => target = Some(value.as_str()),
             "--out" => out = PathBuf::from(value),
             "--icons" => icons = Some(Path::new(value)),
             _ => {
-                return Err("use dist \
-            --target TARGET [--out DIR] [--icons DIR]"
-                    .into());
+                return Err("use dist --target TARGET [--out DIR] [--icons DIR]".into());
             }
         }
         i += 2;
     }
-    dist(
-        target.ok_or(
-            "dist \
-            requires --target",
-        )?,
-        &out,
-        icons,
-    )
+    dist(target.ok_or("dist requires --target")?, &out, icons)
 }
 
 #[cfg(test)]

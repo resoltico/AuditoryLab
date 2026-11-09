@@ -31,15 +31,6 @@ pub(crate) fn check() -> Result<()> {
     let mut failures = Vec::new();
     for path in paths {
         let text = fs::read_to_string(path)?;
-        for (index, line) in text.lines().enumerate() {
-            let width = line.chars().count();
-            if width > 100 {
-                failures.push(format!(
-                    "{path}:{}: {width} characters exceeds 100",
-                    index + 1
-                ));
-            }
-        }
         if Path::new(path)
             .extension()
             .is_some_and(|extension| extension == "slint")

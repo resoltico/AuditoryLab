@@ -396,7 +396,7 @@ fn print_list(
                 }
             }
         }
-        ListFormat::Json => print_json(&Report::listing(operation, listing))?,
+        ListFormat::Json => print_json(&Report::listing(operation.try_into()?, listing))?,
         ListFormat::Text => {
             output(auditorylab_presentation::library::listing_description(listing).as_bytes())?;
             if !listing.complete() {
@@ -462,11 +462,11 @@ pub(super) fn inspect(resolved: &Resolved, rate: SampleRate, format: ReadFormat)
 pub(super) fn library(command: LibraryCommand, context: &LibraryContext) -> Result<u8> {
     let operation = command.operation();
     match command {
-        LibraryCommand::Path { format } => library_path(context, operation, format),
+        LibraryCommand::Path { format } => library_path(context, format),
         LibraryCommand::Init { format } => {
             let initialized = open_library(context)?.initialize()?;
             if format == ReadFormat::Json {
-                print_mutation_json(&Report::initialized(operation, &initialized));
+                print_mutation_json(&Report::initialized(&initialized));
             } else {
                 output(
                     auditorylab_presentation::library::initialization_description(&(initialized))
@@ -488,7 +488,7 @@ pub(super) fn library(command: LibraryCommand, context: &LibraryContext) -> Resu
             print_list(operation, &listing, format)?;
             Ok(listing.outcome().map_or(0, super::exit_code))
         }
-        LibraryCommand::Check { format } => check_library(context, operation, format),
+        LibraryCommand::Check { format } => check_library(context, format),
         command => {
             if matches!(&command, LibraryCommand::Purge { yes: false, .. }) {
                 return Err(usage(CommandProblem::PurgeConfirmation.message()));
@@ -549,13 +549,13 @@ pub(super) fn library(command: LibraryCommand, context: &LibraryContext) -> Resu
 // The service establishes publication truth before any fallible terminal output.
 fn report_mutation(
     outcome: &lab::services::library::WriteOutcome,
-    operation: Operation,
+    _operation: Operation,
     format: ReadFormat,
     stdout: &mut impl Write,
     stderr: &mut impl Write,
 ) -> Result<u8> {
     let mut bytes = if format == ReadFormat::Json {
-        auditorylab_presentation::report::json_bytes(&Report::mutation(operation, outcome))?
+        auditorylab_presentation::report::json_bytes(&Report::mutation(outcome))?
     } else {
         auditorylab_presentation::display_text(
             &(auditorylab_presentation::library::write_outcome_description(outcome)),
@@ -592,7 +592,7 @@ fn print_mutation_json(value: &Report) {
                 "{}",
                 auditorylab_presentation::display_text(
                     &(auditorylab_presentation::library::report_completion_failure(
-                        value.complete,
+                        value.completion_confirmed(),
                         error
                     ))
                 )
@@ -610,7 +610,7 @@ fn print_mutation_json(value: &Report) {
             "{}",
             auditorylab_presentation::display_text(
                 &(auditorylab_presentation::library::report_completion_failure(
-                    value.complete,
+                    value.completion_confirmed(),
                     error
                 ))
             )
@@ -626,7 +626,7 @@ pub(super) fn error_json(operation: Operation, error: &super::CliError) -> Resul
     ))
 }
 
-fn library_path(context: &LibraryContext, operation: Operation, format: ReadFormat) -> Result<u8> {
+fn library_path(context: &LibraryContext, format: ReadFormat) -> Result<u8> {
     let inspection = lab::services::library::path(context)?;
     let root = inspection.location;
     let info = match inspection.result {
@@ -634,7 +634,7 @@ fn library_path(context: &LibraryContext, operation: Operation, format: ReadForm
         Err(error) => {
             let exists = inspection.exists;
             if format == ReadFormat::Json {
-                print_json(&Report::unavailable_path(operation, &root, exists, &error))?;
+                print_json(&Report::unavailable_path(&root, exists, &error))?;
             } else {
                 output(
                     auditorylab_presentation::library::location_inspection_failure(
@@ -659,17 +659,17 @@ fn library_path(context: &LibraryContext, operation: Operation, format: ReadForm
         }
     };
     if format == ReadFormat::Json {
-        print_json(&Report::path(operation, info.clone()))?;
+        print_json(&Report::path(info.clone()))?;
     } else {
         output(auditorylab_presentation::library::root_info_description(&(info)).as_bytes())?;
     }
     Ok(0)
 }
 
-fn check_library(context: &LibraryContext, operation: Operation, format: ReadFormat) -> Result<u8> {
+fn check_library(context: &LibraryContext, format: ReadFormat) -> Result<u8> {
     let inventory = open_library(context)?.scan(&Cancel::default());
     if format == ReadFormat::Json {
-        print_json(&Report::inventory(operation, &inventory))?;
+        print_json(&Report::inventory(&inventory))?;
     } else {
         output(auditorylab_presentation::library::inventory_description(&(inventory)).as_bytes())?;
         for diagnostic in &inventory.diagnostics {

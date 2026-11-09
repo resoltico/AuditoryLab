@@ -89,7 +89,19 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         Capabilities::available(),
         auditorylab_app::workspace::LibraryBinding::configured()?,
     )?;
-    let onboarding = auditorylab_app::onboarding::Preference::configured();
+    // A debug-only native qualification run keeps onboarding state isolated.
+    // This is a private test seam, absent from distributed builds.
+    #[cfg(debug_assertions)]
+    let qualification =
+        std::env::var_os("AUDITORYLAB_NATIVE_QA_DIRECTORY").map(std::path::PathBuf::from);
+    #[cfg(not(debug_assertions))]
+    let qualification: Option<std::path::PathBuf> = None;
+    let onboarding = qualification.as_ref().map_or_else(
+        auditorylab_app::onboarding::Preference::configured,
+        |root| {
+            Ok(auditorylab_app::onboarding::Preference::at_config_directory(root.join("config")))
+        },
+    );
     let (seen, notice) = match &onboarding {
         Ok(preference) => match preference.seen() {
             Ok(seen) => (seen, String::new()),

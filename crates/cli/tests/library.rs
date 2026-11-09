@@ -126,7 +126,7 @@ fn native_cli_lifecycle_conflicts_dates_export_and_trash_are_shared_store_operat
     );
     assert!(add.status.success(), "{add:?}");
     let added = json(&add);
-    assert_eq!(added["output_schema_version"], 3);
+    assert_eq!(added["output_schema_version"], 4);
     assert_eq!(added["status"], "published");
     assert_eq!(added["entries"][0]["created_at"], serde_json::Value::Null);
     assert_eq!(added["entries"][0]["modified_at"], serde_json::Value::Null);
@@ -573,7 +573,7 @@ fn inspection_serializes_expanded_identity_without_conflating_authored_owners() 
     );
     assert!(result.status.success(), "{result:?}");
     let report = json(&result);
-    assert_eq!(report["output_schema_version"], 3);
+    assert_eq!(report["output_schema_version"], 4);
     assert!(
         report["entries"][0]["validation"]
             .get("components")

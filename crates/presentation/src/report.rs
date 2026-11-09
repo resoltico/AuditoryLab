@@ -25,7 +25,7 @@ use {
 };
 
 /// Version of the command-line JSON report envelope.
-pub const OUTPUT_SCHEMA_VERSION: u32 = 3;
+pub const OUTPUT_SCHEMA_VERSION: u32 = 4;
 
 macro_rules! report_struct {
     ($(#[$attr:meta])* $name:ident { $($(#[$field_attr:meta])* $field:ident: $ty:ty),* $(,)? }) => {
@@ -239,119 +239,384 @@ pub enum FailureStatus {
     /// A file operation failed; inspect the path named by its diagnostic.
     Failed,
 }
-/// Publication or failure state, independent of terminal output success.
-#[derive(Debug, Clone, Copy, Serialize)]
-#[serde(untagged)]
-pub enum ReportStatus {
-    /// Library publication state.
-    Mutation(MutationStatus),
-    /// Failure classification.
-    Failure(FailureStatus),
+// Wire fields are explicit: internal domain derives do not define schema 4.
+#[derive(Debug, Clone, Serialize)]
+struct WindowReport {
+    start_seconds: f64,
+    end_seconds: f64,
 }
-report_struct!(Report {
-    output_schema_version: u32,
-    operation: Operation,
+#[derive(Debug, Clone, Serialize)]
+struct ToneReport {
+    channel: usize,
+    hz: f64,
+    dbfs: f64,
+    relative_db: f64,
+}
+#[derive(Debug, Clone, Serialize)]
+struct EarDifferenceReport {
+    left_hz: f64,
+    right_hz: f64,
+    difference_hz: f64,
+    band: Option<rhythm::Band>,
+}
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum PulsingCauseReport {
+    Beating {
+        first_hz: f64,
+        second_hz: f64,
+        harmonic: u32,
+    },
+    Modulation,
+}
+#[derive(Debug, Clone, Serialize)]
+struct PulsingReport {
+    channel: usize,
+    envelope_band: String,
+    hz: f64,
+    band: Option<rhythm::Band>,
+    cause: PulsingCauseReport,
+}
+#[derive(Debug, Clone, Serialize)]
+struct EnergyShareReport {
+    channel: usize,
+    below_hz: f64,
+    fraction: Option<f64>,
+}
+#[derive(Debug, Clone, Serialize)]
+struct StereoReport {
+    peak_dbfs: Vec<Option<f64>>,
+    rms_dbfs: Vec<Option<f64>>,
+    correlation: Option<f64>,
+    side_to_mid_db: Option<f64>,
+}
+#[derive(Debug, Clone, Serialize)]
+struct SpectrumPointReport {
+    hz: f64,
+    dbfs_per_hz: f64,
+}
+#[derive(Debug, Clone, Serialize)]
+struct AnalysisReport {
+    codec: String,
+    lossy: bool,
+    duration_seconds: Option<f64>,
+    sample_rate: u32,
+    channels: usize,
+    window: WindowReport,
+    envelope_window: WindowReport,
+    resolution_hz: f64,
+    envelope_resolution_hz: f64,
+    minimum_resolved_envelope_hz: f64,
+    minimum_envelope_relative_power: f64,
+    tones: Vec<ToneReport>,
+    ear_differences: Vec<EarDifferenceReport>,
+    coincident_tones: bool,
+    pulsing: Vec<PulsingReport>,
+    low_energy: Vec<EnergyShareReport>,
+    stereo: StereoReport,
+    spectrum: Vec<Vec<SpectrumPointReport>>,
+    limits: Vec<String>,
+}
+impl From<&auditorylab_app::recording::Pulsing> for PulsingReport {
+    fn from(t: &auditorylab_app::recording::Pulsing) -> Self {
+        use auditorylab_app::recording::{EnvelopeBand, PulsingCause};
+        PulsingReport {
+            channel: t.channel,
+            envelope_band: match t.envelope_band {
+                EnvelopeBand::Whole => "whole",
+                EnvelopeBand::Below100 => "below100",
+                EnvelopeBand::Above100 => "above100",
+            }
+            .into(),
+            hz: t.hz,
+            band: t.band,
+            cause: match t.cause {
+                PulsingCause::Beating {
+                    first_hz,
+                    second_hz,
+                    harmonic,
+                } => PulsingCauseReport::Beating {
+                    first_hz,
+                    second_hz,
+                    harmonic,
+                },
+                PulsingCause::Modulation => PulsingCauseReport::Modulation,
+            },
+        }
+    }
+}
+impl From<&auditorylab_app::recording::Analysis> for AnalysisReport {
+    fn from(a: &auditorylab_app::recording::Analysis) -> Self {
+        use auditorylab_app::recording::MeasurementLimit;
+        Self {
+            codec: a.codec.clone(),
+            lossy: a.lossy,
+            duration_seconds: Some(a.duration_seconds),
+            sample_rate: a.sample_rate,
+            channels: a.channels,
+            window: WindowReport {
+                start_seconds: a.window.start_seconds,
+                end_seconds: a.window.end_seconds,
+            },
+            envelope_window: WindowReport {
+                start_seconds: a.envelope_window.start_seconds,
+                end_seconds: a.envelope_window.end_seconds,
+            },
+            resolution_hz: a.resolution_hz,
+            envelope_resolution_hz: a.envelope_resolution_hz,
+            minimum_resolved_envelope_hz: a.minimum_resolved_envelope_hz,
+            minimum_envelope_relative_power: a.minimum_envelope_relative_power,
+            tones: a
+                .tones
+                .iter()
+                .map(|t| ToneReport {
+                    channel: t.channel,
+                    hz: t.hz,
+                    dbfs: t.dbfs,
+                    relative_db: t.relative_db,
+                })
+                .collect(),
+            ear_differences: a
+                .ear_differences
+                .iter()
+                .map(|t| EarDifferenceReport {
+                    left_hz: t.left_hz,
+                    right_hz: t.right_hz,
+                    difference_hz: t.difference_hz,
+                    band: t.band,
+                })
+                .collect(),
+            coincident_tones: a.coincident_tones,
+            pulsing: a.pulsing.iter().map(PulsingReport::from).collect(),
+            low_energy: a
+                .low_energy
+                .iter()
+                .map(|t| EnergyShareReport {
+                    channel: t.channel,
+                    below_hz: t.below_hz,
+                    fraction: t.fraction,
+                })
+                .collect(),
+            stereo: StereoReport {
+                peak_dbfs: a.stereo.peak_dbfs.clone(),
+                rms_dbfs: a.stereo.rms_dbfs.clone(),
+                correlation: a.stereo.correlation,
+                side_to_mid_db: a.stereo.side_to_mid_db,
+            },
+            spectrum: a
+                .spectrum
+                .iter()
+                .map(|c| {
+                    c.iter()
+                        .map(|t| SpectrumPointReport {
+                            hz: t.hz,
+                            dbfs_per_hz: t.dbfs_per_hz,
+                        })
+                        .collect()
+                })
+                .collect(),
+            limits: a
+                .limits
+                .iter()
+                .map(|v| {
+                    match v {
+                        MeasurementLimit::DigitalSamplesOnly => "digital_samples_only",
+                        MeasurementLimit::QuietPairsMayBeMissed => "quiet_pairs_may_be_missed",
+                        MeasurementLimit::PatternAttributionNotIntent => {
+                            "pattern_attribution_not_intent"
+                        }
+                        MeasurementLimit::PeaksBelowRelativeFloorOmitted => {
+                            "peaks_below_relative_floor_omitted"
+                        }
+                    }
+                    .into()
+                })
+                .collect(),
+        }
+    }
+}
+/// Listing commands with a supported successful JSON payload.
+#[derive(Debug, Clone, Copy)]
+pub enum ListingOperation {
+    /// Ordinary discovery.
+    List,
+    /// Trash discovery.
+    ListTrash,
+}
+impl TryFrom<Operation> for ListingOperation {
+    type Error = &'static str;
+    fn try_from(value: Operation) -> Result<Self, Self::Error> {
+        match value {
+            Operation::List => Ok(Self::List),
+            Operation::ListTrash => Ok(Self::ListTrash),
+            _ => Err("operation does not produce a listing"),
+        }
+    }
+}
+#[derive(Debug, Clone, Serialize)]
+struct Entries {
+    complete: bool,
+    entries: Vec<EntryReport>,
+}
+#[derive(Debug, Clone, Serialize)]
+struct Listing {
     complete: bool,
     convention: &'static str,
-    query: Option<CatalogQuery>,
+    query: CatalogQuery,
     unique_count: usize,
     entries: Vec<EntryReport>,
     groups: Vec<GroupReport>,
     diagnostics: Vec<DiagnosticMessage>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    classifier_revision: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    effective_sort: Option<(SortBy, Direction)>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    stages: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    root: Option<RootReport>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    status: Option<ReportStatus>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    selector: Option<LibraryKey>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    version_token: Option<Option<VersionToken>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    recording: Option<RecordingReport>,
-});
-report_struct!(RecordingReport {
+    classifier_revision: u32,
+    effective_sort: (SortBy, Direction),
+    stages: Vec<String>,
+}
+#[derive(Debug, Clone, Serialize)]
+struct InventoryReport {
+    complete: bool,
+    entries: Vec<EntryReport>,
+    diagnostics: Vec<DiagnosticMessage>,
+    stages: Vec<String>,
+}
+#[derive(Debug, Clone, Serialize)]
+struct Publication {
+    status: MutationStatus,
+    selector: LibraryKey,
+    version_token: Option<VersionToken>,
+    entries: Vec<EntryReport>,
+    diagnostics: Vec<DiagnosticMessage>,
+}
+#[derive(Debug, Clone, Serialize)]
+struct InitializationPayload {
+    status: MutationStatus,
+    root: InitializationReport,
+    diagnostics: Vec<DiagnosticMessage>,
+}
+#[derive(Debug, Clone, Serialize)]
+struct RootPayload {
+    root: RootInfo,
+}
+#[derive(Debug, Clone, Serialize)]
+struct RecordingPayload {
+    complete: bool,
+    recording: RecordingReport,
+}
+#[derive(Debug, Clone, Serialize)]
+struct RecordingReport {
     path: PathBuf,
     bytes: u64,
     format: auditorylab_app::recording::ContainerFormat,
     #[serde(skip_serializing_if = "Option::is_none")]
-    analysis: Option<auditorylab_app::recording::Analysis>,
-});
+    analysis: Option<AnalysisReport>,
+}
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "operation", rename_all = "snake_case")]
+enum Success {
+    List(Listing),
+    ListTrash(Listing),
+    Describe(Entries),
+    Inspect(Entries),
+    LibraryPath(RootPayload),
+    LibraryInit(InitializationPayload),
+    LibraryCheck(InventoryReport),
+    LibraryAdd(Publication),
+    LibraryUpdate(Publication),
+    LibraryRename(Publication),
+    LibraryTrash(Publication),
+    LibraryRestore(Publication),
+    LibraryPurge(Publication),
+    AnalyzeRecording(RecordingPayload),
+}
+#[derive(Debug, Clone, Serialize)]
+struct Failure {
+    operation: Operation,
+    status: FailureStatus,
+    diagnostics: Vec<DiagnosticMessage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    root: Option<UnavailableRoot>,
+}
+#[derive(Debug, Clone, Serialize)]
+#[serde(untagged)]
+enum Body {
+    Success(Box<Success>),
+    Failure(Failure),
+}
+/// An operation-specific report. Its private payload prevents contradictory combinations.
+#[derive(Debug, Clone, Serialize)]
+pub struct Report {
+    output_schema_version: u32,
+    #[serde(flatten)]
+    body: Body,
+}
 impl Report {
-    fn new(operation: Operation, complete: bool) -> Self {
+    fn success(body: Success) -> Self {
         Self {
             output_schema_version: OUTPUT_SCHEMA_VERSION,
-            operation,
-            complete,
-            convention: rhythm::CONVENTION,
-            query: None,
-            unique_count: 0,
-            entries: Vec::new(),
-            groups: Vec::new(),
-            diagnostics: Vec::new(),
-            classifier_revision: None,
-            effective_sort: None,
-            stages: None,
-            root: None,
-            status: None,
-            selector: None,
-            version_token: None,
-            recording: None,
+            body: Body::Success(Box::new(body)),
         }
     }
-    /// An opened recording's identity.
+    /// Whether an action completed, independently of output delivery.
+    #[must_use]
+    pub fn completion_confirmed(&self) -> bool {
+        !matches!(self.body, Body::Failure(_))
+    }
+    /// An opened recording's identity, without invented sample findings.
     #[must_use]
     pub fn recording(recording: &auditorylab_app::recording::RecordingFile) -> Self {
-        let mut report = Self::new(Operation::AnalyzeRecording, true);
-        report.recording = Some(RecordingReport {
-            path: recording.path.clone(),
-            bytes: recording.bytes,
-            format: recording.format,
-            analysis: None,
-        });
-        report
+        Self::success(Success::AnalyzeRecording(RecordingPayload {
+            complete: false,
+            recording: RecordingReport {
+                path: recording.path.clone(),
+                bytes: recording.bytes,
+                format: recording.format,
+                analysis: None,
+            },
+        }))
     }
-    /// Measurements added to the existing schema-3 recording identity.
-    pub fn analyzed_recording(recording: &auditorylab_app::recording::AnalyzedRecording) -> Self {
-        let mut report = Self::recording(&recording.file);
-        if let Some(file) = &mut report.recording {
-            file.analysis = Some(recording.analysis.clone());
-        }
-        report
-    }
-    fn with_entries(mut self, entries: Vec<EntryReport>) -> Self {
-        self.unique_count = entries.len();
-        self.entries = entries;
-        self
-    }
-    /// Query results with the exact typed query and storage diagnostics.
+    /// Complete measurements and the identity of their admitted source.
     #[must_use]
-    pub fn listing(operation: Operation, listing: &auditorylab_app::services::Listing) -> Self {
+    pub fn analyzed_recording(recording: &auditorylab_app::recording::AnalyzedRecording) -> Self {
+        Self::success(Success::AnalyzeRecording(RecordingPayload {
+            complete: true,
+            recording: RecordingReport {
+                path: recording.file.path.clone(),
+                bytes: recording.file.bytes,
+                format: recording.file.format,
+                analysis: Some(AnalysisReport::from(&recording.analysis)),
+            },
+        }))
+    }
+    /// Query results retain useful entries even when the inventory is incomplete.
+    #[must_use]
+    pub fn listing(
+        operation: ListingOperation,
+        listing: &auditorylab_app::services::Listing,
+    ) -> Self {
         let query = listing.query();
-        let mut report = Self::new(operation, listing.complete())
-            .with_entries(listing.entries().iter().map(EntryReport::from).collect());
-        report.query = Some(query.clone());
-        report.effective_sort = Some(query.effective_sort());
-        report.classifier_revision = Some(rhythm::CLASSIFIER_REVISION);
-        report.groups = listing.groups().iter().map(GroupReport::from).collect();
-        report.diagnostics = listing
-            .diagnostics()
-            .iter()
-            .map(DiagnosticMessage::from)
-            .collect();
-        report.stages = Some(
-            listing
+        let payload = Listing {
+            complete: listing.complete(),
+            convention: rhythm::CONVENTION,
+            query: query.clone(),
+            unique_count: listing.entries().len(),
+            entries: listing.entries().iter().map(EntryReport::from).collect(),
+            groups: listing.groups().iter().map(GroupReport::from).collect(),
+            diagnostics: listing
+                .diagnostics()
+                .iter()
+                .map(DiagnosticMessage::from)
+                .collect(),
+            classifier_revision: rhythm::CLASSIFIER_REVISION,
+            effective_sort: query.effective_sort(),
+            stages: listing
                 .stages()
                 .iter()
-                .map(|path| path.to_string_lossy().into_owned())
+                .map(|p| p.to_string_lossy().into_owned())
                 .collect(),
-        );
-        report
+        };
+        Self::success(match operation {
+            ListingOperation::List => Success::List(payload),
+            ListingOperation::ListTrash => Success::ListTrash(payload),
+        })
     }
     /// Full portable content and declared-history diagnostics.
     pub fn describe(description: &auditorylab_app::services::Description<'_>) -> Self {
@@ -361,7 +626,10 @@ impl Report {
         let mut entry = EntryReport::from(source.summary());
         entry.history_warnings = Some(history.iter().map(DiagnosticMessage::from).collect());
         entry.recipe_toml = Some(text.to_string());
-        Self::new(Operation::Describe, true).with_entries(vec![entry])
+        Self::success(Success::Describe(Entries {
+            complete: true,
+            entries: vec![entry],
+        }))
     }
     /// Render the service’s captured rate validation, including invalid-content diagnostics.
     #[must_use]
@@ -385,99 +653,124 @@ impl Report {
                 diagnostics: vec![DiagnosticMessage::new(error, error.explain())],
             },
         };
-        Self::new(Operation::Inspect, true).with_entries(vec![entry])
+        Self::success(Success::Inspect(Entries {
+            complete: true,
+            entries: vec![entry],
+        }))
     }
     /// A successful root inspection.
     #[must_use]
-    pub fn path(operation: Operation, info: RootInfo) -> Self {
-        let mut report = Self::new(operation, true);
-        report.root = Some(RootReport::Inspected(info));
-        report
+    pub fn path(info: RootInfo) -> Self {
+        Self::success(Success::LibraryPath(RootPayload { root: info }))
     }
-    /// A root inspection failure without claiming the directory's state is known.
+    /// A root failure preserves only facts actually observed.
     #[must_use]
     pub fn unavailable_path(
-        operation: Operation,
         root: &auditorylab_app::services::library::Location,
         exists: Option<bool>,
         error: &auditorylab_app::services::library::LibraryError,
     ) -> Self {
-        let mut report = Self::new(operation, false);
-        report.root = Some(RootReport::Unavailable(UnavailableRoot {
-            path: root.path().into(),
-            source: root.source(),
-            exists,
-            layout: None,
-            initialized: false,
-        }));
-        report
-            .diagnostics
-            .push(DiagnosticMessage::new(error, error.explain()));
+        let mut report = Self::error(
+            Operation::LibraryPath,
+            error,
+            error.explain(),
+            error.outcome(),
+        );
+        if let Body::Failure(payload) = &mut report.body {
+            payload.root = Some(UnavailableRoot {
+                path: root.path().into(),
+                source: root.source(),
+                exists,
+                layout: None,
+                initialized: false,
+            });
+        }
         report
     }
-    /// Explicit library initialization.
+    /// Explicit initialization with its publication notices.
     #[must_use]
-    pub fn initialized(operation: Operation, initialized: &Initialization) -> Self {
-        let mut report = Self::new(operation, true);
-        report.status = Some(ReportStatus::Mutation(if initialized.created {
+    pub fn initialized(initialized: &Initialization) -> Self {
+        let status = if !initialized.created {
+            MutationStatus::Unchanged
+        } else if initialized.warnings.is_empty() {
             MutationStatus::Published
         } else {
-            MutationStatus::Unchanged
-        }));
-        report.root = Some(RootReport::Initialized(InitializationReport {
-            created: initialized.created,
-            path: initialized.path.clone(),
-            warnings: initialized
+            MutationStatus::PublishedWithWarning
+        };
+        Self::success(Success::LibraryInit(InitializationPayload {
+            status,
+            root: InitializationReport {
+                created: initialized.created,
+                path: initialized.path.clone(),
+                warnings: initialized
+                    .warnings
+                    .iter()
+                    .map(DiagnosticMessage::from)
+                    .collect(),
+            },
+            diagnostics: initialized
                 .warnings
                 .iter()
                 .map(DiagnosticMessage::from)
                 .collect(),
-        }));
-        report.diagnostics = initialized
-            .warnings
-            .iter()
-            .map(DiagnosticMessage::from)
-            .collect();
-        report
+        }))
     }
-    /// Bounded inventory and storage diagnostics.
+    /// Bounded inventory with useful partial entries.
     #[must_use]
-    pub fn inventory(operation: Operation, inventory: &Inventory) -> Self {
-        let mut report = Self::new(operation, inventory.complete)
-            .with_entries(inventory.entries.iter().map(EntryReport::from).collect());
-        report.diagnostics = inventory
-            .diagnostics
-            .iter()
-            .map(DiagnosticMessage::from)
-            .collect();
-        report.stages = Some(
-            inventory
+    pub fn inventory(inventory: &Inventory) -> Self {
+        Self::success(Success::LibraryCheck(InventoryReport {
+            complete: inventory.complete,
+            entries: inventory.entries.iter().map(EntryReport::from).collect(),
+            diagnostics: inventory
+                .diagnostics
+                .iter()
+                .map(DiagnosticMessage::from)
+                .collect(),
+            stages: inventory
                 .stages
                 .iter()
-                .map(|path| path.to_string_lossy().into_owned())
+                .map(|p| p.to_string_lossy().into_owned())
                 .collect(),
-        );
-        report
+        }))
     }
-    /// The library's authoritative publication outcome.
+    /// Confirmed publication; null token explicitly means no current record after purge.
     #[must_use]
-    pub fn mutation(operation: Operation, outcome: &WriteOutcome) -> Self {
-        let entries = outcome
-            .record
-            .as_ref()
-            .map(|record| EntryReport::from(&record.summary()))
-            .into_iter()
-            .collect();
-        let mut report = Self::new(operation, true).with_entries(entries);
-        report.status = Some(ReportStatus::Mutation(outcome.status));
-        report.selector = Some(outcome.key.clone());
-        report.version_token = Some(outcome.record.as_ref().map(|record| record.version_token));
-        report.diagnostics = outcome
-            .diagnostics
-            .iter()
-            .map(DiagnosticMessage::from)
-            .collect();
-        report
+    pub fn mutation(outcome: &WriteOutcome) -> Self {
+        let payload = Publication {
+            status: outcome.status,
+            selector: outcome.key.clone(),
+            version_token: outcome.record.as_ref().map(|r| r.version_token),
+            entries: outcome
+                .record
+                .as_ref()
+                .map(|r| EntryReport::from(&r.summary()))
+                .into_iter()
+                .collect(),
+            diagnostics: outcome
+                .diagnostics
+                .iter()
+                .map(DiagnosticMessage::from)
+                .collect(),
+        };
+        Self::success(match outcome.kind {
+            auditorylab_app::services::library::MutationKind::Create
+            | auditorylab_app::services::library::MutationKind::Add => Success::LibraryAdd(payload),
+            auditorylab_app::services::library::MutationKind::Update => {
+                Success::LibraryUpdate(payload)
+            }
+            auditorylab_app::services::library::MutationKind::Rename => {
+                Success::LibraryRename(payload)
+            }
+            auditorylab_app::services::library::MutationKind::Trash => {
+                Success::LibraryTrash(payload)
+            }
+            auditorylab_app::services::library::MutationKind::Restore => {
+                Success::LibraryRestore(payload)
+            }
+            auditorylab_app::services::library::MutationKind::Purge => {
+                Success::LibraryPurge(payload)
+            }
+        })
     }
     /// A failure classified by its public exit outcome.
     #[must_use]
@@ -487,8 +780,7 @@ impl Report {
         message: impl Into<String>,
         outcome: Outcome,
     ) -> Self {
-        let mut report = Self::new(operation, false);
-        report.status = Some(ReportStatus::Failure(match outcome {
+        let status = match outcome {
             Outcome::Conflict | Outcome::HistoryConflict => FailureStatus::Conflict,
             Outcome::Busy | Outcome::LockUnavailable => FailureStatus::Busy,
             Outcome::IncompleteInventory => FailureStatus::IncompleteInventory,
@@ -503,11 +795,16 @@ impl Report {
             | Outcome::Device
             | Outcome::DestinationExists
             | Outcome::Write => FailureStatus::Failed,
-        }));
-        report
-            .diagnostics
-            .push(DiagnosticMessage::new(error, message));
-        report
+        };
+        Self {
+            output_schema_version: OUTPUT_SCHEMA_VERSION,
+            body: Body::Failure(Failure {
+                operation,
+                status,
+                diagnostics: vec![DiagnosticMessage::new(error, message)],
+                root: None,
+            }),
+        }
     }
 }
 
