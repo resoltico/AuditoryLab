@@ -233,6 +233,11 @@ jobs:
         env:
           CARGO_TARGET_DIR: target/vendor-tests
         run: cargo test --manifest-path third_party/winit/Cargo.toml --locked --lib termination
+      - name: Verify native UIA typed selection arrays and COM ownership
+        if: runner.os == 'Windows'
+        env:
+          CARGO_TARGET_DIR: target/vendor-tests
+        run: cargo test --manifest-path third_party/accesskit_windows/Cargo.toml --locked --lib selection_tests
       - run: cargo test -p auditorylab-core --release --locked
       - name: Documentation warnings
         if: matrix.target == 'x86_64-unknown-linux-gnu'
