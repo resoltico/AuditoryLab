@@ -4,6 +4,10 @@
 
 static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
     if (message == WM_DESTROY) { PostQuitMessage(0); return 0; }
+    if (message == WM_COMMAND && LOWORD(wparam) == 200) {
+        SendMessageW(GetDlgItem(window, 100), EM_SETSEL, 0, -1);
+        return 0;
+    }
     if (message == WM_SETFOCUS) {
         const HWND edit = GetDlgItem(window, 100);
         if (edit) SetFocus(edit);
@@ -34,12 +38,20 @@ static int run(HINSTANCE instance, int show) {
     ShowWindow(window, show);
     UpdateWindow(window);
     SetFocus(edit);
+    // Plain EDIT leaves Select All to the application's normal accelerator.
+    // This still requires the client's real native Ctrl+A, not a test endpoint.
+    ACCEL select_all = {static_cast<BYTE>(FVIRTKEY | FCONTROL), 'A', 200};
+    const HACCEL accelerators = CreateAcceleratorTableW(&select_all, 1);
+    if (!accelerators) return 1;
     MSG message = {};
     int status;
     while ((status = GetMessageW(&message, nullptr, 0, 0)) > 0) {
-        TranslateMessage(&message);
-        DispatchMessageW(&message);
+        if (!TranslateAcceleratorW(window, accelerators, &message)) {
+            TranslateMessage(&message);
+            DispatchMessageW(&message);
+        }
     }
+    DestroyAcceleratorTable(accelerators);
     return status < 0 ? 1 : 0;
 }
 
