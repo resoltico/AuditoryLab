@@ -7,6 +7,7 @@ No application callbacks, offscreen renderer, or audio actions are used.
 import argparse
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import signal
@@ -83,6 +84,9 @@ def text_of(node):
 
 
 def main():
+    def timed_out(_signal, _frame):
+        raise TimeoutError("native qualification exceeded 180 seconds")
+    signal.signal(signal.SIGALRM, timed_out)
     signal.alarm(180)
     parser = argparse.ArgumentParser()
     parser.add_argument("--binary", required=True, type=Path)
@@ -107,6 +111,7 @@ def main():
         env.pop("WAYLAND_DISPLAY", None)
     else:
         env["WAYLAND_DEBUG"] = "client"
+        env["AUDITORYLAB_NATIVE_QA_RECREATE_SURFACE"] = "1"
     # The monitor observes actual portal calls, including their OS parent handles.
     portal_path = scratch / "portal.log"
     with portal_path.open("w") as portal, (scratch / "application.log").open("w") as log:
@@ -116,7 +121,7 @@ def main():
             app = wait_for("production application AT-SPI provider", lambda: app_for(process.pid))
             browse = wait_for("first-frame Browse Library provider action", lambda: named(app, "Browse Library"))
             activate(browse)
-            for name in ["New sound", "Open recipe", "Workbench"]:
+            for name in ["Open recipe…", "Workbench"]:
                 wait_for("operation provider name " + name, lambda name=name: named(app, name))
             # Inspect real surface geometry after first-frame provider construction.
             frames = [node for node in nodes(app) if node.getRole() == pyatspi.ROLE_FRAME]
@@ -130,8 +135,32 @@ def main():
             if colors < 5:
                 pixels.save(scratch / "failure-first-frame.png")
                 raise RuntimeError("no rendered production first-frame pixels")
+            before_parent = None
+            surface_ids = None
+            if args.session == "wayland":
+                activate(named(app, "Open recipe…"))
+                cancel = wait_for("native dialog before surface recreation", lambda: named(pyatspi.Registry.getDesktop(0), "Cancel"))
+                activate(cancel)
+                def first_parent():
+                    parents = re.findall(r'string "(wayland:[^"]+)"', portal_path.read_text())
+                    return parents[0] if parents else None
+                before_parent = wait_for("actual portal parent before recreation", first_parent)
+                lifetime = scratch / "surface-lifetime.txt"
+                wait_for("observed native GL first frame", lambda: lifetime.exists() and "first-frame-native-gl" in lifetime.read_text())
+                (scratch / "surface-parent-confirmed").write_bytes(b"native-parent-confirmed\n")
+                wait_for("actual rendered surface after hide/show", lambda: lifetime.exists() and "recreated-frame-native-gl" in lifetime.read_text())
+                trace = lifetime.read_text().splitlines()
+                if trace != ["first-frame-native-gl", "hidden", "shown", "recreated-frame-native-gl"]:
+                    raise RuntimeError("unexpected production surface-lifetime trace: " + repr(trace))
+                app = wait_for("OS provider after surface recreation", lambda: app_for(process.pid))
+                wait_for("operation names on recreated surface", lambda: named(app, "Workbench"))
             activate(named(app, "Workbench"))
-            notes = wait_for("multiline OS text provider", lambda: named(app, "Custom recipe notes"))
+            wait_for("Workbench New sound provider", lambda: named(app, "New sound"))
+            notes = wait_for("multiline OS text provider", lambda: next((node for node in nodes(app) if node.name == "Custom recipe notes"), None))
+            if not visible(notes):
+                if not notes.queryComponent().scrollTo(pyatspi.SCROLL_ANYWHERE):
+                    raise RuntimeError("native notes ScrollIntoView refused")
+                wait_for("scrolled multiline field", lambda: visible(notes))
             if not notes.queryComponent().grabFocus():
                 raise RuntimeError("multiline OS-provider focus refused")
             type_text("first native line\nsecond native line")
@@ -145,7 +174,7 @@ def main():
             activate(named(app, "Library"))
             dialogs = []
             for attempt in range(2):
-                activate(wait_for("enabled Open recipe", lambda: named(app, "Open recipe")))
+                activate(wait_for("enabled Open recipe", lambda: named(app, "Open recipe…")))
                 desktop = pyatspi.Registry.getDesktop(0)
                 cancel = wait_for("native portal file chooser Cancel", lambda: named(desktop, "Cancel"))
                 # Actual toolkit file chooser must expose editable location/name UI.
@@ -156,14 +185,14 @@ def main():
                     raise RuntimeError("Cancel did not belong to a native file chooser")
                 dialogs.append(parent.name)
                 activate(cancel)
-                wait_for("native dialog cancelled and app recovered", lambda: named(app, "Open recipe"))
+                wait_for("native dialog cancelled and app recovered", lambda: named(app, "Open recipe…"))
             # Reopen and use the real location control to open an isolated recipe.
-            activate(named(app, "Open recipe"))
+            activate(named(app, "Open recipe…"))
             wait_for("native chooser reopened", lambda: named(pyatspi.Registry.getDesktop(0), "Cancel"))
             key("ctrl+l")
             type_text(str(args.fixture.resolve()))
             key("Return")
-            wait_for("native chooser accepted location", lambda: named(app, "Open recipe"))
+            wait_for("native chooser accepted location", lambda: named(app, "Open recipe…"))
             time.sleep(0.2)
             portal.flush()
             calls = portal_path.read_text()
@@ -175,14 +204,22 @@ def main():
             if args.session == "wayland":
                 log.flush()
                 protocol = (scratch / "application.log").read_text()
-                for message in ["wl_surface", "xdg_wm_base"]:
-                    if message not in protocol:
-                        raise RuntimeError("no actual Wayland production surface evidence: " + message)
+                surfaces = list(re.finditer(r'xdg_wm_base[#@]\d+\.get_xdg_surface\((?:new id )?xdg_surface[#@]\d+, wl_surface[#@](\d+)\)', protocol))
+                if len(surfaces) < 2:
+                    raise RuntimeError("production did not recreate its actual Wayland toplevel surface")
+                old_id = surfaces[0].group(1)
+                destroyed = re.search(r'wl_surface[#@]' + re.escape(old_id) + r'\.destroy\(\)', protocol[surfaces[0].end():])
+                if destroyed is None or not any(item.start() > surfaces[0].end() + destroyed.end() for item in surfaces[1:]):
+                    raise RuntimeError("no old native surface destruction followed by a new toplevel")
+                parents = re.findall(r'string "(wayland:[^"]+)"', calls)
+                if len(parents) < 4 or parents[0] != before_parent or parents[1] == before_parent:
+                    raise RuntimeError("recreated native surface did not receive a fresh usable portal parent")
+                surface_ids = [old_id, surfaces[-1].group(1)]
             print(json.dumps({"session": args.session, "provider": "AT-SPI", "pid": process.pid,
                               "production": "Winit/FemtoVG", "first_frame_extent": [extent.width, extent.height], "first_frame_colors": colors,
                               "multiline_native_keys": True, "modifier_selection": True,
                               "native_dialog_cancel_reopen": dialogs, "portal_parent": prefix,
-                              "native_dialog_open": True, "audio_device_opened": False}))
+                              "native_dialog_open": True, "recreated_wayland_surface_ids": surface_ids, "audio_device_opened": False}))
         except BaseException:
             app = app_for(process.pid)
             if app is not None:

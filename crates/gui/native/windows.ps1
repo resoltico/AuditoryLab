@@ -82,9 +82,16 @@ try {
         if ($colors.Count -lt 5) { $bitmap.Save((Join-Path $Scratch 'failure-first-frame.png')); throw 'No rendered production first-frame pixels' }
     } finally { $bitmap.Dispose() }
     Invoke-Native $browse
-    foreach ($name in @('New sound','Open recipe','Workbench')) { Wait-Native "operation provider $name" { Find-Named $window $name } | Out-Null }
+    foreach ($name in @('Open recipe…','Workbench')) { Wait-Native "operation provider $name" { Find-Named $window $name } | Out-Null }
     Invoke-Native (Find-Named $window 'Workbench')
-    $notes = Wait-Native 'multiline notes UIA provider' { Find-Named $window 'Custom recipe notes' }
+    Wait-Native 'Workbench New sound provider' { Find-Named $window 'New sound' } | Out-Null
+    $notesCondition = [System.Windows.Automation.PropertyCondition]::new($uia::NameProperty,'Custom recipe notes')
+    $notes = Wait-Native 'multiline notes UIA provider' { $window.FindFirst($scope,$notesCondition) }
+    if ($notes.Current.IsOffscreen) {
+        $scroll = $notes.GetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern)
+        $scroll.ScrollIntoView()
+        Wait-Native 'scrolled multiline field' { -not $notes.Current.IsOffscreen } | Out-Null
+    }
     $notes.SetFocus()
     Native-Text "first native line`nsecond native line"
     Wait-Native 'native multiline text input' { (Read-NativeText $notes).Replace("`r",'') -eq "first native line`nsecond native line" } | Out-Null
@@ -96,7 +103,7 @@ try {
     Invoke-Native (Find-Named $window 'Library')
     $dialogOwners = @()
     for ($attempt=0; $attempt -lt 3; $attempt++) {
-        Invoke-Native (Wait-Native 'enabled Open recipe' { Find-Named $window 'Open recipe' })
+        Invoke-Native (Wait-Native 'enabled Open recipe' { Find-Named $window 'Open recipe…' })
         $dialog = Wait-Native 'native common file dialog' {
             foreach ($candidate in $root.FindAll([System.Windows.Automation.TreeScope]::Children,$condition)) {
                 if ($candidate.Current.ClassName -eq '#32770' -and $null -ne (Find-Named $candidate 'Cancel')) { return $candidate }

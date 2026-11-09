@@ -10,6 +10,8 @@ mod licenses;
 mod motion;
 #[cfg(target_os = "macos")]
 mod native_application;
+#[cfg(debug_assertions)]
+mod native_qualification;
 mod native_text;
 mod preference_wake;
 mod scope;
@@ -131,6 +133,12 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(target_os = "macos")]
     {
         *handler_slot.borrow_mut() = std::rc::Rc::downgrade(&adapter);
+    }
+    #[cfg(debug_assertions)]
+    if std::env::var_os("AUDITORYLAB_NATIVE_QA_RECREATE_SURFACE").is_some()
+        && let Some(directory) = std::env::var_os("AUDITORYLAB_NATIVE_QA_DIRECTORY")
+    {
+        native_qualification::install(&windows.main, &std::path::PathBuf::from(directory))?;
     }
     adapter.show_main()?;
     let result = slint::run_event_loop_until_quit();
