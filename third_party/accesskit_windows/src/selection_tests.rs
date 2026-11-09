@@ -58,8 +58,7 @@ fn element(array: *mut windows::Win32::System::Com::SAFEARRAY) -> IUnknown {
     }
 }
 
-#[test]
-fn text_selection_array_preserves_the_text_range_interface() {
+fn text_context(start: usize, end: usize) -> Arc<Context> {
     let mut root = Node::new(Role::Window);
     root.set_children([NodeId(1)]);
     let mut input = Node::new(Role::MultilineTextInput);
@@ -67,20 +66,25 @@ fn text_selection_array_preserves_the_text_range_interface() {
     input.set_text_selection(TextSelection {
         anchor: TextPosition {
             node: NodeId(2),
-            character_index: 0,
+            character_index: start,
         },
         focus: TextPosition {
             node: NodeId(2),
-            character_index: 5,
+            character_index: end,
         },
     });
     let mut text = Node::new(Role::TextRun);
     text.set_value("hello");
     text.set_character_lengths([1, 1, 1, 1, 1]);
-    let context = context(
+    context(
         vec![(NodeId(0), root), (NodeId(1), input), (NodeId(2), text)],
         NodeId(1),
-    );
+    )
+}
+
+#[test]
+fn text_selection_array_preserves_the_text_range_interface() {
+    let context = text_context(0, 5);
     let provider = context
         .get_or_create_platform_node(consumer_id(&context, NodeId(1)))
         .into_interface::<ITextProvider>();
@@ -110,6 +114,71 @@ fn text_selection_array_preserves_the_text_range_interface() {
     }
     // The returned reference remains usable after the array releases its own.
     assert_eq!(unsafe { range.GetText(-1).unwrap() }.to_string(), "hello");
+}
+
+#[test]
+fn caret_selection_returns_empty_text_and_keeps_range_lifetime() {
+    let context = text_context(5, 5);
+    let provider = context
+        .get_or_create_platform_node(consumer_id(&context, NodeId(1)))
+        .into_interface::<ITextProvider>();
+    let document = unsafe { provider.DocumentRange().unwrap() };
+    assert_eq!(
+        unsafe { document.GetText(-1).unwrap() }.to_string(),
+        "hello"
+    );
+    let array = unsafe { provider.GetSelection().unwrap() };
+    let stored = element(array);
+    let range = stored.cast::<ITextRangeProvider>().unwrap();
+    assert_eq!(stored.as_raw(), range.as_raw());
+    assert_eq!(
+        unsafe {
+            range
+                .CompareEndpoints(
+                    TextPatternRangeEndpoint_Start,
+                    &range,
+                    TextPatternRangeEndpoint_End,
+                )
+                .unwrap()
+        },
+        0
+    );
+    assert_eq!(
+        unsafe {
+            range
+                .CompareEndpoints(
+                    TextPatternRangeEndpoint_Start,
+                    &document,
+                    TextPatternRangeEndpoint_End,
+                )
+                .unwrap()
+        },
+        0
+    );
+    assert_eq!(unsafe { range.GetText(-1).unwrap() }.to_string(), "");
+    let cloned = unsafe { range.Clone().unwrap() };
+    unsafe {
+        SafeArrayDestroy(array).unwrap();
+    }
+    drop(range);
+    drop(stored);
+    assert_eq!(unsafe { cloned.GetText(-1).unwrap() }.to_string(), "");
+}
+
+#[test]
+fn unsupported_range_searches_return_failure_hresult() {
+    use windows::Win32::{Foundation::E_NOTIMPL, System::Variant::VARIANT};
+    let context = text_context(0, 5);
+    let provider = context
+        .get_or_create_platform_node(consumer_id(&context, NodeId(1)))
+        .into_interface::<ITextProvider>();
+    let range = unsafe { provider.DocumentRange().unwrap() };
+    let attribute_error =
+        unsafe { range.FindAttribute(UIA_FontNameAttributeId, &VARIANT::default(), false) }
+            .unwrap_err();
+    let text_error = unsafe { range.FindText(&BSTR::from("hello"), false, false) }.unwrap_err();
+    assert_eq!(attribute_error.code(), E_NOTIMPL);
+    assert_eq!(text_error.code(), E_NOTIMPL);
 }
 
 #[test]

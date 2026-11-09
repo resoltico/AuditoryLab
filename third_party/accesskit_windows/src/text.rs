@@ -400,7 +400,7 @@ impl ITextRangeProvider_Impl for PlatformRange_Impl {
     ) -> Result<ITextRangeProvider> {
         // TODO: implement when we support variable formatting (part of rich text)
         // Justification: JUCE doesn't implement this.
-        Err(Error::empty())
+        Err(not_implemented())
     }
 
     fn FindText(
@@ -412,7 +412,7 @@ impl ITextRangeProvider_Impl for PlatformRange_Impl {
         // TODO: implement when there's a real-world use case that requires it
         // Justification: Quorum doesn't implement this and is being used
         // by blind students.
-        Err(Error::empty())
+        Err(not_implemented())
     }
 
     fn GetAttributeValue(&self, id: UIA_TEXTATTRIBUTE_ID) -> Result<VARIANT> {
