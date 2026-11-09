@@ -141,10 +141,13 @@ try {
     }
     Wait-Native 'actual visible multiline keyboard focus' { $notes.Current.HasKeyboardFocus -and -not $notes.Current.IsOffscreen } | Out-Null
     Native-Text "first native line`nsecond native line"
+    Write-Host 'Native witness: multiline keys delivered; reading actual provider text'
     Wait-Native 'native multiline text input' { (Read-NativeText $notes).Replace("`r",'') -eq "first native line`nsecond native line" } | Out-Null
+    Write-Host 'Native witness: multiline provider text verified'
     Native-Keys '^a'
     $textPattern = $notes.GetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern)
     Wait-Native 'native modifier selection' { $textPattern.GetSelection()[0].GetText(-1).Replace("`r",'').TrimEnd("`n") -eq "first native line`nsecond native line" } | Out-Null
+    Write-Host 'Native witness: actual modifier selection verified'
     Native-Keys '{BACKSPACE}'
     Wait-Native 'cleared multiline field' { (Read-NativeText $notes) -eq '' } | Out-Null
     Invoke-Native (Find-Named $window 'Library')
@@ -161,7 +164,21 @@ try {
         if ($owner -ne $handle) { throw "Native file dialog has wrong owner $owner (expected $handle)" }
         $dialogOwners += $owner.ToInt64()
         if ($attempt -lt 2) { Invoke-Native (Find-Named $dialog 'Cancel') }
-        else { $dialog.SetFocus(); Native-Keys '^l'; Native-Text $Fixture; Native-Keys '{ENTER}' }
+        else {
+            $dialog.SetFocus()
+            Native-Keys '^l'
+            $location = Wait-Native 'actual focused native location control' {
+                $focused = $uia::FocusedElement
+                if ($null -ne $focused -and $focused.Current.ProcessId -eq $process.Id -and $focused.Current.ControlType -eq [System.Windows.Automation.ControlType]::Edit) { return $focused }
+                return $null
+            }
+            Native-Keys '^a'
+            Native-Text $Fixture
+            Wait-Native 'native location received the exact fixture path' {
+                $location.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).Current.Value -eq $Fixture
+            } | Out-Null
+            Native-Keys '{ENTER}'
+        }
         Wait-Native 'native chooser closed and application recovered' {
             try { return -not $dialog.Current.IsEnabled -or $dialog.Current.IsOffscreen } catch [System.Windows.Automation.ElementNotAvailableException] { return $true }
         } | Out-Null
