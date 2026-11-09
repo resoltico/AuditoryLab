@@ -53,8 +53,10 @@ $uia = [System.Windows.Automation.AutomationElement]
 # Windows PowerShell5.1 reads BOM-less source as ANSI; construct the real label
 # from its Unicode code point while keeping this harness source ASCII.
 $openRecipe = 'Open recipe' + [char]0x2026
-Write-Host "Native UIA client: PowerShell=$($PSVersionTable.PSVersion) Runtime=$([Environment]::Version) Apartment=$([Threading.Thread]::CurrentThread.ApartmentState)"
+Write-Host "Native UIA client: PowerShell=$($PSVersionTable.PSVersion) Runtime=$([Environment]::Version) Apartment=$([Threading.Thread]::CurrentThread.ApartmentState) Bitness=$([IntPtr]::Size * 8)"
 Write-Host "Native UIA assembly: $($uia.Assembly.FullName) Location=$($uia.Assembly.Location)"
+$nativeCore = [Diagnostics.Process]::GetCurrentProcess().Modules | Where-Object ModuleName -eq 'UIAutomationCore.dll' | Select-Object -First 1
+Write-Host "Native UIAutomationCore: $($nativeCore.FileName) Version=$($nativeCore.FileVersionInfo.FileVersion)"
 function Wait-Native([string]$Description, [scriptblock]$Probe) {
     $deadline = [DateTime]::UtcNow.AddSeconds(30)
     if ($deadline -gt $qualificationDeadline) { $deadline = $qualificationDeadline }
