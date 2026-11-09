@@ -147,9 +147,13 @@ fn list_purpose_text_stays_out_of_the_machine_report() {
         None,
     );
     assert!(entry.evidence[0].population_detail.is_some());
-    let json = serde_json::to_string(&entry.evidence).unwrap();
+    let report = crate::report::Report::inventory(&auditorylab_app::services::library::Inventory {
+        entries: vec![entry],
+        ..Default::default()
+    });
+    let json = String::from_utf8(crate::report::json_bytes(&report).unwrap()).unwrap();
     assert!(
         !json.contains("population_detail"),
-        "JSON schema 2 is unchanged: {json}"
+        "schema-4 evidence DTO omits human-only view fields: {json}"
     );
 }

@@ -45,7 +45,7 @@ pub(crate) enum Conclusion {
 pub(crate) enum AudioWork {
     Finite {
         snapshot: RecipeSnapshot,
-        authority: Option<crate::services::library::Library>,
+        authority: Option<Box<crate::services::library::Library>>,
     },
     Live {
         draft: Box<Draft>,
@@ -360,7 +360,7 @@ fn execute_audio(
         AudioWork::Finite {
             snapshot,
             authority,
-        } => match device::prepare_captured(session, &snapshot, authority.as_ref())? {
+        } => match device::prepare_captured(session, &snapshot, authority.as_deref())? {
             Preparation::Ready(mut output) => {
                 let reader = output
                     .monitor(MonitorDetail::Waveform)

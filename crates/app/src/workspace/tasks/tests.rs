@@ -156,7 +156,7 @@ fn prepared_with(
             AudioWork::Finite {
                 snapshot,
                 authority,
-            } => crate::services::playback::resolve_captured(snapshot, authority.as_ref())?
+            } => crate::services::playback::resolve_captured(snapshot, authority.as_deref())?
                 .at(rate)
                 .map(|sound| *sound.signal().target())
                 .map_err(Into::into),

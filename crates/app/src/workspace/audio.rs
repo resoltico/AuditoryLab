@@ -74,7 +74,7 @@ impl AudioState {
                     title,
                     AudioWork::Finite {
                         snapshot: *snapshot,
-                        authority: store,
+                        authority: store.map(Box::new),
                     },
                 )
             }

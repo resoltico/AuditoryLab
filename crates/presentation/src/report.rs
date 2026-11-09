@@ -349,6 +349,10 @@ struct SpectrumPointReport {
 }
 #[derive(Debug, Clone, Serialize)]
 struct AnalysisReport {
+    frames: u64,
+    source_frames: Option<u64>,
+    start_frame: u64,
+    end_frame: u64,
     codec: String,
     lossy: bool,
     duration_seconds: Option<f64>,
@@ -395,6 +399,10 @@ impl From<&auditorylab_core::measurement::Pulsing> for PulsingReport {
 impl From<&auditorylab_app::recording::Analysis> for AnalysisReport {
     fn from(a: &auditorylab_app::recording::Analysis) -> Self {
         Self {
+            frames: a.frames,
+            source_frames: a.source_frames,
+            start_frame: a.start_frame,
+            end_frame: a.end_frame,
             codec: a.codec.clone(),
             lossy: a.lossy,
             duration_seconds: a.duration_seconds,

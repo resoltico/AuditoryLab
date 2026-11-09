@@ -372,7 +372,9 @@ fn inspection_uses_its_selected_rate_throughout_and_states_requested_and_realize
         "100",
     ]);
     assert_eq!(invalid.status.code(), Some(2));
-    assert!(String::from_utf8_lossy(&invalid.stderr).contains("at 100 Hz"));
+    let report = String::from_utf8_lossy(&invalid.stdout);
+    assert!(report.contains("Sample rate: 100 Hz"), "{report}");
+    assert!(report.contains("at 100 Hz"), "{report}");
 }
 
 #[test]

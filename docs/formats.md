@@ -167,12 +167,12 @@ Every schema-4 envelope contains `output_schema_version` and `operation`. Privat
 | List / Trash list | Exact query, `classifier_revision`, `effective_sort` as `[sort,direction]`, groups and retained `stages`. |
 | Describe | Entry adds `recipe_toml` and `history_warnings`. |
 | Inspect | `validation.status` is `valid` with rate/frames/peaks/`voices` facts, or `invalid` with rate/diagnostics. |
-| Library path | `root` reports configured path/source, existence, layout and initialization; unavailable existence can be null. |
+| Library path | `root` reports configured path/source, existence, layout and initialization; unavailable existence and unverified initialization can be null. |
 | Initialization | Root result and published/published-with-warning/unchanged `status`. |
 | Library check | Bounded inventory, diagnostics and retained stages. |
 | Mutation | Confirmed `status`, `selector`, `version_token`, affected entries and diagnostics; purge has an explicit null token, unrelated payloads omit it. |
 | Analyze recording | `recording` with opened `path`, size in `bytes`, recognized container `format` and optional `analysis` findings. |
-| Failure | Outcome `status` and operation diagnostics. |
+| Failure | Outcome `status` and operation diagnostics. Read failures use `unreadable`; failed and unconfirmed mutations use `publication_failed` and `publication_unconfirmed`. |
 
 The [diagnostic contract](#diagnostic-codes) applies to nominal diagnostics, rate-validation diagnostics, declared-history warnings and publication warnings. Inspection exposes generator lanes under `voices`; authored components remain in recipe TOML. Pulse facts retain requested width mode/quantity and shape, resolved window/edge frames, and rate. Pair facts retain signed requested and resolved differences; unresolved pair checks have no resolved difference. Digital routes use `route`, and peak diagnostics name a `channel`.
 
@@ -476,7 +476,7 @@ Read-only broken pipes are quiet success. A confirmed mutation remains successfu
 
 ## Recording measurements
 
-CLI JSON schema 4 represents recording identity with `path`, `bytes` and container `format`; successful analysis supplies `recording.analysis`. Successful CLI analysis includes `codec`, `lossy`, `duration_seconds`, `sample_rate`, `channels`, `window` and `envelope_window` (`start_seconds`, `end_seconds`), `resolution_hz`, `envelope_resolution_hz`, `minimum_resolved_envelope_hz`, `minimum_envelope_relative_power`, `tones`, `ear_differences`, `coincident_tones`, `pulsing`, `low_energy`, `stereo`, chart `spectrum` and machine `limits`. Failed work emits a diagnostic without partial analysis. Desktop identification can open undecodable files; Analyze performs decoding.
+CLI JSON schema 4 represents recording identity with `path`, `bytes` and container `format`; successful analysis supplies `recording.analysis`. Successful CLI analysis includes exact integer `frames`, `source_frames` (null when unknown), `start_frame` (inclusive) and `end_frame` (exclusive), then `codec`, `lossy`, `duration_seconds`, `sample_rate`, `channels`, `window` and `envelope_window` (`start_seconds`, `end_seconds`), `resolution_hz`, `envelope_resolution_hz`, `minimum_resolved_envelope_hz`, `minimum_envelope_relative_power`, `tones`, `ear_differences`, `coincident_tones`, `pulsing`, `low_energy`, `stereo`, chart `spectrum` and machine `limits`. Failed work emits a diagnostic without partial analysis. Desktop identification can open undecodable files; Analyze performs decoding.
 
 ### Input and selected window
 

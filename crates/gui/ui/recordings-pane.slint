@@ -152,6 +152,7 @@ export component RecordingsPane inherits Rectangle {
                     enabled: !root.analyzing;
                     accessible-label: "Absolute analysis start in seconds";
                 }
+
                 if root.input-error != "": Text {
                     text: root.input-error;
                     wrap: word-wrap;
