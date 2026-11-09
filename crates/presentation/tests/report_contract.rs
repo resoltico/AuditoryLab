@@ -55,7 +55,9 @@ fn completed_inspection_can_be_invalid_and_partial_inventory_keeps_its_own_compl
     .unwrap();
     let inspection = services::inspect(&source, SampleRate::new(1).unwrap());
     assert!(inspection.sound().is_err());
-    let report = serde_json::to_value(Report::inspect(&inspection)).unwrap();
+    let inspection_report = Report::inspect(&inspection);
+    assert!(!inspection_report.publication_confirmed());
+    let report = serde_json::to_value(inspection_report).unwrap();
     subset(&report, &fixture("invalid"));
     assert!(report.get("status").is_none());
     let inventory = Inventory {
@@ -66,7 +68,9 @@ fn completed_inspection_can_be_invalid_and_partial_inventory_keeps_its_own_compl
         not_initialized: false,
         ..Inventory::default()
     };
-    let report = serde_json::to_value(Report::inventory(&inventory)).unwrap();
+    let inventory_report = Report::inventory(&inventory);
+    assert!(!inventory_report.publication_confirmed());
+    let report = serde_json::to_value(inventory_report).unwrap();
     subset(&report, &fixture("partial"));
     assert_eq!(report["entries"].as_array().unwrap().len(), 1);
 }
@@ -159,7 +163,7 @@ fn failed_and_unconfirmed_publication_have_distinct_wire_states() {
             Outcome::Write,
             confirmation,
         );
-        assert!(!report.completion_confirmed());
+        assert!(!report.publication_confirmed());
         let value = serde_json::to_value(report).unwrap();
         assert_eq!(value["status"], expected);
         assert!(value.get("version_token").is_none());

@@ -373,8 +373,9 @@ fn resolve_pair_facts(
     }
 }
 
-/// The result of compiling a candidate's voices at one rate: each
-/// voice's own result and the whole target or its first error.
+/// Ordered authored-component results and available lowered-lane results at one rate,
+/// alongside the whole target or its first error. Component success does not validate
+/// the aggregate mix.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TargetCheck {
     rate: SampleRate,
@@ -441,8 +442,8 @@ impl TargetCheck {
         self.rate
     }
 
-    /// Each voice's own result in input order; empty when the input
-    /// exceeds [`Sound::MAX_VOICES`].
+    /// Each lowered lane's own result in authored order. Components that fail
+    /// before lowering remain available through [`Self::components`] instead.
     #[must_use]
     pub fn voices(&self) -> &[(VoiceId, Result<VoiceFacts, VoiceError>)] {
         &self.voices

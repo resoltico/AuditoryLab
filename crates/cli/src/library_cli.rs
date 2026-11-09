@@ -611,7 +611,7 @@ fn print_mutation_json(value: &Report) {
             "{}",
             auditorylab_presentation::display_text(
                 &auditorylab_presentation::library::report_completion_failure(
-                    value.completion_confirmed(),
+                    value.publication_confirmed(),
                     error
                 )
             )

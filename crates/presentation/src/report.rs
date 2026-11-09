@@ -593,10 +593,29 @@ impl Report {
             body: Body::Success(Box::new(body)),
         }
     }
-    /// Whether an action completed, independently of output delivery.
+    /// Whether this report carries a confirmed publication or confirmed no-change result.
+    /// Read/inspection completeness is independent and never implies publication.
     #[must_use]
-    pub fn completion_confirmed(&self) -> bool {
-        !matches!(self.body, Body::Failure(_))
+    pub fn publication_confirmed(&self) -> bool {
+        match &self.body {
+            Body::Failure(_) => false,
+            Body::Success(result) => match result.as_ref() {
+                Success::LibraryInit(_)
+                | Success::LibraryAdd(_)
+                | Success::LibraryUpdate(_)
+                | Success::LibraryRename(_)
+                | Success::LibraryTrash(_)
+                | Success::LibraryRestore(_)
+                | Success::LibraryPurge(_) => true,
+                Success::List(_)
+                | Success::ListTrash(_)
+                | Success::Describe(_)
+                | Success::Inspect(_)
+                | Success::LibraryPath(_)
+                | Success::LibraryCheck(_)
+                | Success::AnalyzeRecording(_) => false,
+            },
+        }
     }
     /// An opened recording's identity, without invented sample findings.
     #[must_use]

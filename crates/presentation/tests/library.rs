@@ -393,7 +393,7 @@ fn failed_report_completion_never_claims_a_failed_operation_was_confirmed() {
         None,
     );
     let text = auditorylab_presentation::library::report_completion_failure(
-        report.completion_confirmed(),
+        report.publication_confirmed(),
         std::io::Error::other("closed output"),
     );
     assert!(text.contains("Operation not completed"));
