@@ -155,6 +155,36 @@ impl EditorState {
             SaveRefusal::Document(error) => Refusal::Document(Box::new(error.into())),
         }
     }
+    pub(super) fn recipe_readiness(&mut self) -> Result<(), Refusal> {
+        self.session.save_readiness().map_err(Self::save_refusal)
+    }
+    pub(super) fn save_readiness(&mut self) -> Result<(), Refusal> {
+        if let Some(key) = self.location.detached() {
+            return Err(Refusal::DetachedDraft(key.clone()));
+        }
+        self.recipe_readiness()
+    }
+    pub(super) fn live_readiness(&mut self) -> Result<(), Refusal> {
+        let candidate = self.session.candidate();
+        if candidate.is_complete() {
+            Ok(())
+        } else {
+            Err(Refusal::Input(candidate.problems().to_vec()))
+        }
+    }
+    pub(super) fn export_readiness(&mut self) -> Result<(), Refusal> {
+        self.live_readiness()?;
+        let analysis = self.session.candidate_analysis(self.export_rate);
+        if analysis.signal().is_some() {
+            Ok(())
+        } else {
+            Err(Refusal::Invalid {
+                title: self.session.candidate().draft().title().into(),
+                rate: self.export_rate,
+                error: analysis.finite_error().cloned(),
+            })
+        }
+    }
     pub(super) fn prepare_recipe(&mut self) -> Result<Arc<Recipe>, Refusal> {
         self.session.save_readiness().map_err(Self::save_refusal)?;
         self.session

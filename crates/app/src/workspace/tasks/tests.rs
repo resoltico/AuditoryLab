@@ -141,32 +141,25 @@ fn prepared_with(
     rate: SampleRate,
     detail: MonitorDetail,
 ) -> Result<(Response, LiveGenerator, PlaybackMonitor), crate::audio::PlaybackError> {
-    let Work::Audio {
-        session,
-        kind,
-        draft,
-    } = &*job.work
-    else {
+    let Work::Audio { session, input } = &*job.work else {
         panic!("audio job")
     };
     let target =
-        match (kind, draft) {
-            (AudioKind::Live(_), Some(draft)) => draft.check(rate).into_result().map_err(|error| {
+        match input {
+            AudioWork::Live { draft } => draft.check(rate).into_result().map_err(|error| {
                 crate::audio::PlaybackError::Sound {
                     title: "unit capture".into(),
                     rate,
                     error,
                 }
             }),
-            (AudioKind::Finite(snapshot), _) => snapshot
+            AudioWork::Finite {
+                snapshot,
+                authority,
+            } => crate::services::playback::resolve_captured(snapshot, authority.as_ref())?
                 .at(rate)
                 .map(|sound| *sound.signal().target())
                 .map_err(Into::into),
-            (AudioKind::Managed { snapshot, store }, _) => revalidate_managed(snapshot, store)?
-                .at(rate)
-                .map(|sound| *sound.signal().target())
-                .map_err(Into::into),
-            _ => panic!("complete audio capture"),
         };
     let target = match target {
         Ok(target) => target,
@@ -176,7 +169,7 @@ fn prepared_with(
         }
     };
     let generator = LiveGenerator::with_state(&(target), Arc::clone(session.state()));
-    let live = matches!(kind, AudioKind::Live(_)).then(|| generator.control());
+    let live = matches!(input, AudioWork::Live { .. }).then(|| generator.control());
     let monitor = PlaybackMonitor::new(
         SessionDescriptor {
             id: session.id(),
@@ -324,8 +317,7 @@ fn actual_rate_preparation_submits_committed_edits_but_never_staged_text() {
         .audio
         .task()
         .unwrap()
-        .live
-        .as_ref()
+        .live()
         .unwrap()
         .accepted()
         .unwrap();
@@ -351,8 +343,7 @@ fn actual_rate_preparation_submits_committed_edits_but_never_staged_text() {
             .audio
             .task()
             .unwrap()
-            .live
-            .as_ref()
+            .live()
             .unwrap()
             .accepted()
             .unwrap()
@@ -411,7 +402,7 @@ fn stale_and_duplicate_preparations_cannot_rebind_audio() {
     assert_eq!(workspace.respond(response), ResponseDisposition::Applied);
     let (response, _generator3) = prepared(&job, SampleRate::DEFAULT).unwrap();
     assert_eq!(workspace.respond(response), ResponseDisposition::Rejected);
-    assert!(workspace.audio.task().unwrap().protocol_failed);
+    assert!(workspace.audio.task().unwrap().rejected());
     let response = job.execute(|_| panic!("rejected preparation requested Stop"));
     assert_eq!(workspace.respond(response), ResponseDisposition::Rejected);
     assert!(!workspace.audio_busy());
@@ -718,7 +709,7 @@ fn wrong_loaded_identity_cannot_replace_the_selected_record() {
         a
     );
     let first = store.load(&a).unwrap();
-    store
+    let _published = store
         .apply(
             Mutation::Rename {
                 key: a.clone(),
@@ -901,7 +892,7 @@ fn real_conflicting_save_reports_captured_selector_and_location_without_uncertai
         let job = close_after_save(&mut workspace);
         // The same locked mutation used by the CLI changes the observed saved
         // version after this coordinator has captured its immutable Save.
-        store
+        let _published = store
             .apply(
                 Mutation::Rename {
                     key: key.clone(),

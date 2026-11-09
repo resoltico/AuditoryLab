@@ -364,6 +364,26 @@ impl LibraryState {
     pub(super) fn copy_admission(&self) -> Result<(), Refusal> {
         Self::copy_recipe_admission(self.selected().ok_or(Refusal::NoSelection)?)
     }
+    pub(super) fn audio_readiness(&self) -> Result<(), Refusal> {
+        if self.selected_unreadable() {
+            return Err(Refusal::SavedEntryUnreadable);
+        }
+        if self.selected_trashed() {
+            return Err(Refusal::RestoreBeforePlayback);
+        }
+        self.selected().map(|_| ()).ok_or(Refusal::NoSelection)
+    }
+    pub(super) fn export_readiness(&self, rate: SampleRate) -> Result<(), Refusal> {
+        let snapshot = self.selected().ok_or(Refusal::NoSelection)?;
+        snapshot
+            .realize(rate)
+            .map(|_| ())
+            .map_err(|error| Refusal::Invalid {
+                title: snapshot.title(),
+                rate,
+                error: Some(error),
+            })
+    }
     pub(super) fn prepare_audio(&self) -> Result<AudioRequest, Refusal> {
         if self.selected_unreadable() {
             return Err(Refusal::SavedEntryUnreadable);

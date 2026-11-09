@@ -114,7 +114,7 @@ fn trash_membership_refuses_current_and_captured_playback_before_device_access()
         .unwrap();
     let context = LibraryContext::from_library(library.clone());
     let before = resolve(Source::Selector(record.key.clone()), &context).unwrap();
-    library
+    let _published = library
         .trash(
             record.key.clone(),
             Some(record.version_token),
@@ -170,7 +170,7 @@ fn retained_user_provenance_does_not_invent_a_managed_selection() {
         .record
         .unwrap();
     let captured = record.snapshot;
-    library
+    let _published = library
         .rename(
             record.key,
             Some(record.version_token),
@@ -220,7 +220,7 @@ fn library_context_keeps_its_captured_root_and_revalidates_action_state() {
         library.initialize().unwrap();
         let mut draft = Draft::new().unwrap();
         draft.set_title(title.into());
-        library
+        let _published = library
             .apply(
                 library::Mutation::Create(std::sync::Arc::new(draft.recipe().unwrap())),
                 &Cancel::default(),

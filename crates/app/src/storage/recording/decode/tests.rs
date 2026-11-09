@@ -25,7 +25,7 @@ fn exported_tone(path: &Path, seconds: f64) {
     .unwrap()
     .signal(SampleRate::new(8000).unwrap())
     .unwrap();
-    crate::storage::wav::encode(
+    let _published = crate::storage::wav::encode(
         &signal,
         &mut File::create(path).unwrap(),
         Cancel::default().flag(),
@@ -207,7 +207,7 @@ fn exported_builtin_clicks_have_a_40hz_modulation_pattern() {
     let signal = fixture.signal(SampleRate::new(48000).unwrap()).unwrap();
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("clicks.wav");
-    crate::storage::wav::encode(
+    let _published = crate::storage::wav::encode(
         &signal,
         &mut File::create(&path).unwrap(),
         Cancel::default().flag(),
@@ -272,7 +272,7 @@ fn exported_pairs_keep_channel_routing_through_the_decoder() {
         } else {
             "monaural.wav"
         });
-        crate::storage::wav::encode(
+        let _published = crate::storage::wav::encode(
             &signal,
             &mut File::create(&path).unwrap(),
             Cancel::default().flag(),

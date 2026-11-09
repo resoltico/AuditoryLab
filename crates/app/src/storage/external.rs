@@ -32,6 +32,7 @@ impl ObservedFile {
 }
 /// Confirmed external Save result; no retained recovery state is needed.
 #[derive(Debug, Clone)]
+#[must_use = "confirmed publication status and warnings must be handled"]
 pub struct ExternalOutcome {
     /// Unchanged, saved, or saved with warnings.
     pub status: MutationStatus,

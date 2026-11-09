@@ -469,10 +469,10 @@ pub(super) fn library(command: LibraryCommand, context: &LibraryContext) -> Resu
             if format == ReadFormat::Json {
                 print_mutation_json(&Report::initialized(&initialized));
             } else {
-                output(
-                    auditorylab_presentation::library::initialization_description(&(initialized))
-                        .as_bytes(),
-                )?;
+                super::completed(
+                    &auditorylab_presentation::library::initialization_description(&initialized),
+                    &[],
+                );
             }
             Ok(0)
         }
@@ -556,7 +556,22 @@ fn report_mutation(
     stderr: &mut impl Write,
 ) -> Result<u8> {
     let mut bytes = if format == ReadFormat::Json {
-        auditorylab_presentation::report::json_bytes(&Report::mutation(outcome))?
+        match auditorylab_presentation::report::json_bytes(&Report::mutation(outcome)) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                let _ = writeln!(
+                    stderr,
+                    "{}",
+                    auditorylab_presentation::display_text(
+                        &auditorylab_presentation::library::write_outcome_completion_failure(
+                            outcome, error
+                        )
+                    )
+                );
+                let _ = stderr.flush();
+                return Ok(0);
+            }
+        }
     } else {
         auditorylab_presentation::display_text(
             &(auditorylab_presentation::library::write_outcome_description(outcome)),
@@ -586,36 +601,28 @@ pub(super) fn print_json(value: &Report) -> Result<()> {
     Ok(())
 }
 fn print_mutation_json(value: &Report) {
-    let mut bytes = match auditorylab_presentation::report::json_bytes(value) {
-        Ok(bytes) => bytes,
-        Err(error) => {
-            eprintln!(
-                "{}",
-                auditorylab_presentation::display_text(
-                    &(auditorylab_presentation::library::report_completion_failure(
-                        value.completion_confirmed(),
-                        error
-                    ))
-                )
-            );
-            return;
-        }
-    };
-    bytes.push(b'\n');
-    if let Err(error) = io::stdout()
-        .lock()
-        .write_all(&bytes)
-        .and_then(|()| io::stdout().lock().flush())
-    {
-        eprintln!(
+    let result = auditorylab_presentation::report::json_bytes(value)
+        .map_err(super::CliError::from)
+        .and_then(|mut bytes| {
+            bytes.push(b'\n');
+            io::stdout()
+                .lock()
+                .write_all(&bytes)
+                .and_then(|()| io::stdout().lock().flush())
+                .map_err(Into::into)
+        });
+    if let Err(error) = result {
+        let _ = writeln!(
+            io::stderr().lock(),
             "{}",
             auditorylab_presentation::display_text(
-                &(auditorylab_presentation::library::report_completion_failure(
+                &auditorylab_presentation::library::report_completion_failure(
                     value.completion_confirmed(),
                     error
-                ))
+                )
             )
         );
+        let _ = io::stderr().lock().flush();
     }
 }
 pub(super) fn error_json(operation: Operation, error: &super::CliError) -> Result<()> {

@@ -363,12 +363,14 @@ fn reopened_copy_navigation_keeps_declared_ancestry_without_reconstructing_origi
     .unwrap();
     let path = dir.path().join("original.toml");
     let original = crate::services::catalog().unwrap().remove(0);
-    crate::services::save_content(original.recipe(), &path, crate::job::Replace::Never).unwrap();
+    let _published =
+        crate::services::save_content(original.recipe(), &path, crate::job::Replace::Never)
+            .unwrap();
     let loaded = crate::storage::load::load_file(&path).unwrap();
     let mut draft = Draft::from_snapshot(&loaded).unwrap();
     draft.set_summary("Own notes".into());
     let derivative = dir.path().join("derivative.toml");
-    crate::services::save_content(
+    let _published = crate::services::save_content(
         &draft.recipe().unwrap(),
         &derivative,
         crate::job::Replace::Never,
@@ -1186,7 +1188,7 @@ fn actual_import_completion_controls_dependent_close_and_never_runs_on_poll() {
         let directory = temporary_directory();
         let path = directory.path().join("chosen.toml");
         if exists {
-            crate::services::save_content(
+            let _published = crate::services::save_content(
                 short_silent_source().recipe(),
                 &path,
                 crate::job::Replace::Never,

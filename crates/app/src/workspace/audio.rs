@@ -1,9 +1,9 @@
 //! The occupied audio slot, live binding and playback transitions.
 use super::{
-    Arc, AudioCommand, AudioKind, AudioStatus, AudioTask, Capabilities, Conclusion, DocumentId,
-    EditorState, Error, Job, MotionPreference, OutputState, PlaybackControl, RecipeSnapshot,
-    Refusal, ResponseDisposition, SampleRate, Session, StopRequest, TaskId, View, WorkerFailure,
-    monitor,
+    Arc, AudioCommand, AudioOwner, AudioPreparation, AudioStatus, AudioTask, AudioWork,
+    Capabilities, Conclusion, DocumentId, EditorState, Error, Job, MotionPreference, OutputState,
+    PlaybackControl, RecipeSnapshot, Refusal, ResponseDisposition, SampleRate, Session,
+    StopRequest, TaskId, View, WorkerFailure, monitor,
 };
 pub(super) struct AudioState {
     slot: Option<AudioTask>,
@@ -27,15 +27,23 @@ impl AudioState {
     pub(super) fn live_rate(&self, document_id: DocumentId) -> Option<SampleRate> {
         self.slot
             .as_ref()
-            .filter(|t| matches!(t.kind, AudioKind::Live(document) if document == document_id))
-            .and_then(|t| t.rate)
+            .filter(|t| matches!(t.owner, AudioOwner::Live(document) if document == document_id))
+            .and_then(|t| match t.preparation {
+                AudioPreparation::ReadyLive { rate, .. } => Some(rate),
+                _ => None,
+            })
     }
     pub(super) fn submit_live(&mut self, editor: &mut EditorState) {
         let Some(task) = self.slot.as_ref() else {
             return;
         };
-        let (AudioKind::Live(document), Some(live), Some(rate)) =
-            (&task.kind, &task.live, task.rate)
+        let (
+            AudioOwner::Live(document),
+            AudioPreparation::ReadyLive {
+                rate,
+                control: live,
+            },
+        ) = (&task.owner, &task.preparation)
         else {
             return;
         };
@@ -43,7 +51,7 @@ impl AudioState {
             return;
         }
         let live = live.clone();
-        let analysis = editor.committed_analysis(rate);
+        let analysis = editor.committed_analysis(*rate);
         if let Some(target) = analysis.target()
             && let Err(error) = live.update(target)
             && error != crate::audio::session::LiveUpdateError::SessionClosed
@@ -58,38 +66,38 @@ impl AudioState {
         );
         let session = Session::new();
         let control = session.control();
-        let (kind, title, draft) = match request {
+        let (owner, title, input) = match request {
             AudioRequest::Finite { snapshot, store } => {
                 let title = snapshot.title();
-                let kind = match store {
-                    Some(store) => AudioKind::Managed {
+                (
+                    AudioOwner::Finite,
+                    title,
+                    AudioWork::Finite {
                         snapshot: *snapshot,
-                        store,
+                        authority: store,
                     },
-                    None => AudioKind::Finite(*snapshot),
-                };
-                (kind, title, None)
+                )
             }
             AudioRequest::Live {
                 document,
                 candidate,
             } => (
-                AudioKind::Live(document),
+                AudioOwner::Live(document),
                 candidate.draft().title().to_owned(),
-                Some(candidate.draft().clone()),
+                AudioWork::Live {
+                    draft: Box::new(candidate.draft().clone()),
+                },
             ),
         };
         self.output.unbind();
         self.status = AudioStatus::Idle;
-        let job = Job::audio(id, session, kind.clone(), draft);
+        let job = Job::audio(id, session, input);
         self.slot = Some(AudioTask {
             id,
-            kind,
+            owner,
             title,
             control,
-            live: None,
-            rate: None,
-            protocol_failed: false,
+            preparation: AudioPreparation::Preparing,
         });
 
         job
@@ -109,9 +117,9 @@ impl AudioState {
         task: &AudioTask,
         result: Result<Result<crate::audio::session::PlaybackReport, Error>, WorkerFailure>,
     ) -> Conclusion {
-        let failed = task.protocol_failed || !matches!(&result, Ok(Ok(_)));
+        let failed = task.rejected() || !matches!(&result, Ok(Ok(_)));
         self.status = match result {
-            Ok(Ok(report)) if !task.protocol_failed => AudioStatus::Ended {
+            Ok(Ok(report)) if !task.rejected() => AudioStatus::Ended {
                 report,
                 monitored: self.output.reader().is_some(),
             },
@@ -138,22 +146,23 @@ impl AudioState {
         let Some(task) = self.slot.as_mut().filter(|task| task.id == job) else {
             return ResponseDisposition::Ignored;
         };
-        if task.rate.is_some()
-            || task.protocol_failed
+        if !matches!(task.preparation, AudioPreparation::Preparing)
             || reader.descriptor().id != task.control.session()
             || reader.descriptor().output.sample_rate != rate
-            || matches!(task.kind, AudioKind::Live(_)) != live.is_some()
+            || matches!(task.owner, AudioOwner::Live(_)) != live.is_some()
             || live.as_ref().is_some_and(|control| {
                 control.session() != task.control.session() || control.sample_rate() != rate
             })
         {
-            task.protocol_failed = true;
+            task.preparation = AudioPreparation::RejectedAwaitingJoin;
             task.control.request_stop();
             self.status = AudioStatus::WorkerFailed(WorkerFailure::InvalidOutcome);
             return ResponseDisposition::Rejected;
         }
-        task.rate = Some(rate);
-        task.live = live;
+        task.preparation = match live {
+            Some(control) => AudioPreparation::ReadyLive { rate, control },
+            None => AudioPreparation::ReadyFinite,
+        };
         self.output.bind(reader);
         ResponseDisposition::Applied
     }
@@ -269,7 +278,7 @@ impl AudioState {
     pub(super) fn unrelated_title(&self, document: DocumentId) -> Option<String> {
         self.slot
             .as_ref()
-            .filter(|task| !matches!(task.kind, AudioKind::Live(owner) if owner == document))
+            .filter(|task| !matches!(task.owner, AudioOwner::Live(owner) if owner == document))
             .map(|task| task.title.clone())
     }
 }

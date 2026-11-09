@@ -13,6 +13,7 @@ const BLOCK_FRAMES: usize = 4_096;
 
 /// What a successful export wrote.
 #[derive(Debug, Clone, PartialEq)]
+#[must_use = "confirmed publication status and warnings must be handled"]
 pub struct Exported {
     /// Publication durability and cleanup warnings; encoded streams start empty.
     pub warnings: Vec<crate::storage::warning::StorageWarning>,
@@ -179,7 +180,7 @@ mod quantization {
         session.render(0, &mut expected);
         assert_eq!(expected[1][0], 0.1);
         let mut bytes = Vec::new();
-        encode(
+        let _published = encode(
             &session,
             &mut bytes,
             &AtomicBool::new(false),
@@ -214,7 +215,7 @@ mod quantization {
         .signal(SampleRate::new(8_000).unwrap())
         .unwrap();
         let mut bytes = Vec::new();
-        encode(
+        let _published = encode(
             &session,
             &mut bytes,
             &AtomicBool::new(false),

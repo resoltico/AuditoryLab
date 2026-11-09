@@ -257,7 +257,7 @@ fn process_child() {
     if mode == "create" {
         let mut recipe = Draft::new().unwrap().recipe().unwrap().into_builder();
         recipe.document.id = id;
-        store
+        let _published = store
             .apply(
                 Mutation::Create(Arc::new(recipe.build().unwrap())),
                 &Cancel::default(),
@@ -290,7 +290,7 @@ fn process_child() {
             }
         }
     };
-    store.apply(mutation, &Cancel::default()).unwrap();
+    let _published = store.apply(mutation, &Cancel::default()).unwrap();
 }
 fn child(root: &Path, id: &str, mode: &str, phase: &str, ready: &Path) -> Child {
     Command::new(std::env::current_exe().unwrap())
@@ -381,7 +381,7 @@ fn killed_recipe_writers_leave_old_or_complete_bytes_and_no_stage_is_promoted() 
         );
         let before = observed.recipe_toml.clone();
         assert!(!store.scan(&Cancel::default()).stages.is_empty() || phase == "after");
-        store
+        let _published = store
             .apply(
                 Mutation::Rename {
                     key: record.key.clone(),
@@ -410,7 +410,7 @@ fn killed_creation_between_recipe_and_membership_keeps_readable_content_with_unk
     let record = store.load(&key).unwrap();
     assert_eq!(record.added_at, None);
     assert!(!record.trashed);
-    store
+    let _published = store
         .apply(
             Mutation::Rename {
                 key: key.clone(),
@@ -459,7 +459,7 @@ fn killed_moves_preserve_content_and_recognize_only_same_inode_duplicates() {
                 _ => mode == "trash",
             };
             assert_eq!(current.trashed, expected, "{mode} {phase}");
-            store
+            let _published = store
                 .apply(
                     Mutation::Trash {
                         key: record.key.clone(),

@@ -543,7 +543,7 @@ fn save_round_trips_and_keeps_existing_destinations() {
     d.add_node(controls::default_component(CarrierKind::PulseTrain))
         .unwrap();
     d.set_title("Quotes \" 🎧".into());
-    save_content(&d.recipe().unwrap(), &path, crate::job::Replace::Never).unwrap();
+    let _published = save_content(&d.recipe().unwrap(), &path, crate::job::Replace::Never).unwrap();
     let bytes = std::fs::read(&path).unwrap();
     let loaded = crate::storage::load::load_file(&path).unwrap();
     assert_eq!(loaded.sound(), &d.sound());

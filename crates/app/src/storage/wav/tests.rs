@@ -139,7 +139,7 @@ fn a_stereo_file_holds_exactly_the_58_byte_header_and_payload() {
     .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
     .signal(rate())
     .unwrap();
-    export(&(silence), &path, &never()).unwrap();
+    let _published = export(&(silence), &path, &never()).unwrap();
     let bytes = fs::read(&path).unwrap();
     assert_eq!(bytes.len(), 58 + 5 * 8);
     assert_eq!(&bytes[..4], b"RIFF");
@@ -178,7 +178,7 @@ fn edge_gain(frame: u32) -> f64 {
 fn a_shortened_monaural_catalog_entry_has_identical_channels_and_independent_samples() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("monaural.wav");
-    export(
+    let _published = export(
         &(short_catalog_session("orozco-perez-2020-monaural-7-hz")),
         &path,
         &never(),
@@ -204,7 +204,7 @@ fn a_shortened_monaural_catalog_entry_has_identical_channels_and_independent_sam
 fn a_shortened_left_ear_sam_catalog_entry_has_a_silent_right_channel() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("sam.wav");
-    export(
+    let _published = export(
         &(short_catalog_session("van-eeckhoutte-2018-am-500-hz")),
         &path,
         &never(),
@@ -386,7 +386,7 @@ fn independent_wav_samples_cover_shaped_sources_and_shared_pair_modulation() {
         .signal(rate())
         .unwrap();
         let path = directory.path().join(format!("shaped-{kind}.wav"));
-        export(&signal, &path, &never()).unwrap();
+        let _published = export(&signal, &path, &never()).unwrap();
         let decoded = decoded_frames(&path, 1000, rate());
         for (n, actual) in (0_u32..).zip(decoded) {
             let local = n % 800;

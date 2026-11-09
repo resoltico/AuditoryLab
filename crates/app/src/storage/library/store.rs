@@ -290,6 +290,7 @@ impl MutationStatus {
 }
 /// A completed mutation; failures are ordinary path-specific errors.
 #[derive(Debug, Clone)]
+#[must_use = "confirmed publication status and warnings must be handled"]
 pub struct WriteOutcome {
     /// Confirmed publication state.
     pub status: MutationStatus,

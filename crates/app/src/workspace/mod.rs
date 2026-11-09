@@ -72,7 +72,7 @@ use status::{
 };
 use std::path::PathBuf;
 use std::sync::Arc;
-use tasks::{AudioKind, AudioTask, Conclusion, FileKind, FileTask};
+use tasks::{AudioOwner, AudioPreparation, AudioTask, AudioWork, Conclusion, FileKind, FileTask};
 use {crate::outcome::Outcome, crate::services::OperationError as Error};
 
 /// Which part of the workspace the person is using; it decides what Play,
@@ -564,7 +564,7 @@ impl Workspace {
             }
             Response::Finished { job, outcome } => {
                 if let Some(task) = self.audio.take_finished(job) {
-                    rejected = task.protocol_failed || matches!(outcome, JobOutcome::File(_));
+                    rejected = task.rejected() || matches!(outcome, JobOutcome::File(_));
                     self.finish_audio(
                         &task,
                         match outcome {
@@ -604,14 +604,30 @@ impl Workspace {
         let Some(state) = self.prompts.take(prompt) else {
             return false;
         };
-        if matches!(response, PromptAnswer::Path(Some(_)))
-            && (self.files.busy() || self.pending.is_some())
-        {
-            self.files
-                .record_status(FileStatus::Refused(Refusal::FileBusy));
-            self.deny(matches!(state, PromptState::Unsaved(DocumentAction::Close)));
-            self.changed();
-            return true;
+        // The prompt held captured content, not a permission to perform later work.
+        // Re-evaluate action-state policy after consuming this exact prompt identity.
+        if matches!(response, PromptAnswer::Path(Some(_))) {
+            let command = match &state {
+                PromptState::Import => Some(Command::File(FileCommand::Import)),
+                PromptState::OpenRecording => Some(Command::File(FileCommand::OpenRecording)),
+                PromptState::ExportRecipe(_) => Some(Command::File(FileCommand::ExportRecipe)),
+                PromptState::Export(_) => Some(Command::File(FileCommand::ExportWav)),
+                _ => None,
+            };
+            let admission = command.as_ref().map_or(Ok(()), |command| {
+                self.learning_command_admission(command)?;
+                self.import_admission()?;
+                if matches!(command, Command::File(FileCommand::ExportWav)) {
+                    self.audio.idle_admission()?;
+                }
+                Ok(())
+            });
+            if let Err(refusal) = admission {
+                self.files.record_status(FileStatus::Refused(refusal));
+                self.deny(matches!(state, PromptState::Unsaved(DocumentAction::Close)));
+                self.changed();
+                return true;
+            }
         }
         match (state, response) {
             (PromptState::Purge { key, expect }, PromptAnswer::Confirm) => {

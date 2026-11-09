@@ -331,10 +331,38 @@ fn output(bytes: &[u8]) -> io::Result<()> {
 fn say(text: &str) -> io::Result<()> {
     output(format!("{}\n", prose(text)).as_bytes())
 }
-fn completed(text: &str) {
-    if let Err(e) = say(text) {
-        eprintln!("{}", crate::cli_text::completion_reporting_failed(e));
+/// Report confirmed publication without allowing either terminal to revoke it.
+fn report_publication(
+    text: &str,
+    warnings: &[lab::services::StorageWarning],
+    stdout: &mut impl Write,
+    stderr: &mut impl Write,
+) {
+    for warning in warnings {
+        let _ = writeln!(
+            stderr,
+            "{}",
+            eprose(&auditorylab_presentation::errors::publication::warning(
+                warning
+            ))
+        );
     }
+    if let Err(error) = writeln!(stdout, "{}", prose(text)).and_then(|()| stdout.flush()) {
+        let _ = writeln!(
+            stderr,
+            "{}",
+            crate::cli_text::completion_reporting_failed(error)
+        );
+    }
+    let _ = stderr.flush();
+}
+fn completed(text: &str, warnings: &[lab::services::StorageWarning]) {
+    report_publication(
+        text,
+        warnings,
+        &mut io::stdout().lock(),
+        &mut io::stderr().lock(),
+    );
 }
 /// The first interrupt runs `request`; a second one exits at once.
 fn on_interrupt(request: impl Fn() + Send + 'static) -> Result<(), CliError> {
@@ -469,11 +497,15 @@ fn run(cli: Cli) -> Result<Ended, CliError> {
         .unwrap_or_else(|| lab::services::LibraryContext::resolve(None));
     match command {
         Command::New { kind, output: path } => {
-            let text = lab::document::construction::new_recipe(kind)?.to_toml()?;
+            let recipe = lab::document::construction::new_recipe(kind)?;
             if let Some(path) = path {
-                lab::services::save_recipe_text(&text, &path, Replace::Never)?;
+                let saved = lab::services::save_content(&recipe, &path, Replace::Never)?;
+                completed(
+                    &auditorylab_presentation::recipe_exported(&path),
+                    &saved.warnings,
+                );
             } else {
-                output(text.as_bytes())?;
+                output(recipe.to_toml()?.as_bytes())?;
             }
         }
         Command::List(args) => {
@@ -524,7 +556,8 @@ fn run(cli: Cli) -> Result<Ended, CliError> {
                 &cancel,
                 &Progress::default(),
                 || {
-                    eprintln!(
+                    let _ = writeln!(
+                        io::stderr().lock(),
                         "{}",
                         eprose(&auditorylab_presentation::rendition_export_preamble(
                             sound, &path
@@ -532,18 +565,10 @@ fn run(cli: Cli) -> Result<Ended, CliError> {
                     );
                 },
             )?;
-            for warning in &result.warnings {
-                eprintln!(
-                    "{}",
-                    eprose(&auditorylab_presentation::errors::publication::warning(
-                        warning
-                    ))
-                );
-            }
-            completed(&auditorylab_presentation::workspace::exported_description(
-                &(result),
-                &path,
-            ));
+            completed(
+                &auditorylab_presentation::workspace::exported_description(&result, &path),
+                &result.warnings,
+            );
         }
         Command::Play(source) => {
             let resolved = library_cli::resolve(source, &context)?;
@@ -654,15 +679,10 @@ fn export_recipe(
     let text = lab::services::portable_text(&key, context)?;
     if let Some(path) = path {
         let saved = lab::services::save_recipe_text(&text, &path, Replace::Never)?;
-        for warning in saved.warnings {
-            eprintln!(
-                "{}",
-                eprose(&auditorylab_presentation::errors::publication::warning(
-                    &warning
-                ))
-            );
-        }
-        completed(&auditorylab_presentation::recipe_exported(&path));
+        completed(
+            &auditorylab_presentation::recipe_exported(&path),
+            &saved.warnings,
+        );
     } else {
         output(text.as_bytes())?;
     }

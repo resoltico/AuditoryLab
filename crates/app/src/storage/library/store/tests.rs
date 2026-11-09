@@ -138,7 +138,7 @@ fn exact_a_to_b_to_a_bytes_accept_the_original_token_without_random_revisions() 
         store.load(&record.key).unwrap().version_token,
         record.version_token
     );
-    store
+    let _published = store
         .apply(
             Mutation::Rename {
                 key: record.key,
@@ -188,7 +188,7 @@ fn orphan_timestamps_and_owned_stages_are_reported_then_cleaned_only_under_write
     )));
     assert_eq!(scan.stages.len(), 1);
     assert!(owned.exists());
-    store
+    let _published = store
         .apply(
             Mutation::Rename {
                 key: record.key,
@@ -236,7 +236,7 @@ fn thousand_plain_files_rebuild_without_retaining_full_recipe_snapshots() {
 #[test]
 fn bounded_scan_retains_healthy_rows_and_unknown_files_are_never_deleted() {
     let (_temp, path, store) = fixture();
-    store
+    let _published = store
         .apply(
             Mutation::Add(Arc::new(Draft::new().unwrap().recipe().unwrap())),
             &Cancel::default(),
