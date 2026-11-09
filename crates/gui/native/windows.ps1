@@ -16,6 +16,25 @@ public static class NativeQaWindow {
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hwnd);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
+    [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hwnd);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr hwnd, System.Text.StringBuilder text, int maximum);
+    private delegate bool EnumWindow(IntPtr hwnd, IntPtr parameter);
+    [DllImport("user32.dll")] private static extern bool EnumWindows(EnumWindow callback, IntPtr parameter);
+    public static IntPtr[] HandlesFor(uint processId) {
+        var handles = new System.Collections.Generic.List<IntPtr>();
+        EnumWindows((window, parameter) => {
+            uint owner;
+            GetWindowThreadProcessId(window, out owner);
+            if (owner == processId) handles.Add(window);
+            return true;
+        }, IntPtr.Zero);
+        return handles.ToArray();
+    }
+    public static string Title(IntPtr hwnd) {
+        var title = new System.Text.StringBuilder(2048);
+        GetWindowText(hwnd, title, title.Capacity);
+        return title.ToString();
+    }
 }
 '@
 if (-not [Environment]::UserInteractive) { throw 'Required interactive Windows desktop is unavailable' }
@@ -141,9 +160,22 @@ try {
       multiline_native_keys=$true; modifier_selection=$true; native_dialog_cancel_reopen=$true;
       native_dialog_open=$true; native_dialog_owners=$dialogOwners; audio_device_opened=$false} | ConvertTo-Json -Compress
 } catch {
-    try {
-        $window.FindAll($scope,[System.Windows.Automation.Condition]::TrueCondition) | Select-Object -First 100 | ForEach-Object { "$($_.Current.ControlType.ProgrammaticName): $($_.Current.Name)" } | Set-Content (Join-Path $Scratch 'failure-provider.txt')
-    } catch { }
+    # Startup can fail before a production main provider exists. Retain all
+    # PID-owned native HWNDs and UIA error-dialog text, not just the absent main.
+    $details = [Collections.Generic.List[string]]::new()
+    $details.Add("PID=$($process.Id) Session=$($process.SessionId) UserInteractive=$([Environment]::UserInteractive) Exited=$($process.HasExited)")
+    if ($process.HasExited) { $details.Add("ExitCode=$($process.ExitCode)") }
+    foreach ($hwnd in [NativeQaWindow]::HandlesFor([uint32]$process.Id)) {
+        $details.Add("HWND=$hwnd Visible=$([NativeQaWindow]::IsWindowVisible($hwnd)) Title=$([NativeQaWindow]::Title($hwnd))")
+        try {
+            $provider = $uia::FromHandle($hwnd)
+            $details.Add("UIA=$($provider.Current.Name) Offscreen=$($provider.Current.IsOffscreen) Bounds=$($provider.Current.BoundingRectangle)")
+            foreach ($child in ($provider.FindAll($scope,[System.Windows.Automation.Condition]::TrueCondition) | Select-Object -First 100)) {
+                $details.Add("$($child.Current.ControlType.ProgrammaticName): $($child.Current.Name)")
+            }
+        } catch { $details.Add("Provider inspection failed: $_") }
+    }
+    [IO.File]::WriteAllLines((Join-Path $Scratch 'failure-provider.txt'),$details)
     throw
 } finally {
     if (-not $process.HasExited) { $process.Kill(); $process.WaitForExit(10000) | Out-Null }
