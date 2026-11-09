@@ -696,7 +696,7 @@ fn cli_meaning_cases() -> [(
 }
 
 #[test]
-fn grouped_schema_three_json_retains_display_labels_and_member_keys() {
+fn grouped_schema_four_json_retains_display_labels_and_member_keys() {
     for (group_by, expected) in [
         (
             "method",

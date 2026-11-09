@@ -151,7 +151,7 @@ const fn finite(value: f64) -> auditorylab_core::Finite {
 }
 
 #[test]
-fn schema_three_group_labels_preserve_human_captions_and_machine_identity() {
+fn group_labels_preserve_human_captions_and_machine_identity() {
     use auditorylab_app::discovery::collection::{Collection, GroupLabel, ResultGroup};
     use auditorylab_app::discovery::query::RhythmState;
     use auditorylab_core::rhythm::{Band, Method};

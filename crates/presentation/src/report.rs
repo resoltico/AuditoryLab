@@ -88,7 +88,7 @@ impl From<&ResultGroup> for GroupReport {
     fn from(group: &ResultGroup) -> Self {
         Self {
             key: group.key.clone(),
-            // Schema 2 includes a display caption alongside the independent machine key.
+            // Display captions remain separate from independent machine keys.
             // Keep its wording owned by the same renderer as the human library views.
             label: crate::library::group_label(&group.label),
             keys: group.keys.clone(),
