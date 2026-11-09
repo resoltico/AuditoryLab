@@ -73,7 +73,12 @@ function Native-Text([string]$Text) {
 $process = Start-Process -FilePath $Binary -PassThru -WorkingDirectory $Scratch -RedirectStandardError (Join-Path $Scratch 'application.log')
 try {
     $condition = [System.Windows.Automation.PropertyCondition]::new($uia::ProcessIdProperty,$process.Id)
-    $window = Wait-Native 'production application UIA window' { $root.FindFirst([System.Windows.Automation.TreeScope]::Children,$condition) }
+    $window = Wait-Native 'visible production main UIA window' {
+        foreach ($candidate in $root.FindAll([System.Windows.Automation.TreeScope]::Children,$condition)) {
+            if ($candidate.Current.Name -eq 'Auditory Lab' -and -not $candidate.Current.IsOffscreen -and $candidate.Current.BoundingRectangle.Width -gt 100) { return $candidate }
+        }
+        return $null
+    }
     $browse = Wait-Native 'first-frame Browse Library provider action' { Find-Named $window 'Browse Library' }
     $handle = [IntPtr]$window.Current.NativeWindowHandle
     if ($handle -eq [IntPtr]::Zero) { throw 'Production UIA provider has no native window handle' }

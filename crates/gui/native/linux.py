@@ -15,6 +15,7 @@ import time
 
 import pyatspi
 from PIL import ImageGrab
+from gi.repository import GLib
 
 
 def wait_for(description, probe, seconds=30):
@@ -38,7 +39,7 @@ def nodes(root):
         yield node
         try:
             pending.extend(child for child in node if child is not None)
-        except (RuntimeError, AttributeError):
+        except (GLib.Error, RuntimeError, AttributeError):
             continue
 
 
@@ -46,12 +47,30 @@ def visible(node):
     try:
         state = node.getState()
         return state.contains(pyatspi.STATE_SHOWING) and state.contains(pyatspi.STATE_ENABLED)
-    except RuntimeError:
+    except (GLib.Error, RuntimeError):
         return False
 
 
-def named(root, name):
-    return next((node for node in nodes(root) if node.name == name and visible(node)), None)
+def named(root, name, require_showing=True):
+    # Native provider nodes can retire between a child enumeration and its
+    # property read when the actual UI changes. Re-scan within the deadline.
+    for node in nodes(root):
+        try:
+            if node.name == name and (not require_showing or visible(node)):
+                return node
+        except (GLib.Error, RuntimeError):
+            continue
+    return None
+
+
+def provider_description(root):
+    lines = []
+    for node in nodes(root):
+        try:
+            lines.append(str(node.getRoleName()) + ": " + str(node.name))
+        except (GLib.Error, RuntimeError):
+            lines.append("<retired native provider node>")
+    return "\n".join(lines)[:20000]
 
 
 def activate(node):
@@ -73,7 +92,7 @@ def app_for(pid):
         try:
             if app.get_process_id() == pid:
                 return app
-        except RuntimeError:
+        except (GLib.Error, RuntimeError):
             pass
     return None
 
@@ -157,7 +176,7 @@ def main():
                 wait_for("operation names on recreated surface", lambda: named(app, "Workbench"))
             activate(named(app, "Workbench"))
             wait_for("Workbench New sound provider", lambda: named(app, "New sound"))
-            notes = wait_for("multiline OS text provider", lambda: next((node for node in nodes(app) if node.name == "Custom recipe notes"), None))
+            notes = wait_for("multiline OS text provider", lambda: named(app, "Custom recipe notes", require_showing=False))
             if not visible(notes):
                 if not notes.queryComponent().scrollTo(pyatspi.SCROLL_ANYWHERE):
                     raise RuntimeError("native notes ScrollIntoView refused")
@@ -225,7 +244,7 @@ def main():
         except BaseException:
             app = app_for(process.pid)
             if app is not None:
-                (scratch / "failure-provider.txt").write_text("\n".join(str(node.getRoleName()) + ": " + str(node.name) for node in nodes(app))[:20000])
+                (scratch / "failure-provider.txt").write_text(provider_description(app))
             raise
         finally:
             process.terminate()
