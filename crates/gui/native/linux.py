@@ -220,6 +220,7 @@ def main():
             type_text(str(args.fixture.resolve()))
             key("Return")
             wait_for("native chooser accepted location", lambda: named(app, "Open recipe…"))
+            wait_for("opened fixture selected in production provider", lambda: named(app, "My 3 Hz pair"))
             time.sleep(0.2)
             portal.flush()
             calls = portal_path.read_text()
@@ -246,7 +247,7 @@ def main():
                               "production": "Winit/FemtoVG", "first_frame_extent": [extent.width, extent.height], "first_frame_colors": colors,
                               "multiline_native_keys": True, "modifier_selection": True,
                               "native_dialog_cancel_reopen": dialogs, "portal_parent": prefix,
-                              "native_dialog_open": True, "recreated_wayland_surface_ids": surface_ids, "audio_device_opened": False}))
+                              "native_dialog_open": "My 3 Hz pair", "recreated_wayland_surface_ids": surface_ids, "audio_device_opened": False}))
         except BaseException:
             app = app_for(process.pid)
             if app is not None:

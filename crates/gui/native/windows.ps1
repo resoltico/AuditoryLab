@@ -164,10 +164,11 @@ try {
             try { return -not $dialog.Current.IsEnabled -or $dialog.Current.IsOffscreen } catch [System.Windows.Automation.ElementNotAvailableException] { return $true }
         } | Out-Null
     }
+    Wait-Native 'opened fixture selected in production provider' { Find-Named $window 'My 3 Hz pair' } | Out-Null
     if ($process.HasExited) { throw 'Production application exited during native qualification' }
     @{session='windows'; provider='UI Automation'; production='Winit/FemtoVG'; first_frame_colors=$colors.Count; native_gl_driver=$driver[0].FileName;
       multiline_native_keys=$true; modifier_selection=$true; native_dialog_cancel_reopen=$true;
-      native_dialog_open=$true; native_dialog_owners=$dialogOwners; audio_device_opened=$false} | ConvertTo-Json -Compress
+      native_dialog_open='My 3 Hz pair'; native_dialog_owners=$dialogOwners; audio_device_opened=$false} | ConvertTo-Json -Compress
 } catch {
     # Startup can fail before a production main provider exists. Retain all
     # PID-owned native HWNDs and UIA error-dialog text, not just the absent main.
