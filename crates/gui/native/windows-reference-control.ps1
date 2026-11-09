@@ -50,7 +50,9 @@ try {
     }
     # This independent host owns exactly one real Win32 EDIT. Its
     # AccessibleName need not be surfaced by the OS's legacy Win32 proxy.
-    $editType = [Windows.Automation.PropertyCondition]::new($uia::ControlTypeProperty,[Windows.Automation.ControlType]::Edit)
+    # Microsoft's WindowsEditBox proxy deliberately maps multiline EDIT to
+    # Document; only single-line EDIT maps to Edit. Require the actual owner rule.
+    $editType = [Windows.Automation.PropertyCondition]::new($uia::ControlTypeProperty,[Windows.Automation.ControlType]::Document)
     $notes = Wait-Reference 'single stock EDIT provider' {
         $edits = $window.FindAll($scope,$editType)
         if ($edits.Count -eq 1 -and -not $edits[0].Current.IsOffscreen) { return $edits[0] }
@@ -59,7 +61,7 @@ try {
     Write-Host "Stock reference control class=$($notes.Current.ClassName)"
     if ($notes.Current.ClassName -ne 'Edit') { throw 'Stock reference is inconclusive: actual control class is not exact Win32 Edit' }
     $textPattern = $notes.GetCurrentPattern([Windows.Automation.TextPattern]::Pattern)
-    Write-Host 'Stock reference exact Edit class/control type/TextPattern verified before input'
+    Write-Host 'Stock reference exact Edit class/multiline Document type/TextPattern verified before input'
     $notes.SetFocus()
     Wait-Reference 'actual stock keyboard focus' { $notes.Current.HasKeyboardFocus } | Out-Null
     foreach ($character in "first native line`nsecond native line".ToCharArray()) {
