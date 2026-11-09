@@ -104,4 +104,5 @@ if [[ "$session" == wayland ]]; then dbus-update-activation-environment WAYLAND_
 portal_pid=$!
 gdbus call --session --dest org.a11y.Bus --object-path /org/a11y/bus \
   --method org.freedesktop.DBus.Properties.Set org.a11y.Status IsEnabled '<true>'
-/usr/bin/python3 crates/gui/native/linux.py --binary "$binary" --fixture "$fixture" --session "$session" --scratch "$scratch"
+/usr/bin/python3 -B crates/gui/native/wayland_surface_test.py
+/usr/bin/python3 -B crates/gui/native/linux.py --binary "$binary" --fixture "$fixture" --session "$session" --scratch "$scratch"

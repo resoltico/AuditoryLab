@@ -16,6 +16,7 @@ import time
 import pyatspi
 from PIL import ImageGrab
 from gi.repository import GLib
+from wayland_surface import recreated_main_surfaces
 
 
 def pump_events():
@@ -293,17 +294,10 @@ def main():
             if args.session == "wayland":
                 log.flush()
                 protocol = (scratch / "application.log").read_text()
-                surfaces = list(re.finditer(r'xdg_wm_base[#@]\d+\.get_xdg_surface\((?:new id )?xdg_surface[#@]\d+, wl_surface[#@](\d+)\)', protocol))
-                if len(surfaces) < 2:
-                    raise RuntimeError("production did not recreate its actual Wayland toplevel surface")
-                old_id = surfaces[0].group(1)
-                destroyed = re.search(r'wl_surface[#@]' + re.escape(old_id) + r'\.destroy\(\)', protocol[surfaces[0].end():])
-                if destroyed is None or not any(item.start() > surfaces[0].end() + destroyed.end() for item in surfaces[1:]):
-                    raise RuntimeError("no old native surface destruction followed by a new toplevel")
                 parents = re.findall(r'string "(wayland:[^"]+)"', calls)
                 if len(parents) < 4 or parents[0] != before_parent or parents[1] == before_parent:
                     raise RuntimeError("recreated native surface did not receive a fresh usable portal parent")
-                surface_ids = [old_id, surfaces[-1].group(1)]
+                surface_ids = recreated_main_surfaces(protocol, before_parent, parents[1])
             print(json.dumps({"session": args.session, "provider": "AT-SPI", "pid": process.pid,
                               "production": "Winit/FemtoVG", "first_frame_extent": [extent.width, extent.height], "first_frame_colors": colors,
                               "multiline_native_keys": True, "modifier_selection": True,
