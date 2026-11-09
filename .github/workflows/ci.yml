@@ -530,7 +530,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - run: |
           sudo apt-get update
-          sudo apt-get install --yes build-essential pkg-config libasound2-dev libfontconfig1-dev libglib2.0-bin libxkbcommon-x11-0 libgl1-mesa-dri libegl1-mesa-dev xvfb xauth xdotool openbox weston dbus-x11 at-spi2-core python3-pyatspi python3-pil xdg-desktop-portal xdg-desktop-portal-gtk ripgrep
+          sudo apt-get install --yes build-essential pkg-config libasound2-dev libfontconfig1-dev libglib2.0-bin libxkbcommon-x11-0 libgl1-mesa-dri libegl1-mesa-dev xvfb xauth xdotool openbox sway wayland-utils dbus-x11 at-spi2-core python3-pyatspi python3-pil xdg-desktop-portal xdg-desktop-portal-gtk ripgrep
           mkdir -p target/tmp target/native-${{ matrix.session }}
       - name: Prepare isolated temporary files
         shell: bash
