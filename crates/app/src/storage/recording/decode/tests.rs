@@ -817,3 +817,51 @@ fn packet_and_prefix_budgets_accept_limits_and_refuse_one_past() {
         })
     ));
 }
+
+#[test]
+fn selected_start_discards_actual_samples_inside_a_decoder_packet() {
+    use std::io::Write;
+    let mut file = tempfile::tempfile().unwrap();
+    file.write_all(b"RIFF").unwrap();
+    file.write_all(&8036_u32.to_le_bytes()).unwrap();
+    file.write_all(b"WAVEfmt \x10\0\0\0\x01\0\x01\0").unwrap();
+    file.write_all(&1000_u32.to_le_bytes()).unwrap();
+    file.write_all(&2000_u32.to_le_bytes()).unwrap();
+    file.write_all(b"\x02\0\x10\0data").unwrap();
+    file.write_all(&8000_u32.to_le_bytes()).unwrap();
+    file.set_len(8044).unwrap();
+    file.seek(SeekFrom::Start(44 + 2000 * 2)).unwrap();
+    for frame in 0..2000 {
+        let sample = (std::f64::consts::TAU * 300.0 * f64::from(frame) / 1000.0).sin() * 3000.0;
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "independent bounded PCM16 tone fixture"
+        )]
+        file.write_all(&(sample as i16).to_le_bytes()).unwrap();
+    }
+    let first = measure_decoder(
+        Decoder::new(file.try_clone().unwrap()).unwrap(),
+        AnalysisOptions {
+            start_seconds: 0,
+            seconds: Some(2),
+        },
+        &Cancel::default(),
+        &Progress::default(),
+    )
+    .unwrap();
+    assert_eq!(first.tones, Vec::new());
+    assert_eq!(first.stereo.rms_dbfs, vec![None]);
+    let selected = measure_decoder(
+        Decoder::new(file).unwrap(),
+        AnalysisOptions {
+            start_seconds: 2,
+            seconds: Some(2),
+        },
+        &Cancel::default(),
+        &Progress::default(),
+    )
+    .unwrap();
+    assert!((selected.tones[0].hz - 300.0).abs() < selected.resolution_hz);
+    assert_eq!(selected.start_frame, 2000);
+    assert_eq!(selected.end_frame, 4000);
+}

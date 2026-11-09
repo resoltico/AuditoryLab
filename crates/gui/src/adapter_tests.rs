@@ -6322,6 +6322,28 @@ fn recording_analysis_callbacks_project_all_findings_at_compact_large_text_size(
     assert!(findings.summary.contains("not creator intent"));
     assert!(!findings.left_trace.is_empty());
     assert_eq!(ui.get_recording_energy().row_count(), 8);
+    let captured = h.adapter.inspect(|w| w.recording_analysis().cloned());
+    for (test, answer) in [
+        ("tone_100_hz", "heard"),
+        ("tone_60_hz", "heard"),
+        ("tone_40_hz", "not_heard"),
+    ] {
+        ui.invoke_answer_device_test(test.into(), answer.into());
+    }
+    h.settle();
+    assert!(
+        ui.get_recording_findings()
+            .low_tones
+            .contains("lowest tone you reported hearing (60 Hz)")
+    );
+    assert_eq!(
+        h.adapter.inspect(|w| w.recording_analysis().cloned()),
+        captured
+    );
+    ui.invoke_clear_device_answers();
+    h.settle();
+    assert_eq!(ui.get_recording_findings(), findings);
+
     for (width, height, size) in [(1280, 900, 13.0), (680, 600, 26.0)] {
         ui.set_ui_size(size);
         ui.window()
