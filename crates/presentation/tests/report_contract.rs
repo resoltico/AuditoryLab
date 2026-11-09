@@ -88,8 +88,8 @@ fn publication_states_and_explicit_absent_purge_token_are_independent_of_failure
         (Outcome::Cancelled, "cancelled"),
         (Outcome::Conflict, "conflict"),
         (Outcome::InvalidArgument, "rejected"),
-        (Outcome::Unreadable, "failed"),
-        (Outcome::Write, "failed"),
+        (Outcome::Unreadable, "unreadable"),
+        (Outcome::Write, "publication_failed"),
     ] {
         let report = serde_json::to_value(Report::error(
             Operation::AnalyzeRecording,

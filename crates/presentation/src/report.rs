@@ -137,6 +137,33 @@ report_struct!(VoiceReport {
     id: VoiceId,
     facts: VoiceFacts,
 });
+/// One component's own compilation result, independent of aggregate validity.
+#[derive(Debug, Clone, Serialize)]
+pub struct ComponentValidation {
+    /// Authored component identity.
+    pub id: auditorylab_core::ComponentId,
+    /// Empty on success, otherwise this component's own failure.
+    pub diagnostics: Vec<DiagnosticMessage>,
+}
+/// A checked generator lane retained even when another component failed.
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum VoiceValidation {
+    /// This lane compiled successfully; this does not validate the whole mix.
+    Valid {
+        /// Lane identity.
+        id: VoiceId,
+        /// Independent resolved lane facts.
+        facts: VoiceFacts,
+    },
+    /// This lane failed.
+    Invalid {
+        /// Lane identity.
+        id: VoiceId,
+        /// Independent lane failure.
+        diagnostic: DiagnosticMessage,
+    },
+}
 /// Validation at the explicitly requested output rate.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "status", rename_all = "snake_case")]
@@ -160,6 +187,10 @@ pub enum Validation {
         sample_rate_hz: u32,
         /// Explanation of the invalid quantities.
         diagnostics: Vec<DiagnosticMessage>,
+        /// Every authored component's own diagnostics, in source order.
+        components: Vec<ComponentValidation>,
+        /// Available lane facts and failures; pre-lowering failures live on components.
+        voices: Vec<VoiceValidation>,
     },
 }
 report_struct!(EntryReport {
@@ -236,7 +267,11 @@ pub enum FailureStatus {
     Cancelled,
     /// Invalid input or arguments.
     Rejected,
-    /// A file operation failed; inspect the path named by its diagnostic.
+    /// Existing input could not be read or decoded.
+    Unreadable,
+    /// A requested publication failed; no confirmed mutation is claimed.
+    PublicationFailed,
+    /// Another operation failed; inspect its typed diagnostic.
     Failed,
 }
 // Wire fields are explicit: internal domain derives do not define schema 4.
@@ -651,6 +686,38 @@ impl Report {
             Err(error) => Validation::Invalid {
                 sample_rate_hz: rate.hz(),
                 diagnostics: vec![DiagnosticMessage::new(error, error.explain())],
+                components: inspection
+                    .component_check()
+                    .into_iter()
+                    .flat_map(|check| check.components())
+                    .map(|(id, result)| ComponentValidation {
+                        id: *id,
+                        diagnostics: result
+                            .as_ref()
+                            .err()
+                            .map(|e| DiagnosticMessage::new(e, e.explain()))
+                            .into_iter()
+                            .collect(),
+                    })
+                    .collect(),
+                voices: inspection
+                    .component_check()
+                    .into_iter()
+                    .flat_map(|check| check.voices())
+                    .map(|(id, result)| match result {
+                        Ok(facts) => VoiceValidation::Valid {
+                            id: *id,
+                            facts: *facts,
+                        },
+                        Err(error) => VoiceValidation::Invalid {
+                            id: *id,
+                            diagnostic: DiagnosticMessage::new(
+                                error,
+                                crate::errors::acoustic::voice_error(error),
+                            ),
+                        },
+                    })
+                    .collect(),
             },
         };
         Self::success(Success::Inspect(Entries {
@@ -790,11 +857,11 @@ impl Report {
             | Outcome::InvalidSound
             | Outcome::InvalidArgument
             | Outcome::ReadOnlyBuiltIn => FailureStatus::Rejected,
-            Outcome::Unreadable
-            | Outcome::Identity
-            | Outcome::Device
-            | Outcome::DestinationExists
-            | Outcome::Write => FailureStatus::Failed,
+            Outcome::Unreadable => FailureStatus::Unreadable,
+            Outcome::Write => FailureStatus::PublicationFailed,
+            Outcome::Identity | Outcome::Device | Outcome::DestinationExists => {
+                FailureStatus::Failed
+            }
         };
         Self {
             output_schema_version: OUTPUT_SCHEMA_VERSION,
