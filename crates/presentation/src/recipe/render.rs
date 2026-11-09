@@ -283,6 +283,37 @@ pub fn rendition_description(value: &Rendition, detail: bool) -> String {
     text
 }
 
+/// A completed inspection, including every component's diagnostics when invalid.
+/// Envelope/whole-sound failure remains first; independent valid lane facts survive.
+pub fn inspection_description(value: &auditorylab_app::services::Inspection<'_>) -> String {
+    match value.sound() {
+        Ok(sound) => rendition_inspection(sound),
+        Err(error) => {
+            let snapshot = value.source().snapshot();
+            let mut out = format!(
+                "{}\n{}\nSample rate: {} Hz\n{}\n",
+                snapshot.title(),
+                origin_line(snapshot.origin()),
+                value.rate().hz(),
+                error.explain()
+            );
+            if let Some(check) = value.component_check() {
+                for (id, result) in check.components() {
+                    if let Err(error) = result {
+                        let _ = writeln!(out, "Component {id}: {}", error.explain());
+                    }
+                }
+                for (id, result) in check.voices() {
+                    if let Ok(facts) = result {
+                        let _ = writeln!(out, "Voice {id}: {}", voice_description(facts, true));
+                    }
+                }
+            }
+            out
+        }
+    }
+}
+
 /// A realized sound's facts, every one at the sound's own rate.
 pub fn rendition_inspection(value: &Rendition) -> String {
     let sound = value;

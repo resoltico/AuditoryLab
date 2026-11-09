@@ -98,8 +98,6 @@ dependencies = [
 [[package]]
 name = "accesskit_windows"
 version = "0.34.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "106c2b961215864d1c2e703ee63269c25c4e80a577ffb2c1017b9c17dcdf83a1"
 dependencies = [
  "accesskit",
  "accesskit_consumer",
@@ -553,7 +551,6 @@ dependencies = [
  "getrandom 0.4.3",
  "libc",
  "proptest",
- "realfft",
  "rtrb",
  "rustix 1.1.6",
  "same-file",
@@ -594,8 +591,10 @@ dependencies = [
  "chrono",
  "libm",
  "proptest",
+ "realfft",
  "serde",
  "toml",
+ "url",
  "uuid",
 ]
 

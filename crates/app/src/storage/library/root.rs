@@ -296,6 +296,7 @@ pub struct RootInfo {
 }
 /// Explicit initialization result, distinct from creating any recipe.
 #[derive(Debug, Clone)]
+#[must_use = "confirmed initialization status and warnings must be handled"]
 pub struct Initialization {
     /// False when a supported initialized root already existed.
     pub created: bool,

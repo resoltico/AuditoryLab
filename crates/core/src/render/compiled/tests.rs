@@ -431,3 +431,59 @@ fn voice_error_retains_the_owner_after_pair_expansion_and_without_a_pair() {
         );
     }
 }
+
+#[test]
+fn prelowering_failures_preserve_every_component_and_independent_lane() {
+    use crate::{Component, SoundSource};
+    let pair = ComponentForm {
+        source: SoundSource::BinauralPair {
+            first_hz: crate::test_support::finite(200.0),
+            offset_hz: crate::test_support::finite(-300.0),
+            first_peak_dbfs: crate::test_support::finite(-30.0),
+            second_peak_dbfs: crate::test_support::finite(-30.0),
+        },
+        modulation: None,
+    };
+    let values = [
+        tone(30_000.0, -30.0),
+        pair,
+        tone(440.0, 1.0),
+        tone(440.0, -30.0),
+        pair,
+    ];
+    for order in [[0, 1, 2, 3, 4], [1, 0, 2, 4, 3], [0, 2, 3, 1, 4]] {
+        let sound = crate::Sound::new(
+            order
+                .into_iter()
+                .map(|i| Component {
+                    id: id(u32::try_from(i + 1).unwrap()),
+                    form: values[i],
+                })
+                .collect(),
+        )
+        .unwrap();
+        let check = sound.check(rate(48_000));
+        assert_eq!(check.components().len(), 5);
+        assert!(check.component(id(1)).unwrap().is_err());
+        assert!(matches!(
+            check.component(id(2)),
+            Some(Err(SoundError::Pair(_)))
+        ));
+        assert!(check.component(id(3)).unwrap().is_err());
+        assert!(check.component(id(4)).unwrap().is_ok());
+        assert!(matches!(
+            check.component(id(5)),
+            Some(Err(SoundError::Pair(_)))
+        ));
+        assert!(check.voice(id(4).into()).unwrap().is_ok());
+        assert_eq!(
+            check.result().unwrap_err(),
+            check
+                .component(id(u32::try_from(order[0] + 1).unwrap()))
+                .unwrap()
+                .as_ref()
+                .unwrap_err()
+        );
+        assert!(check.target().is_none());
+    }
+}

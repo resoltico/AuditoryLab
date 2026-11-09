@@ -98,9 +98,12 @@ enum Command {
         /// Output as readable text or JSON for scripts.
         #[arg(long, value_enum, default_value = "text")]
         format: library_cli::ReadFormat,
-        /// Analyze this many seconds after the 10% offset (default: up to ten minutes).
-        #[arg(long, value_name = "N", value_parser = clap::value_parser!(u32).range(2..))]
+        /// Measure at most this many seconds (default 600, maximum 3600).
+        #[arg(long, value_name = "N", value_parser = recording_cli::parse_duration)]
         seconds: Option<u32>,
+        /// Absolute starting second in the recording (default zero).
+        #[arg(long, default_value_t = 0, value_parser = recording_cli::parse_start)]
+        start: u32,
     },
     /// Save a sound as a stereo WAV file (32-bit float); an existing file is never replaced.
     Export {
@@ -331,10 +334,53 @@ fn output(bytes: &[u8]) -> io::Result<()> {
 fn say(text: &str) -> io::Result<()> {
     output(format!("{}\n", prose(text)).as_bytes())
 }
-fn completed(text: &str) {
-    if let Err(e) = say(text) {
-        eprintln!("{}", crate::cli_text::completion_reporting_failed(e));
+/// Report confirmed publication without allowing either terminal to revoke it.
+fn report_publication(
+    text: &str,
+    warnings: &[lab::services::StorageWarning],
+    stdout: &mut impl Write,
+    stderr: &mut impl Write,
+) {
+    for warning in warnings {
+        let _ = writeln!(
+            stderr,
+            "{}",
+            eprose(&auditorylab_presentation::errors::publication::warning(
+                warning
+            ))
+        );
     }
+    write_confirmed(
+        format!("{}\n", prose(text)).as_bytes(),
+        crate::cli_text::completion_reporting_failed,
+        stdout,
+        stderr,
+    );
+    let _ = stderr.flush();
+}
+/// Keep publication truth independent of a terminal write or flush.
+fn write_confirmed(
+    bytes: &[u8],
+    failure: impl FnOnce(io::Error) -> String,
+    stdout: &mut impl Write,
+    stderr: &mut impl Write,
+) {
+    if let Err(error) = stdout.write_all(bytes).and_then(|()| stdout.flush()) {
+        let _ = writeln!(
+            stderr,
+            "{}",
+            auditorylab_presentation::display_text(&failure(error))
+        );
+        let _ = stderr.flush();
+    }
+}
+fn completed(text: &str, warnings: &[lab::services::StorageWarning]) {
+    report_publication(
+        text,
+        warnings,
+        &mut io::stdout().lock(),
+        &mut io::stderr().lock(),
+    );
 }
 /// The first interrupt runs `request`; a second one exits at once.
 fn on_interrupt(request: impl Fn() + Send + 'static) -> Result<(), CliError> {
@@ -469,11 +515,18 @@ fn run(cli: Cli) -> Result<Ended, CliError> {
         .unwrap_or_else(|| lab::services::LibraryContext::resolve(None));
     match command {
         Command::New { kind, output: path } => {
-            let text = lab::document::construction::new_recipe(kind)?.to_toml()?;
+            let recipe = lab::document::construction::new_recipe(kind)?;
             if let Some(path) = path {
-                lab::services::save_recipe_text(&text, &path, Replace::Never)?;
+                let saved = lab::services::save_content(&recipe, &path, Replace::Never)?;
+                // New --output intentionally has no completion stdout; warnings still matter.
+                report_publication(
+                    "",
+                    &saved.warnings,
+                    &mut io::sink(),
+                    &mut io::stderr().lock(),
+                );
             } else {
-                output(text.as_bytes())?;
+                output(recipe.to_toml()?.as_bytes())?;
             }
         }
         Command::List(args) => {
@@ -524,7 +577,8 @@ fn run(cli: Cli) -> Result<Ended, CliError> {
                 &cancel,
                 &Progress::default(),
                 || {
-                    eprintln!(
+                    let _ = writeln!(
+                        io::stderr().lock(),
                         "{}",
                         eprose(&auditorylab_presentation::rendition_export_preamble(
                             sound, &path
@@ -532,18 +586,10 @@ fn run(cli: Cli) -> Result<Ended, CliError> {
                     );
                 },
             )?;
-            for warning in &result.warnings {
-                eprintln!(
-                    "{}",
-                    eprose(&auditorylab_presentation::errors::publication::warning(
-                        warning
-                    ))
-                );
-            }
-            completed(&auditorylab_presentation::workspace::exported_description(
-                &(result),
-                &path,
-            ));
+            completed(
+                &auditorylab_presentation::workspace::exported_description(&result, &path),
+                &result.warnings,
+            );
         }
         Command::Play(source) => {
             let resolved = library_cli::resolve(source, &context)?;
@@ -554,7 +600,8 @@ fn run(cli: Cli) -> Result<Ended, CliError> {
             file,
             format,
             seconds,
-        } => recording_cli::analyze(&file, format, seconds)?,
+            start,
+        } => recording_cli::analyze(&file, format, seconds, start)?,
     }
     Ok(Ended::Normally)
 }
@@ -654,15 +701,10 @@ fn export_recipe(
     let text = lab::services::portable_text(&key, context)?;
     if let Some(path) = path {
         let saved = lab::services::save_recipe_text(&text, &path, Replace::Never)?;
-        for warning in saved.warnings {
-            eprintln!(
-                "{}",
-                eprose(&auditorylab_presentation::errors::publication::warning(
-                    &warning
-                ))
-            );
-        }
-        completed(&auditorylab_presentation::recipe_exported(&path));
+        completed(
+            &auditorylab_presentation::recipe_exported(&path),
+            &saved.warnings,
+        );
     } else {
         output(text.as_bytes())?;
     }
@@ -728,6 +770,7 @@ mod operation_tests {
                 &CliError::Usage(Usage("fixture".into())),
                 "fixture",
                 Outcome::InvalidArgument,
+                None,
             );
             assert_eq!(
                 serde_json::to_value(report).unwrap()["operation"],
@@ -814,5 +857,39 @@ mod diagnostic_tests {
         assert_eq!(error.code(), "sample_rate.range");
         assert_eq!(error.params()["hz"], ParamValue::Unsigned(0));
         assert_eq!(error.outcome(), Outcome::InvalidArgument);
+    }
+}
+
+#[cfg(test)]
+mod publication_reporting_tests {
+    use super::*;
+    struct RefusingWriter;
+    impl Write for RefusingWriter {
+        fn write(&mut self, _: &[u8]) -> io::Result<usize> {
+            Err(io::Error::other("injected terminal failure"))
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Err(io::Error::other("injected flush failure"))
+        }
+    }
+    #[test]
+    fn confirmed_publication_survives_either_or_both_terminal_failures() {
+        let warnings = [lab::services::StorageWarning::ClockPredatesEdit];
+        let mut stderr = Vec::new();
+        report_publication("Published", &warnings, &mut RefusingWriter, &mut stderr);
+        let text = String::from_utf8(stderr).unwrap();
+        assert!(text.contains("injected terminal failure"));
+        assert!(
+            text.contains("Published") || text.contains("completed") || text.contains("Completion")
+        );
+        let mut stdout = Vec::new();
+        report_publication("Published", &warnings, &mut stdout, &mut RefusingWriter);
+        assert_eq!(stdout, b"Published\n");
+        report_publication(
+            "Published",
+            &warnings,
+            &mut RefusingWriter,
+            &mut RefusingWriter,
+        );
     }
 }

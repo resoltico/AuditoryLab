@@ -6,6 +6,10 @@ use crate::{outcome::Outcome, services::FileError};
 pub enum RecordingError {
     /// Opening or reading the input failed.
     File(FileError),
+    /// Pure sample measurement refused or did not complete.
+    Measurement(auditorylab_core::measurement::MeasurementError),
+    /// Cooperative input work budget exhausted; no partial result is returned.
+    BudgetExceeded { resource: &'static str },
     /// A known codec has no enabled decoder.
     UnsupportedCodec { codec: String },
     /// Invalid media or samples, located at the packet being read.
@@ -25,8 +29,11 @@ impl RecordingError {
     /// Frontend-independent failure category.
     pub fn outcome(&self) -> Outcome {
         match self {
-            Self::File(error) => error.outcome(),
-            Self::Cancelled => Outcome::Cancelled,
+            Self::File(error) => error.input_outcome(),
+            Self::Cancelled
+            | Self::Measurement(auditorylab_core::measurement::MeasurementError::Cancelled) => {
+                Outcome::Cancelled
+            }
             Self::InvalidWindow => Outcome::InvalidArgument,
             _ => Outcome::Unreadable,
         }
@@ -46,6 +53,7 @@ impl std::error::Error for RecordingError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::File(error) => Some(error),
+            Self::Measurement(error) => Some(error),
             _ => None,
         }
     }
@@ -54,6 +62,7 @@ crate::core::diagnostic_codes! {
     pub(crate) const CODES;
     RecordingError {
         codes {
+            Self::BudgetExceeded { .. } => "recording.budget_exceeded",
             Self::UnsupportedCodec { .. } => "recording.unsupported_codec",
             Self::Decode { .. } => "recording.decode",
             Self::NoAudioTrack => "recording.no_audio_track",
@@ -62,9 +71,12 @@ crate::core::diagnostic_codes! {
             Self::UnsupportedChannels { .. } => "recording.unsupported_channels",
             Self::Cancelled => "recording.cancelled",
         }
-        delegates { Self::File(error) => error, }
+        delegates { Self::File(error) => error, Self::Measurement(error) => error, }
         params(this) {
             match this {
+                Self::BudgetExceeded { resource } => {
+                    crate::core::diagnostic_params! { "resource" => *resource }
+                },
                 Self::UnsupportedCodec { codec } => {
                     crate::core::diagnostic_params! { "codec" => codec.as_str() }
                 },
@@ -80,5 +92,11 @@ crate::core::diagnostic_codes! {
                 _ => crate::core::diagnostic::Params::new(),
             }
         }
+    }
+}
+
+impl From<auditorylab_core::measurement::MeasurementError> for RecordingError {
+    fn from(error: auditorylab_core::measurement::MeasurementError) -> Self {
+        Self::Measurement(error)
     }
 }

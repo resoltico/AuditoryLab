@@ -124,6 +124,7 @@ strip = true
 # Preserve accessibility, focus, native input, modeless windows and termination.
 [patch.crates-io]
 accesskit_unix = { path = "third_party/accesskit_unix" }
+accesskit_windows = { path = "third_party/accesskit_windows" }
 i-slint-core = { path = "third_party/i-slint-core" }
 i-slint-compiler = { path = "third_party/i-slint-compiler" }
 i-slint-backend-winit = { path = "third_party/i-slint-backend-winit" }

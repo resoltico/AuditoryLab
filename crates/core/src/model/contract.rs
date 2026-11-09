@@ -24,11 +24,6 @@ pub enum ContractError {
         /// Requested evidence count.
         count: usize,
     },
-    /// Flat ancestry capacity exceeded.
-    LineageBudget {
-        /// Requested ancestor count.
-        count: usize,
-    },
     /// A bibliography record has an empty key.
     EmptySourceKey {
         /// Zero-based bibliography record index.
@@ -97,11 +92,6 @@ pub enum ContractError {
         /// Reused UUID.
         id: DocumentUuid,
     },
-    /// A copy has no room for its immediate ancestor.
-    CopyLineageFull {
-        /// Current ancestor count.
-        count: usize,
-    },
 }
 impl core::fmt::Display for ContractError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -117,7 +107,6 @@ crate::diagnostic_codes! {
             Self::EmptyTitle => "contract.empty_title",
             Self::SourceBudget { .. } => "contract.source_budget",
             Self::EvidenceBudget { .. } => "contract.evidence_budget",
-            Self::LineageBudget { .. } => "contract.lineage_budget",
             Self::EmptySourceKey { .. } => "contract.empty_source_key",
             Self::DuplicateSourceKey { .. } => "contract.duplicate_source_key",
             Self::EmptySourceLabel { .. } => "contract.empty_source_label",
@@ -130,7 +119,6 @@ crate::diagnostic_codes! {
             Self::EmptyLineageTitle { .. } => "contract.empty_lineage_title",
             Self::EmptyLineageNote { .. } => "contract.empty_lineage_note",
             Self::ReusedCopyIdentity { .. } => "contract.reused_copy_identity",
-            Self::CopyLineageFull { .. } => "contract.copy_lineage_full",
         }
         delegates {}
         params(this) {
@@ -138,8 +126,7 @@ crate::diagnostic_codes! {
                 Self::EmptyTitle => crate::Params::new(),
                 Self::SourceBudget { count }
                 | Self::EvidenceBudget { count }
-                | Self::LineageBudget { count }
-                | Self::CopyLineageFull { count } => crate::diagnostic_params! {"count"=>*count},
+                => crate::diagnostic_params! {"count"=>*count},
                 Self::EmptySourceKey { index }
                 | Self::EmptyLineageTitle { index }
                 | Self::EmptyLineageNote { index } => crate::diagnostic_params! {"index"=>*index},

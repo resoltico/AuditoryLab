@@ -219,7 +219,7 @@ fn all_owned_proposed_examples_roundtrip_and_all_rejection_examples_fail() {
     );
 }
 #[test]
-fn copies_keep_scoped_sources_and_refuse_capacity_without_dropping_ancestry() {
+fn copies_keep_scoped_sources_without_an_arbitrary_generation_limit() {
     let original = Recipe::parse(include_str!(
         "../../../tests/fixtures/recipes/custom-derived-pair.toml"
     ))
@@ -230,7 +230,12 @@ fn copies_keep_scoped_sources_and_refuse_capacity_without_dropping_ancestry() {
         modified_at: None,
     };
     let copy = original
-        .fork(document.clone(), None, "Explicit attribution".into())
+        .prepare_copy(
+            document.clone(),
+            None,
+            "Explicit attribution".into(),
+            "Copy".into(),
+        )
         .unwrap();
     assert_eq!(copy.content.sources, original.content.sources);
     assert_eq!(
@@ -238,7 +243,7 @@ fn copies_keep_scoped_sources_and_refuse_capacity_without_dropping_ancestry() {
         "Explicit attribution"
     );
     assert!(matches!(
-        original.fork(document.clone(), None, " ".into()),
+        original.prepare_copy(document.clone(), None, " ".into(), "Copy".into()),
         Err(RecipeError::Contract(
             ContractError::EmptyLineageNote { .. }
         ))
@@ -258,9 +263,13 @@ fn copies_keep_scoped_sources_and_refuse_capacity_without_dropping_ancestry() {
     full.content
         .lineage
         .resize(16, full.content.lineage[0].clone());
-    assert!(
-        full.fork(document, None, "Explicit attribution".into())
-            .is_err()
+    assert_eq!(
+        full.prepare_copy(document, None, "Explicit attribution".into(), "Copy".into())
+            .unwrap()
+            .content
+            .lineage
+            .len(),
+        17
     );
     assert_eq!(full.content.lineage.len(), 16);
 }
@@ -471,7 +480,7 @@ fn metadata_capacity_checks_are_independent_and_never_drop_records() {
             .clone()
             .build()
             .and_then(|recipe| recipe.to_toml())
-            .is_err()
+            .is_ok()
     );
     assert_eq!(lineage.content.lineage.len(), 17);
 }
@@ -620,4 +629,71 @@ fn authored_bits(recipe: &Recipe) -> Vec<u64> {
         _ => panic!("fixture has exactly two alternatives"),
     }
     values
+}
+
+#[test]
+fn copy_capacity_checks_final_title_note_escaping_and_supplied_dates() {
+    let original = Recipe::parse(include_str!(
+        "../../../tests/fixtures/recipes/custom-derived-pair.toml"
+    ))
+    .unwrap();
+    let document = DocumentIdentity {
+        id: "00000000-0000-4000-8000-000000000099".parse().unwrap(),
+        created_at: Some("2026-11-09T00:00:00.123456789Z".parse().unwrap()),
+        modified_at: Some("2026-11-09T00:00:01Z".parse().unwrap()),
+    };
+    let title = "Copied \"sound\" — Ω".to_string();
+    let note = "Ancestor \"quoted\" \\ Unicode Ω".to_string();
+    let base = original
+        .prepare_copy(
+            document.clone(),
+            Some("catalog-id".into()),
+            note.clone(),
+            title.clone(),
+        )
+        .unwrap();
+    let base_size = base.to_toml().unwrap().len();
+    let remaining = Recipe::MAX_BYTES - base_size;
+    let exact = original
+        .prepare_copy(
+            document.clone(),
+            Some("catalog-id".into()),
+            note.clone(),
+            format!("{title}{}", "x".repeat(remaining)),
+        )
+        .unwrap();
+    assert_eq!(exact.to_toml().unwrap().len(), 65_536);
+    assert_eq!(exact.document(), &document);
+    assert_eq!(exact.sources(), original.sources());
+    assert!(
+        exact
+            .evidence()
+            .iter()
+            .all(|e| e.scope == crate::EvidenceScope::Ancestor)
+    );
+    assert!(matches!(
+        original.prepare_copy(
+            document,
+            Some("catalog-id".into()),
+            note,
+            format!("{title}{}", "x".repeat(remaining + 1))
+        ),
+        Err(RecipeError::TooLarge)
+    ));
+    // Supplied dates consume bytes; the app's no-date preview must never authorize
+    // an unchecked materialized candidate with extra identity fields.
+    let no_date = DocumentIdentity {
+        id: "00000000-0000-4000-8000-000000000099".parse().unwrap(),
+        created_at: None,
+        modified_at: None,
+    };
+    let short = original
+        .prepare_copy(no_date, None, "copy".into(), "title".into())
+        .unwrap();
+    assert!(short.to_toml().unwrap().len() < base_size);
+    assert!(
+        original
+            .copy_preview(None, "x".repeat(65_536), "title".into())
+            .is_err()
+    );
 }

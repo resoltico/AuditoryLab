@@ -178,6 +178,25 @@ impl FileError {
             | Self::AfterMutation { .. } => Outcome::Write,
         }
     }
+    /// Classify a failure while consuming an input, retaining resource and mutation safeguards.
+    #[must_use]
+    pub fn input_outcome(&self) -> Outcome {
+        match self {
+            Self::Io(_) | Self::NotRegular { .. } => Outcome::Unreadable,
+            Self::Cleanup { primary, .. } => primary.input_outcome(),
+            _ => self.outcome(),
+        }
+    }
+    /// Independently observed state after a failed filesystem mutation.
+    /// Absence means this error carries no post-mutation uncertainty.
+    #[must_use]
+    pub fn publication_confirmation(&self) -> Option<&Confirmation> {
+        match self {
+            Self::AfterMutation { confirmation, .. } => Some(confirmation),
+            Self::Cleanup { primary, .. } => primary.publication_confirmation(),
+            _ => None,
+        }
+    }
     /// Native I/O classification, when this failure has a direct I/O cause.
     #[must_use]
     pub fn io_kind(&self) -> Option<std::io::ErrorKind> {

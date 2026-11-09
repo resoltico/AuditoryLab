@@ -18,7 +18,7 @@ fn fixture() -> (tempfile::TempDir, Library, Workspace) {
     std::fs::create_dir_all(&base).unwrap();
     let temp = tempfile::tempdir_in(base).unwrap();
     let store = crate::services::library::Library::at_path(temp.path().join("library")).unwrap();
-    store.initialize().unwrap();
+    assert_eq!(store.initialize().unwrap().warnings, []);
     let mut workspace = Workspace::with_library(
         crate::services::catalog().unwrap(),
         Capabilities::no_device_playback(),
@@ -477,7 +477,7 @@ fn managed_playback_worker_refuses_changed_or_trashed_observation() {
     let captured = w.selected().unwrap().clone();
     assert!(crate::services::playback::revalidate_managed(&captured, &store).is_ok());
     let record = store.load(w.library_binding().unwrap().key).unwrap();
-    store
+    let _published = store
         .apply(
             Mutation::Trash {
                 key: record.key,
@@ -509,7 +509,7 @@ fn retained_user_source_is_captured_temporary_content_not_a_fresh_user_selection
         .parse()
         .unwrap();
     let record = store.load(&key).unwrap();
-    store
+    let _published = store
         .apply(
             Mutation::Rename {
                 key,
@@ -587,7 +587,7 @@ fn refresh_reloads_membership_state_even_when_recipe_sha_is_unchanged() {
     user(&mut workspace);
     let (binding, token, _) = binding(workspace.library_binding());
     let key: LibraryKey = binding.parse().unwrap();
-    store
+    let _published = store
         .apply(
             Mutation::Trash {
                 key: key.clone(),
@@ -893,7 +893,7 @@ fn retained_user_source_exports_its_captured_portable_text_without_reloading_use
     let _ = workspace.apply(Command::Editor(EditorCommand::CopySelected));
     let key = LibraryKey::User(original.recipe().document().id);
     let record = store.load(&key).unwrap();
-    store
+    let _published = store
         .rename(
             key,
             Some(record.version_token),

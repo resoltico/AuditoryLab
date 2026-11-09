@@ -68,7 +68,7 @@ fn bound_workspace(
     let store =
         auditorylab_app::services::library::Library::at_path(directory.path().join("library"))
             .unwrap();
-    store.initialize().unwrap();
+    assert_eq!(store.initialize().unwrap().warnings, []);
     let workspace = Workspace::with_library(catalog, capabilities, store.clone()).unwrap();
     (workspace, directory, store)
 }
@@ -1779,7 +1779,7 @@ fn persistent_library_slint_bindings_publish_exact_draft_and_keep_filter_identit
     let temp = tempfile::tempdir().unwrap();
     let store =
         auditorylab_app::services::library::Library::at_path(temp.path().join("library")).unwrap();
-    store.initialize().unwrap();
+    assert_eq!(store.initialize().unwrap().warnings, []);
     let workspace = Workspace::with_library(
         auditorylab_app::services::catalog().unwrap(),
         Capabilities::no_device_playback(),
@@ -1856,7 +1856,7 @@ fn persistent_native_filters_use_shared_query_and_invalid_dates_preserve_it() {
     let temp = tempfile::tempdir().unwrap();
     let store =
         auditorylab_app::services::library::Library::at_path(temp.path().join("library")).unwrap();
-    store.initialize().unwrap();
+    assert_eq!(store.initialize().unwrap().warnings, []);
     let h = Harness::with_workspace(
         Workspace::with_library(
             auditorylab_app::services::catalog().unwrap(),
@@ -1979,7 +1979,7 @@ fn persistent_native_transport_stays_inside_800_by_600_with_large_text() {
     let temp = tempfile::tempdir().unwrap();
     let root =
         auditorylab_app::services::library::Library::at_path(temp.path().join("library")).unwrap();
-    root.initialize().unwrap();
+    assert_eq!(root.initialize().unwrap().warnings, []);
     let store = root;
     let h = Harness::with_workspace(
         Workspace::with_library(
@@ -2023,7 +2023,7 @@ fn native_open_add_external_save_conflict_and_independent_copy_keep_originals_di
     let temp = tempfile::tempdir().unwrap();
     let root =
         auditorylab_app::services::library::Library::at_path(temp.path().join("library")).unwrap();
-    root.initialize().unwrap();
+    assert_eq!(root.initialize().unwrap().warnings, []);
     let store = root;
     let file = temp.path().join("external.toml");
     let mut draft = auditorylab_app::document::editing::Draft::new().unwrap();
@@ -2115,7 +2115,7 @@ fn native_readonly_labels_escape_controls_and_bidi_without_rewriting_editable_co
     let temp = tempfile::tempdir().unwrap();
     let root =
         auditorylab_app::services::library::Library::at_path(temp.path().join("library")).unwrap();
-    root.initialize().unwrap();
+    assert_eq!(root.initialize().unwrap().warnings, []);
     let store = root;
     let raw = "Label \u{202e}User\u{001b}";
     let mut draft = auditorylab_app::document::editing::Draft::new().unwrap();
@@ -2172,7 +2172,7 @@ fn native_library_keyboard_has_one_tab_stop_and_keeps_selected_key_through_sort(
     let temp = tempfile::tempdir().unwrap();
     let root =
         auditorylab_app::services::library::Library::at_path(temp.path().join("library")).unwrap();
-    root.initialize().unwrap();
+    assert_eq!(root.initialize().unwrap().warnings, []);
     let store = root;
     let h = Harness::with_workspace(
         Workspace::with_library(
@@ -2276,7 +2276,7 @@ fn compact_empty_filters_and_recovery_remain_reachable_through_real_controls() {
     let temp = tempfile::tempdir().unwrap();
     let root =
         auditorylab_app::services::library::Library::at_path(temp.path().join("library")).unwrap();
-    root.initialize().unwrap();
+    assert_eq!(root.initialize().unwrap().warnings, []);
     let store = root;
     let h = Harness::with_workspace(
         Workspace::with_library(
@@ -2364,7 +2364,7 @@ fn compact_unavailable_root_keeps_recovery_and_non_authoritative_counts_visible(
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("library");
     let root = auditorylab_app::services::library::Library::at_path(path.clone()).unwrap();
-    root.initialize().unwrap();
+    assert_eq!(root.initialize().unwrap().warnings, []);
     let store = root;
     std::fs::rename(&path, temp.path().join("offline")).unwrap();
     std::fs::write(&path, "not a directory").unwrap();
@@ -2408,7 +2408,7 @@ fn first_selected_row_keeps_the_results_note_in_view_after_launch() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("library");
     let store = auditorylab_app::services::library::Library::at_path(path.clone()).unwrap();
-    store.initialize().unwrap();
+    assert_eq!(store.initialize().unwrap().warnings, []);
     // An unreadable records folder makes the inventory incomplete, so a note
     // sits above the first row.
     std::fs::remove_dir_all(path.join("recipes")).unwrap();
@@ -2445,7 +2445,7 @@ fn compact_back_keeps_result_scroll_and_large_text_rows_wrap_with_summary_dates(
     let temp = tempfile::tempdir().unwrap();
     let store =
         auditorylab_app::services::library::Library::at_path(temp.path().join("library")).unwrap();
-    store.initialize().unwrap();
+    assert_eq!(store.initialize().unwrap().warnings, []);
     let h = Harness::with_workspace(
         Workspace::with_library(
             auditorylab_app::services::catalog().unwrap(),
@@ -2534,7 +2534,7 @@ fn local_dates_expose_exact_utc_and_reset_sort_preserves_committed_filters() {
     let temp = tempfile::tempdir().unwrap();
     let store =
         auditorylab_app::services::library::Library::at_path(temp.path().join("library")).unwrap();
-    store.initialize().unwrap();
+    assert_eq!(store.initialize().unwrap().warnings, []);
     let draft = auditorylab_app::document::editing::Draft::from_snapshot(
         &auditorylab_app::services::builtin("ioannou-2015-binaural-2-hz").unwrap(),
     )
@@ -2544,12 +2544,13 @@ fn local_dates_expose_exact_utc_and_reset_sort_preserves_committed_filters() {
     recipe.document.created_at = Some(created);
     recipe.document.modified_at = None;
     let id = recipe.document.id;
-    store
+    let published = store
         .apply(
             Mutation::Add(std::sync::Arc::new(recipe.build().unwrap())),
             &auditorylab_app::job::Cancel::default(),
         )
         .unwrap();
+    assert_eq!(published.diagnostics, []);
     let h = Harness::with_workspace(
         Workspace::with_library(
             auditorylab_app::services::catalog().unwrap(),
@@ -2606,7 +2607,7 @@ fn changing_display_vocabulary_preserves_typed_library_search() {
     let temp = tempfile::tempdir().unwrap();
     let root =
         auditorylab_app::services::library::Library::at_path(temp.path().join("library")).unwrap();
-    root.initialize().unwrap();
+    assert_eq!(root.initialize().unwrap().warnings, []);
     let store = root;
     let h = Harness::with_workspace(
         Workspace::with_library(
@@ -2655,7 +2656,7 @@ fn filter_controls_map_to_independent_typed_queries() {
     let temp = tempfile::tempdir().unwrap();
     let store =
         auditorylab_app::services::library::Library::at_path(temp.path().join("library")).unwrap();
-    store.initialize().unwrap();
+    assert_eq!(store.initialize().unwrap().warnings, []);
     let h = Harness::with_workspace(
         Workspace::with_library(
             auditorylab_app::services::catalog().unwrap(),
@@ -2803,7 +2804,8 @@ fn background_refresh_does_not_hide_a_failed_captured_save() {
     );
     ui.invoke_save_recipe();
     let save = take_job(&h, JobKind::File);
-    h.store()
+    let published = h
+        .store()
         .apply(
             Mutation::Rename {
                 key: saved.key.clone(),
@@ -2813,6 +2815,7 @@ fn background_refresh_does_not_hide_a_failed_captured_save() {
             &auditorylab_app::job::Cancel::default(),
         )
         .unwrap();
+    assert_eq!(published.diagnostics, []);
     h.adapter
         .command(|w| w.apply(Command::Library(LibraryCommand::Refresh)));
     finish_file(&h, save);
@@ -5672,7 +5675,8 @@ fn failed_real_save_keeps_the_guide_document_and_visible_example_focus() {
     };
     h.adapter.respond(prompt, PromptAnswer::Save);
     let save = take_job(&h, JobKind::File);
-    h.store()
+    let published = h
+        .store()
         .apply(
             Mutation::Rename {
                 key: saved.key.clone(),
@@ -5682,6 +5686,7 @@ fn failed_real_save_keeps_the_guide_document_and_visible_example_focus() {
             &auditorylab_app::job::Cancel::default(),
         )
         .unwrap();
+    assert_eq!(published.diagnostics, []);
     finish_file(&h, save);
     h.wait_for_files();
     h.settle();
@@ -6301,7 +6306,7 @@ fn recording_analysis_callbacks_project_all_findings_at_compact_large_text_size(
     h.adapter.respond(prompt, PromptAnswer::Path(Some(path)));
     h.wait_for_files();
     h.settle();
-    ui.invoke_analyze_recording("2".into());
+    ui.invoke_analyze_recording("".into(), "2".into());
     assert!(
         ui.get_analyzing_recording(),
         "start must project before completion"
@@ -6317,6 +6322,28 @@ fn recording_analysis_callbacks_project_all_findings_at_compact_large_text_size(
     assert!(findings.summary.contains("not creator intent"));
     assert!(!findings.left_trace.is_empty());
     assert_eq!(ui.get_recording_energy().row_count(), 8);
+    let captured = h.adapter.inspect(|w| w.recording_analysis().cloned());
+    for (test, answer) in [
+        ("tone_100_hz", "heard"),
+        ("tone_60_hz", "heard"),
+        ("tone_40_hz", "not_heard"),
+    ] {
+        ui.invoke_answer_device_test(test.into(), answer.into());
+    }
+    h.settle();
+    assert!(
+        ui.get_recording_findings()
+            .low_tones
+            .contains("lowest tone you reported hearing (60 Hz)")
+    );
+    assert_eq!(
+        h.adapter.inspect(|w| w.recording_analysis().cloned()),
+        captured
+    );
+    ui.invoke_clear_device_answers();
+    h.settle();
+    assert_eq!(ui.get_recording_findings(), findings);
+
     for (width, height, size) in [(1280, 900, 13.0), (680, 600, 26.0)] {
         ui.set_ui_size(size);
         ui.window()
@@ -6341,14 +6368,15 @@ fn recording_analysis_callbacks_project_all_findings_at_compact_large_text_size(
         }
         assert!(ui.window().take_snapshot().is_ok());
     }
-    ui.invoke_analyze_recording("invalid".into());
+    ui.invoke_analyze_recording("".into(), "invalid".into());
     h.wait_for_files();
     h.settle();
     assert_eq!(ui.get_recording_findings(), findings);
     assert!(
-        ui.get_status().contains("at least two seconds"),
+        ui.get_recording_input_error()
+            .contains("unsigned whole seconds"),
         "{}",
-        ui.get_status()
+        ui.get_recording_input_error()
     );
     assert!(!h.adapter.inspect(|w| w.audio_busy()));
 }
@@ -6369,7 +6397,7 @@ fn recording_analysis_review_screenshots() {
     };
     h.adapter.respond(prompt, PromptAnswer::Path(Some(path)));
     h.wait_for_files();
-    ui.invoke_analyze_recording("".into());
+    ui.invoke_analyze_recording("".into(), "".into());
     h.wait_for_files();
     h.settle();
     let destination =
@@ -6388,5 +6416,45 @@ fn recording_analysis_review_screenshots() {
             reveal_scrolled_control(&h, label, "Recording content");
             save_desktop_review_frame(ui, &destination, &format!("{name}-{section}"));
         }
+    }
+}
+
+#[test]
+fn silent_recording_energy_is_undefined_in_native_models_and_accessible_text() {
+    use std::io::Write;
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("silence.wav");
+    let mut file = std::fs::File::create(&path).unwrap();
+    file.write_all(b"RIFF").unwrap();
+    file.write_all(&4036_u32.to_le_bytes()).unwrap();
+    file.write_all(b"WAVEfmt \x10\0\0\0\x01\0\x01\0").unwrap();
+    file.write_all(&1000_u32.to_le_bytes()).unwrap();
+    file.write_all(&2000_u32.to_le_bytes()).unwrap();
+    file.write_all(b"\x02\0\x10\0data").unwrap();
+    file.write_all(&4000_u32.to_le_bytes()).unwrap();
+    file.set_len(4044).unwrap();
+    drop(file);
+    let h = Harness::new();
+    let ui = h.ui();
+    ui.invoke_tab_changed(3);
+    h.settle();
+    ui.invoke_open_recording();
+    let [Request::Path(prompt, PathPurpose::OpenRecording, None)] = h.take()[..] else {
+        panic!("recording dialog");
+    };
+    h.adapter.respond(prompt, PromptAnswer::Path(Some(path)));
+    h.wait_for_files();
+    h.settle();
+    ui.invoke_analyze_recording("".into(), "2".into());
+    h.wait_for_files();
+    h.settle();
+    assert!(ui.get_has_recording_analysis());
+    let shares = ui.get_recording_energy();
+    assert_eq!(shares.row_count(), 4);
+    for share in shares.iter() {
+        assert!(!share.defined);
+        assert!(share.label.contains("undefined (digital silence)"));
+        let item = reveal_scrolled_control(&h, share.label.as_str(), "Recording content");
+        assert!(item.geometry().size.height > 0.0);
     }
 }

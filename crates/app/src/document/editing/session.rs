@@ -175,7 +175,7 @@ impl EditorSession {
             Err(EditRefusal::StaleDocument)
         }
     }
-    pub(super) fn admit_row(&self, row: RowKey) -> Result<Option<ComponentId>, EditRefusal> {
+    pub(crate) fn admit_row(&self, row: RowKey) -> Result<Option<ComponentId>, EditRefusal> {
         self.admit(row.document)?;
         if let Some(id) = row.component {
             let generation = self
@@ -191,7 +191,7 @@ impl EditorSession {
         }
         Ok(row.component)
     }
-    pub(super) fn admit_component(&self, row: RowKey) -> Result<ComponentId, EditRefusal> {
+    pub(crate) fn admit_component(&self, row: RowKey) -> Result<ComponentId, EditRefusal> {
         self.admit_row(row)?.ok_or(EditRefusal::Inapplicable)
     }
     pub(crate) fn admit_document(&self, row: RowKey) -> Result<(), EditRefusal> {
@@ -201,7 +201,7 @@ impl EditorSession {
             Ok(())
         }
     }
-    pub(super) fn admit_field(&self, handle: FieldHandle) -> Result<(), EditRefusal> {
+    pub(crate) fn admit_field(&self, handle: FieldHandle) -> Result<(), EditRefusal> {
         self.admit(handle.row.document)?;
         match (handle.row.component, handle.field) {
             (None, EditingField::Metadata(_)) => self.draft.has_field(handle.field),

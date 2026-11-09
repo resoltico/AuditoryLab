@@ -356,21 +356,36 @@ impl LibraryState {
                 Err(Refusal::LibraryUnavailable(problem.clone()))
             })
     }
-    pub(super) fn copy_recipe_admission(recipe: &Recipe) -> Result<(), Refusal> {
-        recipe.copy_readiness().map_err(|error| {
-            Refusal::Document(Box::new(crate::core::RecipeError::Contract(error).into()))
-        })
+    pub(super) fn copy_recipe_admission(snapshot: &RecipeSnapshot) -> Result<(), Refusal> {
+        snapshot
+            .copy_readiness()
+            .map_err(|error| Refusal::Document(Box::new(error.into())))
     }
     pub(super) fn copy_admission(&self) -> Result<(), Refusal> {
-        Self::copy_recipe_admission(self.selected().ok_or(Refusal::NoSelection)?.recipe())
+        Self::copy_recipe_admission(self.selected().ok_or(Refusal::NoSelection)?)
     }
-    pub(super) fn prepare_audio(&self) -> Result<AudioRequest, Refusal> {
+    pub(super) fn audio_readiness(&self) -> Result<(), Refusal> {
         if self.selected_unreadable() {
             return Err(Refusal::SavedEntryUnreadable);
         }
         if self.selected_trashed() {
             return Err(Refusal::RestoreBeforePlayback);
         }
+        self.selected().map(|_| ()).ok_or(Refusal::NoSelection)
+    }
+    pub(super) fn export_readiness(&self, rate: SampleRate) -> Result<(), Refusal> {
+        let snapshot = self.selected().ok_or(Refusal::NoSelection)?;
+        snapshot
+            .realize(rate)
+            .map(|_| ())
+            .map_err(|error| Refusal::Invalid {
+                title: snapshot.title(),
+                rate,
+                error: Some(error),
+            })
+    }
+    pub(super) fn prepare_audio(&self) -> Result<AudioRequest, Refusal> {
+        self.audio_readiness()?;
         let snapshot = self.selected().ok_or(Refusal::NoSelection)?;
         Ok(AudioRequest::Finite {
             snapshot: Box::new(snapshot.clone()),
@@ -388,6 +403,16 @@ impl LibraryState {
             sound,
             snapshot.suggested_output_name("wav"),
         ))
+    }
+    pub(super) fn recipe_readiness(&self) -> Result<(), Refusal> {
+        let snapshot = self.selected().ok_or(Refusal::NoSelection)?;
+        match self.selection.as_ref().ok_or(Refusal::NoSelection)? {
+            LibraryKey::User(_) => self.selected_text().map(|_| ()).ok_or(Refusal::NoSelection),
+            LibraryKey::BuiltIn(_) | LibraryKey::External(_) => snapshot
+                .canonical_text()
+                .map(|_| ())
+                .map_err(|error| Refusal::Document(Box::new(error.into()))),
+        }
     }
     pub(super) fn prepare_recipe_text(&self) -> Result<(Arc<str>, String), Refusal> {
         let snapshot = self.selected().ok_or(Refusal::NoSelection)?;
@@ -571,15 +596,24 @@ impl LibraryState {
         self.refilter();
     }
 
-    pub(super) fn prepare_add(&self) -> Result<Arc<Recipe>, Refusal> {
+    pub(super) fn add_readiness(&self) -> Result<(), Refusal> {
         let snapshot = self.selected().ok_or(Refusal::NoSelection)?;
-        if !matches!(
+        if matches!(
             snapshot.origin(),
             crate::document::recipe::Origin::File(_) | crate::document::recipe::Origin::Stream(_)
         ) {
-            return Err(Refusal::TemporaryRequired);
+            Ok(())
+        } else {
+            Err(Refusal::TemporaryRequired)
         }
+    }
+    pub(super) fn prepare_add(&self) -> Result<Arc<Recipe>, Refusal> {
+        self.add_readiness()?;
+        let snapshot = self.selected().ok_or(Refusal::NoSelection)?;
         Ok(Arc::new(snapshot.recipe().clone()))
+    }
+    pub(super) fn has_saved_entry(&self) -> bool {
+        self.last_saved.is_some()
     }
     pub(super) fn selected_key(&self) -> Option<&LibraryKey> {
         self.selection.as_ref()

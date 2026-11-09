@@ -80,6 +80,17 @@ impl OperationError {
             Self::Recipe(_) => Outcome::InvalidRecipe,
         }
     }
+    /// The observed post-mutation state, when publication could not be confirmed.
+    #[must_use]
+    pub fn publication_confirmation(&self) -> Option<&crate::services::Confirmation> {
+        match self {
+            Self::File(error)
+            | Self::Save(SaveError::File { error })
+            | Self::Export(ExportError::File { error })
+            | Self::Library(LibraryError::File { error }) => error.publication_confirmation(),
+            _ => None,
+        }
+    }
     /// Owned partial file that cleanup could not remove.
     #[must_use]
     pub fn leftover(&self) -> Option<&std::path::Path> {
@@ -169,8 +180,7 @@ crate::core::diagnostic_codes! {
                 Self::Sound { origin, rate, .. } => {
                     crate::core::diagnostic_params! {
                         "origin"=>origin.to_string(),
-                        "diagnostic_rate\
-                        _hz"=>rate.hz(),
+                        "diagnostic_rate_hz"=>rate.hz(),
                     }
                 }
                 Self::File { .. } => crate::core::diagnostic::Params::new(),

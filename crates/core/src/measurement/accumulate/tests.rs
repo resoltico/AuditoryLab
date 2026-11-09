@@ -3,19 +3,19 @@ use super::*;
     clippy::cast_possible_truncation,
     reason = "test signals intentionally quantized to decoder f32 samples"
 )]
-fn measure(signal: impl Fn(f64) -> [f64; 2]) -> Analysis {
+fn measure(signal: impl Fn(f64) -> [f64; 2]) -> SampleAnalysis {
     let rate = 8000;
     let mut measurement = Measurement::new(rate, 2, u64::from(rate) * 10).unwrap();
     for frame in 0..rate * 10 {
         let samples = signal(f64::from(frame) / f64::from(rate));
         measurement.push(&samples.map(|x| x as f32)).unwrap();
     }
-    measurement.finish(&Cancel::default()).unwrap()
+    measurement.finish(&|| false).unwrap()
 }
 fn sine(hz: f64, t: f64) -> f64 {
     (std::f64::consts::TAU * hz * t).sin() * 0.1
 }
-fn has_rate(a: &Analysis, hz: f64, modulation: bool) -> bool {
+fn has_rate(a: &SampleAnalysis, hz: f64, modulation: bool) -> bool {
     a.pulsing.iter().any(|p| {
         p.envelope_band == EnvelopeBand::Whole
             && (p.hz - hz).abs() < a.envelope_resolution_hz
@@ -88,9 +88,11 @@ fn silence_cancellation_and_invalid_frames_are_explicit() {
     for _ in 0..2000 {
         m.push(&[0.0]).unwrap();
     }
-    let cancel = Cancel::default();
-    cancel.request();
-    assert!(matches!(m.finish(&cancel), Err(RecordingError::Cancelled)));
+
+    assert!(matches!(
+        m.finish(&|| true),
+        Err(MeasurementError::Cancelled)
+    ));
 }
 
 #[test]
@@ -134,7 +136,7 @@ fn mono_and_fractional_millisecond_rates_preserve_the_modulation_rate() {
             let sample = sine(1000.0, t) * (1.0 + 0.8 * (std::f64::consts::TAU * 40.0 * t).cos());
             measurement.push(&[sample as f32]).unwrap();
         }
-        let a = measurement.finish(&Cancel::default()).unwrap();
+        let a = measurement.finish(&|| false).unwrap();
         assert!(has_rate(&a, 40.0, true), "{rate}: {:?}", a.pulsing);
         assert_eq!(a.stereo.correlation, None);
         assert_eq!(a.ear_differences, Vec::new());
@@ -146,7 +148,7 @@ fn mono_and_fractional_millisecond_rates_preserve_the_modulation_rate() {
                 .push(&[sine(40.0, f64::from(frame) / f64::from(rate)) as f32])
                 .unwrap();
         }
-        let plain = plain.finish(&Cancel::default()).unwrap();
+        let plain = plain.finish(&|| false).unwrap();
         assert!(
             !plain
                 .pulsing
@@ -215,7 +217,7 @@ fn beating_attribution_respects_the_measured_band() {
     clippy::cast_possible_truncation,
     reason = "independent test samples quantized to f32"
 )]
-fn boundary_signal(hz: f64, modulation: bool) -> Analysis {
+fn boundary_signal(hz: f64, modulation: bool) -> SampleAnalysis {
     let mut m = Measurement::new(8000, 1, 160_000).unwrap();
     for frame in 0..160_000 {
         let t = f64::from(frame) / 8000.0;
@@ -226,7 +228,7 @@ fn boundary_signal(hz: f64, modulation: bool) -> Analysis {
         };
         m.push(&[sample as f32]).unwrap();
     }
-    m.finish(&Cancel::default()).unwrap()
+    m.finish(&|| false).unwrap()
 }
 #[test]
 fn envelope_range_includes_both_interpolated_boundaries() {
@@ -287,7 +289,7 @@ fn short_envelopes_keep_unresolved_trends_out_of_periodic_findings() {
                             * (1.0 + 0.8 * (std::f64::consts::TAU * hz * t + phase).cos());
                         m.push(&[x as f32]).unwrap();
                     }
-                    let a = m.finish(&Cancel::default()).unwrap();
+                    let a = m.finish(&|| false).unwrap();
                     assert!(a.minimum_resolved_envelope_hz > 0.5);
                     if hz < 1.0 {
                         assert!(
@@ -302,4 +304,83 @@ fn short_envelopes_keep_unresolved_trends_out_of_periodic_findings() {
             }
         }
     }
+}
+
+#[test]
+fn incomplete_fft_prefix_and_work_budget_cannot_publish_findings() {
+    assert!(matches!(
+        Measurement::new(1000, 1, (1 << 32) + 1),
+        Err(MeasurementError::BudgetExceeded)
+    ));
+    let mut measurement = Measurement::new(1000, 1, 600_000).unwrap();
+    for _ in 0..2000 {
+        measurement.push(&[0.0]).unwrap();
+    }
+    assert!(matches!(
+        measurement.finish(&|| false),
+        Err(MeasurementError::TooShort)
+    ));
+    let mut measurement = Measurement::new(1000, 1, 2000).unwrap();
+    for _ in 0..2000 {
+        measurement.push(&[0.0]).unwrap();
+    }
+    assert!(matches!(
+        measurement.push(&[0.0]),
+        Err(MeasurementError::InvalidFrame)
+    ));
+    assert_eq!(
+        measurement.finish(&|| false).unwrap().window.end_seconds,
+        2.0
+    );
+}
+
+#[test]
+fn minimum_actual_frames_is_checked_after_fft_prefix_fills() {
+    let mut measurement = Measurement::new(1000, 1, 2000).unwrap();
+    for _ in 0..1999 {
+        measurement.push(&[0.0]).unwrap();
+    }
+    assert!(matches!(
+        measurement.finish(&|| false),
+        Err(MeasurementError::TooShort)
+    ));
+}
+
+#[test]
+fn constructor_boundaries_reject_layout_minimum_and_excess_work() {
+    for channels in [0, 3] {
+        assert!(matches!(
+            Measurement::new(1000, channels, 2000),
+            Err(MeasurementError::UnsupportedChannels { .. })
+        ));
+    }
+    assert!(matches!(
+        Measurement::new(999, 1, 2000),
+        Err(MeasurementError::TooShort)
+    ));
+    assert!(matches!(
+        Measurement::new(1000, 1, 1999),
+        Err(MeasurementError::TooShort)
+    ));
+    assert!(matches!(
+        Measurement::new(1000, 1, (1 << 32) + 1),
+        Err(MeasurementError::BudgetExceeded)
+    ));
+    assert!(Measurement::new(1 << 31, 1, 1 << 32).is_ok());
+}
+
+#[test]
+fn cancellation_during_final_numerical_work_refuses_publication() {
+    let mut measurement = Measurement::new(1000, 1, 2000).unwrap();
+    for _ in 0..2000 {
+        measurement.push(&[0.0]).unwrap();
+    }
+    let calls = std::cell::Cell::new(0);
+    let result = measurement.finish(&|| {
+        let next = calls.get() + 1;
+        calls.set(next);
+        next >= 5
+    });
+    assert!(matches!(result, Err(MeasurementError::Cancelled)));
+    assert_eq!(calls.get(), 5);
 }

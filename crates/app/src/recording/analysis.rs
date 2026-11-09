@@ -1,155 +1,170 @@
-//! Typed signal findings, independent of presentation and media containers.
-use crate::core::rhythm::Band;
-use serde::Serialize;
+//! Validated recording requests and source composition over core measurements.
+use auditorylab_core::measurement::{AnalysisWindow, SampleAnalysis};
 
-/// Captured analysis request. The offset is 10% of the recording's duration.
+/// Absolute selected start and at-most duration, in whole seconds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct AnalysisOptions {
-    /// Requested duration in seconds, or the default of at most ten minutes.
+    /// Absolute start, default zero; at most one day.
+    pub start_seconds: u32,
+    /// At-most duration, default 600; explicit range 2..=3600 seconds.
     pub seconds: Option<u32>,
 }
 impl AnalysisOptions {
-    /// Interpret an optional integer field. Invalid input is retained as an invalid
-    /// request so the normal worker completion reports a typed window failure.
-    pub fn from_seconds_text(text: &str) -> Self {
-        let text = text.trim();
-        Self {
-            seconds: if text.is_empty() {
-                None
-            } else {
-                Some(text.parse().unwrap_or(0))
-            },
+    /// Parse shared strict unsigned decimal fields; blank start means zero.
+    pub fn from_text(start: &str, duration: &str) -> Result<Self, super::RecordingError> {
+        fn integer(text: &str) -> Result<Option<u32>, super::RecordingError> {
+            if text.is_empty() {
+                return Ok(None);
+            }
+            if !text.bytes().all(|b| b.is_ascii_digit()) {
+                return Err(super::RecordingError::InvalidWindow);
+            }
+            text.parse()
+                .map(Some)
+                .map_err(|_| super::RecordingError::InvalidWindow)
         }
+        Self {
+            start_seconds: integer(start)?.unwrap_or(0),
+            seconds: integer(duration)?,
+        }
+        .validate()
     }
-
-    /// Validate a requested duration before opening or decoding a recording.
+    /// Validate before opening or decoding any recording.
     pub fn validate(self) -> Result<Self, super::RecordingError> {
-        if self.seconds.is_some_and(|seconds| seconds < 2) {
+        if self.start_seconds > 86400 || self.seconds.is_some_and(|s| !(2..=3600).contains(&s)) {
             return Err(super::RecordingError::InvalidWindow);
         }
         Ok(self)
     }
 }
-/// Window actually measured, in the decoded sample timeline.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct AnalysisWindow {
-    pub start_seconds: f64,
-    pub end_seconds: f64,
+/// Completed recording facts composed with pure sample measurements.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RecordingFacts {
+    pub codec: String,
+    pub lossy: bool,
+    /// Full source duration when trustworthy; absent for unknown/estimated durations.
+    pub duration_seconds: Option<f64>,
+    /// Trustworthy source frame count; absent for unknown/estimated durations.
+    pub source_frames: Option<u64>,
+    /// Inclusive selected frame in the admitted source timeline.
+    pub start_frame: u64,
+    /// Exclusive selected frame in the admitted source timeline.
+    pub end_frame: u64,
+    pub window: AnalysisWindow,
+    pub envelope_window: AnalysisWindow,
+    samples: SampleAnalysis,
 }
-/// A detected local spectral maximum in one channel.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct Tone {
-    pub channel: usize,
-    pub hz: f64,
-    pub dbfs: f64,
-    pub relative_db: f64,
+/// Immutable completed recording; source facts cannot be changed after validation.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Analysis(RecordingFacts);
+impl std::ops::Deref for Analysis {
+    type Target = RecordingFacts;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
-/// A pair of channel-exclusive pitches consistent with a binaural difference.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct EarDifference {
-    pub left_hz: f64,
-    pub right_hz: f64,
-    pub difference_hz: f64,
-    pub band: Option<Band>,
+
+impl Analysis {
+    /// Compose source facts and relative findings after checking their placement.
+    pub fn complete(
+        codec: String,
+        lossy: bool,
+        source_frames: Option<u64>,
+        start_frame: u64,
+        samples: SampleAnalysis,
+    ) -> Result<Self, super::RecordingError> {
+        let end_frame = start_frame
+            .checked_add(samples.frames)
+            .ok_or(super::RecordingError::InvalidWindow)?;
+        if codec.is_empty() || source_frames.is_some_and(|total| end_frame > total) {
+            return Err(super::RecordingError::InvalidWindow);
+        }
+        let rate = f64::from(samples.sample_rate);
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "displayed source timeline; admission and endpoints use exact integer frame arithmetic"
+        )]
+        let seconds = |frame: u64| frame as f64 / rate;
+        let duration_seconds = source_frames.map(seconds);
+        Ok(Self(RecordingFacts {
+            codec,
+            lossy,
+            duration_seconds,
+            source_frames,
+            start_frame,
+            end_frame,
+            window: AnalysisWindow {
+                start_seconds: seconds(start_frame),
+                end_seconds: seconds(end_frame),
+            },
+            envelope_window: AnalysisWindow {
+                start_seconds: seconds(start_frame + samples.envelope_edge_frames),
+                end_seconds: seconds(end_frame - samples.envelope_edge_frames),
+            },
+            samples,
+        }))
+    }
+    /// Immutable sample findings, independent of file facts and placement.
+    pub fn samples(&self) -> &SampleAnalysis {
+        &self.samples
+    }
 }
-/// Evidence for an envelope rate; a frequency match does not establish intent.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum PulsingCause {
-    Beating {
-        first_hz: f64,
-        second_hz: f64,
-        harmonic: u32,
-    },
-    Modulation,
+impl std::ops::Deref for RecordingFacts {
+    type Target = SampleAnalysis;
+    fn deref(&self) -> &Self::Target {
+        &self.samples
+    }
 }
-/// Frequency range whose analytic amplitude envelope was measured.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum EnvelopeBand {
-    Whole,
-    Below100,
-    Above100,
+/// Read-only identity and complete findings from the same admitted source.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CompletedRecordingFacts {
+    /// File identity captured from the admitted handle.
+    pub file: super::RecordingFile,
+    /// Complete source facts and measurements from that handle.
+    pub analysis: Analysis,
 }
-impl EnvelopeBand {
-    /// Measurement and presentation order for every envelope band.
-    pub const ALL: [Self; 3] = [Self::Whole, Self::Below100, Self::Above100];
-    pub(super) fn includes(self, hz: f64) -> bool {
-        match self {
-            Self::Whole => true,
-            Self::Below100 => hz <= 100.0,
-            Self::Above100 => hz > 100.0,
+/// Immutable completed recording; only the admitted decoder composes this value.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AnalyzedRecording(CompletedRecordingFacts);
+impl AnalyzedRecording {
+    pub(crate) fn complete(file: super::RecordingFile, analysis: Analysis) -> Self {
+        Self(CompletedRecordingFacts { file, analysis })
+    }
+}
+impl std::ops::Deref for AnalyzedRecording {
+    type Target = CompletedRecordingFacts;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+/// Current device answers interpreted independently of retained sample findings.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct InterpretationContext {
+    assessment: crate::device_check::Assessment,
+    lowest_heard_hz: Option<f64>,
+}
+impl From<crate::device_check::Assessment> for InterpretationContext {
+    fn from(assessment: crate::device_check::Assessment) -> Self {
+        use crate::device_check::{DeviceTest, LowToneResult};
+        let lowest_heard_hz = match assessment.low_tones {
+            LowToneResult::AllHeard => Some(DeviceTest::Tone40Hz.frequency_hz()),
+            LowToneResult::LowestHeard { test } => Some(test.frequency_hz()),
+            LowToneResult::Incomplete | LowToneResult::NoneHeard => None,
+        };
+        Self {
+            assessment,
+            lowest_heard_hz,
         }
     }
 }
-/// A significant analytic-envelope rate.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct Pulsing {
-    pub channel: usize,
-    pub envelope_band: EnvelopeBand,
-    pub hz: f64,
-    pub band: Option<Band>,
-    pub cause: PulsingCause,
-}
-/// Cumulative fraction of measured PSD energy below a threshold.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct EnergyShare {
-    pub channel: usize,
-    pub below_hz: f64,
-    /// None for digital silence, whose total energy is zero.
-    pub fraction: Option<f64>,
-}
-/// Channel levels and stereo relationships; undefined values remain absent.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct Stereo {
-    pub peak_dbfs: Vec<Option<f64>>,
-    pub rms_dbfs: Vec<Option<f64>>,
-    pub correlation: Option<f64>,
-    pub side_to_mid_db: Option<f64>,
-}
-/// A chart point; PSD is power per Hz in digital full-scale units.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct SpectrumPoint {
-    pub hz: f64,
-    pub dbfs_per_hz: f64,
-}
-/// Interpretive limits carried in machine reports independently of human wording.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum MeasurementLimit {
-    DigitalSamplesOnly,
-    QuietPairsMayBeMissed,
-    PatternAttributionNotIntent,
-    PeaksBelowRelativeFloorOmitted,
-}
-/// Complete measurements of one captured window, with their interpretation limits.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct Analysis {
-    pub codec: String,
-    pub lossy: bool,
-    pub duration_seconds: f64,
-    pub sample_rate: u32,
-    pub channels: usize,
-    pub window: AnalysisWindow,
-    pub envelope_window: AnalysisWindow,
-    pub resolution_hz: f64,
-    pub envelope_resolution_hz: f64,
-    /// Rates below this frequency are unresolved, not absent.
-    pub minimum_resolved_envelope_hz: f64,
-    pub minimum_envelope_relative_power: f64,
-    pub tones: Vec<Tone>,
-    pub ear_differences: Vec<EarDifference>,
-    /// True only for stereo with detected peaks matching in both directions.
-    pub coincident_tones: bool,
-    pub pulsing: Vec<Pulsing>,
-    pub low_energy: Vec<EnergyShare>,
-    pub stereo: Stereo,
-    pub spectrum: Vec<Vec<SpectrumPoint>>,
-    pub limits: Vec<MeasurementLimit>,
-}
-/// Identity and analysis from the same opened file.
-#[derive(Debug, Clone, PartialEq)]
-pub struct AnalyzedRecording {
-    pub file: super::RecordingFile,
-    pub analysis: Analysis,
+impl InterpretationContext {
+    /// Current assessment, without changing or recomputing samples.
+    pub const fn assessment(self) -> crate::device_check::Assessment {
+        self.assessment
+    }
+    /// Lowest low tone the listener reported hearing, when known.
+    pub const fn lowest_heard_hz(self) -> Option<f64> {
+        self.lowest_heard_hz
+    }
 }

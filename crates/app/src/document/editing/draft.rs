@@ -62,14 +62,14 @@ impl Draft {
         };
         let content = snapshot
             .recipe()
-            .fork(
+            .prepare_copy(
                 crate::identity::fresh_document()?,
                 catalog,
                 crate::core::vocabulary::copy_note(snapshot.recipe()),
+                crate::core::vocabulary::copy_title(&snapshot.title()),
             )
             .map_err(Error::Recipe)?;
         let mut draft = Self::from_recipe(content);
-        draft.set_title(crate::core::vocabulary::copy_title(&snapshot.title()));
         draft.based_on = Some(snapshot.clone());
         Ok(draft)
     }

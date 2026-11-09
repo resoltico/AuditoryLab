@@ -261,6 +261,17 @@ impl SlintAdapter {
                 reason = "bounded display-only progress fraction"
             )]
             ui.set_recording_progress(workspace.recording_progress() as f32);
+            ui.set_recording_progress_phase(
+                workspace
+                    .recording_phase()
+                    .map_or("", auditorylab_presentation::recording::progress_phase)
+                    .into(),
+            );
+            ui.set_recording_progress_indeterminate(
+                workspace
+                    .recording_phase()
+                    .is_some_and(|phase| !phase.determinate()),
+            );
         }
         #[expect(
             clippy::cast_possible_truncation,

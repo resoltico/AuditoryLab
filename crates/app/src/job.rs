@@ -1,7 +1,7 @@
 //! Shared controls and publication intent for file and library jobs.
 use std::sync::{
     Arc,
-    atomic::{AtomicBool, AtomicU64, Ordering},
+    atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering},
 };
 /// Whether publication may replace an existing destination.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -34,10 +34,29 @@ impl Cancel {
     }
 }
 
+/// Cooperative work stage; preparing/completing do not imply a known fraction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProgressPhase {
+    /// Opening resources and establishing sample facts.
+    Preparing,
+    /// Sequentially reaching the selected first frame.
+    Skipping,
+    /// Processing the selected samples.
+    Processing,
+    /// Completing numerical findings before publication.
+    Completing,
+}
+impl ProgressPhase {
+    /// Whether processed frame counts describe this stage's progress.
+    pub const fn determinate(self) -> bool {
+        matches!(self, Self::Skipping | Self::Processing)
+    }
+}
 /// A file job's processed frame count and optional known total.
 #[derive(Clone, Default)]
 pub struct Progress {
     frames: Arc<AtomicU64>,
+    phase: Arc<AtomicU8>,
     total: Arc<AtomicU64>,
     notification: Option<Arc<ProgressNotification>>,
 }
@@ -54,6 +73,29 @@ impl std::fmt::Debug for Progress {
 }
 
 impl Progress {
+    /// Current cooperative work stage.
+    pub fn phase(&self) -> ProgressPhase {
+        match self.phase.load(Ordering::Relaxed) {
+            1 => ProgressPhase::Skipping,
+            2 => ProgressPhase::Processing,
+            3 => ProgressPhase::Completing,
+            _ => ProgressPhase::Preparing,
+        }
+    }
+    pub(crate) fn set_phase(&self, phase: ProgressPhase) {
+        self.phase.store(
+            match phase {
+                ProgressPhase::Preparing => 0,
+                ProgressPhase::Skipping => 1,
+                ProgressPhase::Processing => 2,
+                ProgressPhase::Completing => 3,
+            },
+            Ordering::Relaxed,
+        );
+        if let Some(notification) = &self.notification {
+            (notification.wake)();
+        }
+    }
     /// Frames processed so far.
     #[must_use]
     pub fn frames(&self) -> u64 {
@@ -70,6 +112,7 @@ impl Progress {
         self.set_total(total);
         Self {
             frames: self.frames.clone(),
+            phase: self.phase.clone(),
             total: self.total.clone(),
             notification: Some(Arc::new(ProgressNotification {
                 wake,
@@ -113,5 +156,26 @@ mod tests {
         assert_eq!(wakes.load(Ordering::Relaxed), 100);
         watched.set(1000);
         assert_eq!(wakes.load(Ordering::Relaxed), 100);
+    }
+}
+
+#[cfg(test)]
+mod phase_tests {
+    use super::*;
+    #[test]
+    fn phase_changes_reach_shared_progress_without_fabricating_counts() {
+        let progress = Progress::default();
+        let shared = progress.clone();
+        assert_eq!(progress.phase(), ProgressPhase::Preparing);
+        assert_eq!(progress.total(), 0);
+        for phase in [
+            ProgressPhase::Skipping,
+            ProgressPhase::Processing,
+            ProgressPhase::Completing,
+        ] {
+            progress.set_phase(phase);
+            assert_eq!(shared.phase(), phase);
+            assert_eq!(shared.frames(), 0);
+        }
     }
 }

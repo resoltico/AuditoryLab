@@ -69,7 +69,7 @@ impl<'de> Deserialize<'de> for Modulation {
     }
 }
 impl Modulation {
-    pub(crate) fn get(self, p: crate::ParameterId) -> Option<crate::Finite> {
+    pub(crate) fn field_mut(&mut self, p: crate::ParameterId) -> Option<&mut crate::Finite> {
         use crate::ParameterId as P;
         match self {
             Self::Sinusoidal { rate_hz, depth } => match p {
@@ -77,24 +77,7 @@ impl Modulation {
                 P::ModulationDepth => Some(depth),
                 _ => None,
             },
-            Self::Pulsed { pulse } => pulse.get(p, true),
-        }
-    }
-    pub(crate) fn set(&mut self, p: crate::ParameterId, v: crate::Finite) -> bool {
-        use crate::ParameterId as P;
-        match self {
-            Self::Sinusoidal { rate_hz, depth } => match p {
-                P::ModulationRate => {
-                    *rate_hz = v;
-                    true
-                }
-                P::ModulationDepth => {
-                    *depth = v;
-                    true
-                }
-                _ => false,
-            },
-            Self::Pulsed { pulse } => pulse.set(p, v, true),
+            Self::Pulsed { pulse } => pulse.field_mut(p, true),
         }
     }
 }

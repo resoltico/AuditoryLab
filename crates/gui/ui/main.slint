@@ -351,7 +351,10 @@ export component MainWindow inherits Window {
     in property <float> recording-progress;
     in property <RecordingFindings> recording-findings;
     in property <[RecordingEnergy]> recording-energy;
-    callback analyze-recording(string);
+    callback analyze-recording(string, string);
+    in property <string> recording-input-error;
+    in property <string> recording-progress-phase;
+    in property <bool> recording-progress-indeterminate;
     callback cancel-recording-analysis();
     callback play-device-test(string);
     callback answer-device-test(string, string);
@@ -955,7 +958,10 @@ export component MainWindow inherits Window {
                 progress: root.recording-progress;
                 findings: root.recording-findings;
                 energy: root.recording-energy;
-                analyze-recording(seconds) => { root.analyze-recording(seconds); }
+                input-error: root.recording-input-error;
+                progress-phase: root.recording-progress-phase;
+                progress-indeterminate: root.recording-progress-indeterminate;
+                analyze-recording(start, seconds) => { root.analyze-recording(start, seconds); }
                 cancel-analysis() => { root.cancel-recording-analysis(); }
                 tab-index: root.tab-index;
                 ui-size: root.ui-size;

@@ -1,7 +1,6 @@
 //! Learning is a visible surface with no implicit working-source authority.
 use super::{
     Command, DocumentAction, EditorCommand, Effect, FileCommand, Refusal, View, Workspace,
-    WorkspaceActions,
 };
 use crate::learning::{LearningCommand, LearningState};
 
@@ -88,7 +87,9 @@ impl Workspace {
             | Command::Answer { .. }
             | Command::Close
             | Command::Audio(super::AudioCommand::Stop)
-            | Command::File(FileCommand::CancelExport | FileCommand::Import)
+            | Command::File(
+                FileCommand::CancelExport | FileCommand::CancelAnalysis | FileCommand::Import,
+            )
             | Command::Editor(EditorCommand::New)
             | Command::Output(_) => true,
             _ => false,
@@ -98,23 +99,5 @@ impl Workspace {
         } else {
             Err(Refusal::LearningVisible)
         }
-    }
-
-    pub(super) fn suppress_learning_actions(view: &mut WorkspaceActions) {
-        view.play_reason = Some(Refusal::LearningVisible);
-        view.save_reason = Some(Refusal::LearningVisible);
-        view.export_reason = Some(Refusal::LearningVisible);
-        view.copy_reason = Some(Refusal::LearningVisible);
-        view.save_copy = Err(Refusal::LearningVisible);
-        view.export_recipe = Err(Refusal::LearningVisible);
-        view.editing = Err(Refusal::LearningVisible);
-        view.preview = Err(Refusal::LearningVisible);
-        view.library = Err(Refusal::LearningVisible);
-        view.add_to_library = Err(Refusal::LearningVisible);
-        view.trash = Err(Refusal::LearningVisible);
-        view.restore_component = Err(Refusal::LearningVisible);
-        view.add_component_reason = Some(Refusal::LearningVisible);
-        view.pair_add_reason = Some(Refusal::LearningVisible);
-        view.play_target.clear();
     }
 }

@@ -39,7 +39,7 @@ fn analyze_reports_file_identity_as_text_and_json_and_fails_on_missing_input() {
     let json = analyze(&["--format", "json", path_text, "--seconds", "2"]);
     assert!(json.status.success(), "{json:?}");
     let json: serde_json::Value = serde_json::from_slice(&json.stdout).unwrap();
-    assert_eq!(json["output_schema_version"], 3);
+    assert_eq!(json["output_schema_version"], 4);
     assert_eq!(json["operation"], "analyze_recording");
     assert_eq!(json["complete"], true);
     assert_eq!(json["recording"]["path"], path_text);
@@ -71,8 +71,8 @@ fn analyze_reports_file_identity_as_text_and_json_and_fails_on_missing_input() {
     let failed = analyze(&["--format", "json", missing.to_str().unwrap()]);
     assert_eq!(failed.status.code(), Some(1));
     let failed: serde_json::Value = serde_json::from_slice(&failed.stdout).unwrap();
-    assert_eq!(failed["complete"], false);
-    assert_eq!(failed["status"], "failed");
+    assert!(failed.get("complete").is_none());
+    assert_eq!(failed["status"], "unreadable");
     assert_eq!(failed["diagnostics"][0]["code"], "io.failure");
     assert!(failed.get("recording").is_none());
 
@@ -166,7 +166,7 @@ fn lower_boundary_right_only_modulation_agrees_in_summary_and_json() {
     let output = analyze(&[path.to_str().unwrap(), "--format", "json"]);
     assert!(output.status.success(), "{output:?}");
     let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(json["output_schema_version"], 3);
+    assert_eq!(json["output_schema_version"], 4);
     let pulses = json["recording"]["analysis"]["pulsing"].as_array().unwrap();
     assert!(pulses.iter().any(|p| p["channel"] == 1
         && p["envelope_band"] == "whole"

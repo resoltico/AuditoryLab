@@ -4,7 +4,7 @@ use crate::document::origin::{ExternalId, LibraryKey};
 use std::{io::Read, path::PathBuf};
 use {
     crate::discovery::collection::EntrySummary, crate::document::recipe::RecipeSnapshot,
-    crate::storage::load, crate::storage::load::LoadError,
+    crate::storage::load::LoadError,
 };
 
 /// One explicit source; a stream's label belongs to its frontend.
@@ -114,10 +114,12 @@ fn entry(id: &str) -> Result<&'static auditorylab_core::catalog::Entry, LoadErro
 /// Returns an unknown-selector or portable-contract failure.
 pub fn builtin(id: &str) -> Result<RecipeSnapshot, LoadError> {
     let entry = entry(id)?;
-    load::parse(
-        entry.text().as_bytes(),
-        crate::document::recipe::Origin::BuiltIn(entry.id),
-    )
+    let origin = crate::document::recipe::Origin::BuiltIn(entry.id);
+    let recipe = entry.recipe().map_err(|error| LoadError::Recipe {
+        origin: origin.clone(),
+        error: Box::new(error),
+    })?;
+    Ok(RecipeSnapshot::new(origin, recipe))
 }
 /// Return the generated standalone portable text of a built-in.
 ///

@@ -39,7 +39,7 @@ fn workspace() -> Harness {
     let root = tempfile::tempdir().unwrap();
     let library =
         auditorylab_app::services::library::Library::at_path(root.path().join("library")).unwrap();
-    library.initialize().unwrap();
+    assert_eq!(library.initialize().unwrap().warnings, []);
     let workspace = Workspace::with_library(
         auditorylab_app::services::catalog().unwrap(),
         Capabilities::available(),
@@ -1124,4 +1124,63 @@ fn library_failure_cases() -> [(auditorylab_app::outcome::Outcome, bool, bool, b
             false,
         ),
     ]
+}
+
+#[test]
+fn invalid_inspection_presents_all_components_and_surviving_facts() {
+    let mut builder = Draft::new().unwrap().recipe().unwrap().into_builder();
+    let tone = |frequency_hz, peak_dbfs| ComponentForm {
+        source: auditorylab_core::SoundSource::Tone {
+            route: ChannelRouting::Both,
+            frequency_hz: finite(frequency_hz),
+            peak_dbfs: finite(peak_dbfs),
+        },
+        modulation: None,
+    };
+    let pair = ComponentForm {
+        source: auditorylab_core::SoundSource::BinauralPair {
+            first_hz: finite(200.0),
+            offset_hz: finite(-300.0),
+            first_peak_dbfs: finite(-30.0),
+            second_peak_dbfs: finite(-30.0),
+        },
+        modulation: None,
+    };
+    builder.content.sound = auditorylab_core::Sound::new(
+        [
+            tone(30_000.0, -30.0),
+            pair,
+            tone(440.0, 1.0),
+            tone(440.0, -30.0),
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(i, form)| auditorylab_core::Component {
+            id: ComponentId::numbered(i).unwrap(),
+            form,
+        })
+        .collect(),
+    )
+    .unwrap();
+    let text = builder.build().unwrap().to_toml().unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let context = auditorylab_app::services::LibraryContext::resolve(Some(
+        &dir.path().join("isolated-library"),
+    ));
+    let mut reader = text.as_bytes();
+    let source = auditorylab_app::services::resolve(
+        auditorylab_app::services::Source::Stream {
+            reader: &mut reader,
+            label: "independent inspection",
+        },
+        &context,
+    )
+    .unwrap();
+    let inspection = auditorylab_app::services::inspect(&source, SampleRate::DEFAULT);
+    assert!(inspection.sound().is_err());
+    let rendered = inspection_description(&inspection);
+    for expected in ["Component 1:", "Component 2:", "Component 3:", "Voice 4:"] {
+        assert!(rendered.contains(expected), "{rendered}");
+    }
+    assert!(inspection.component_check().unwrap().target().is_none());
 }

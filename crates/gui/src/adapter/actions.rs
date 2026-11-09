@@ -255,9 +255,21 @@ fn install_workbench_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
     on!(adapter, ui, on_open_recording, |a| a.command(
         |w| w.apply(Command::File(FileCommand::OpenRecording))
     ));
-    on!(adapter, ui, on_analyze_recording, |a, seconds| {
-        let options = auditorylab_app::recording::AnalysisOptions::from_seconds_text(&seconds);
-        a.command(|w| w.apply(Command::File(FileCommand::AnalyzeRecording(options))));
+    on!(adapter, ui, on_analyze_recording, |a, start, seconds| {
+        match auditorylab_app::recording::AnalysisOptions::from_text(&start, &seconds) {
+            Ok(options) => {
+                if let Some(ui) = a.main.upgrade() {
+                    ui.set_recording_input_error("".into());
+                }
+                a.command(|w| w.apply(Command::File(FileCommand::AnalyzeRecording(options))));
+            }
+            Err(error) => {
+                use auditorylab_presentation::errors::Explain;
+                if let Some(ui) = a.main.upgrade() {
+                    ui.set_recording_input_error(read_only(&error.explain()));
+                }
+            }
+        }
     });
     on!(adapter, ui, on_cancel_recording_analysis, |a| a.command(
         |w| w.apply(Command::File(FileCommand::CancelAnalysis))

@@ -23,15 +23,14 @@ pub enum Collection {
     External,
 }
 /// One correlated source/condition facet; ancestor scope cannot assert current study.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone)]
 pub struct EvidenceFacet {
     /// Local bibliography key within this recipe.
     pub source: String,
     /// Normalized DOI identity when declared.
     pub doi: Option<String>,
     /// Human bibliography label of the same source. Display text only: the
-    /// machine report identifies the study by `source` and `doi`.
-    #[serde(skip_serializing)]
+    /// presentation may identify the study by `source` and `doi`.
     pub label: Option<String>,
     /// Current-condition versus ancestor scope.
     pub scope: EvidenceScope,
@@ -42,8 +41,7 @@ pub struct EvidenceFacet {
     /// Measures of this condition, empty when not assessed.
     pub measures: Vec<Measure>,
     /// Declared plain-language population and purpose of this same record. List
-    /// text only: the machine report (JSON schema 2) does not carry it.
-    #[serde(skip_serializing)]
+    /// text for human interpretation.
     pub population_detail: Option<String>,
 }
 /// Disposable index row; the managed envelope remains authoritative.

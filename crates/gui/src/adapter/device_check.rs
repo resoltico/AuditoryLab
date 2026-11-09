@@ -50,15 +50,21 @@ impl SlintAdapter {
         ui.set_recording_measurements(recording_text::MEASUREMENTS.into());
         ui.set_analyzing_recording(workspace.analyzing_recording());
         ui.set_recording_progress(f32_value(workspace.recording_progress()));
+        ui.set_recording_progress_phase(
+            workspace
+                .recording_phase()
+                .map_or("", auditorylab_presentation::recording::progress_phase)
+                .into(),
+        );
+        ui.set_recording_progress_indeterminate(
+            workspace
+                .recording_phase()
+                .is_some_and(|phase| !phase.determinate()),
+        );
         ui.set_has_recording_analysis(workspace.recording_analysis().is_some());
         if let Some(recording) = workspace.recording_analysis() {
-            use auditorylab_app::device_check::{DeviceTest, LowToneResult};
-            let lowest = match view.assessment.low_tones {
-                LowToneResult::AllHeard => Some(DeviceTest::Tone40Hz.frequency_hz()),
-                LowToneResult::LowestHeard { test } => Some(test.frequency_hz()),
-                _ => None,
-            };
-            let f = recording_text::findings(&recording.analysis, lowest);
+            let context = auditorylab_app::recording::InterpretationContext::from(view.assessment);
+            let f = recording_text::contextual_findings(&recording.analysis, context);
             ui.set_recording_findings(crate::generated::RecordingFindings {
                 facts: read_only(&f.facts),
                 summary: read_only(&f.summary),
@@ -77,18 +83,8 @@ impl SlintAdapter {
                 .iter()
                 .filter(|share| [50.0, 60.0, 100.0, 300.0].contains(&share.below_hz))
                 .map(|share| crate::generated::RecordingEnergy {
-                    label: format!(
-                        "{} · below {:.0} Hz",
-                        if recording.analysis.channels == 1 {
-                            "Mono"
-                        } else if share.channel == 0 {
-                            "Left"
-                        } else {
-                            "Right"
-                        },
-                        share.below_hz
-                    )
-                    .into(),
+                    label: recording_text::energy_row(share, recording.analysis.channels).into(),
+                    defined: share.fraction.is_some(),
                     fraction: f32_value(share.fraction.unwrap_or(0.0)),
                 })
                 .collect::<Vec<_>>();
@@ -114,7 +110,9 @@ impl SlintAdapter {
 fn f32_value(value: f64) -> f32 {
     value as f32
 }
-fn spectrum_path(points: Option<&Vec<auditorylab_app::recording::SpectrumPoint>>) -> String {
+fn spectrum_path(
+    points: Option<&Vec<auditorylab_app::core::measurement::SpectrumPoint>>,
+) -> String {
     let Some(points) = points else {
         return String::new();
     };

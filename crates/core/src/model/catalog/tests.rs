@@ -10,7 +10,12 @@ use crate as auditorylab_core;
 use auditorylab_core::catalog::{self, Entry};
 use auditorylab_core::{ChannelRouting, Modulation, Recipe, SampleRate};
 use std::path::Path;
-use std::{borrow::ToOwned, format, string::String, vec::Vec};
+use std::{
+    borrow::ToOwned,
+    format,
+    string::{String, ToString},
+    vec::Vec,
+};
 
 /// How an independently written recipe modulates a component.
 #[derive(Debug, Clone, Copy)]
@@ -235,8 +240,11 @@ fn the_catalog_is_exactly_the_files_in_the_catalog_directory_in_natural_name_ord
                         Path::new(env!("CARGO_MANIFEST_DIR"))
                             .join("studies")
                             .join(format!("{id}.toml")),
-                    )?)
+                    )
+                    .unwrap())
                 })
+                .unwrap()
+                .to_toml()
                 .unwrap(),
             )
         })
@@ -428,7 +436,7 @@ fn studies_match_directory_contents_and_curated_ids_are_unique() {
 #[test]
 fn merging_refuses_duplicate_citations_and_preserves_specific_limitations() {
     let entry = &catalog::ENTRIES[0];
-    let read = |key: &str| -> Result<String, std::boxed::Box<dyn core::error::Error>> {
+    let read = |key: &str| -> Result<String, crate::RecipeError> {
         Ok(super::STUDIES
             .iter()
             .find(|(id, _)| *id == key)
@@ -449,10 +457,7 @@ fn merging_refuses_duplicate_citations_and_preserves_specific_limitations() {
             toml::Value::String("Specific limit".into()),
         );
     let merged = super::generated_recipe(&toml::to_string(&condition).unwrap(), read).unwrap();
-    assert_eq!(
-        Recipe::parse(&merged).unwrap().evidence()[0].limitations,
-        "Specific limit"
-    );
+    assert_eq!(merged.evidence()[0].limitations, "Specific limit");
     condition.get_mut("source").unwrap().as_array_mut().unwrap()[0]
         .as_table_mut()
         .unwrap()
@@ -507,18 +512,13 @@ fn merging_refuses_condition_labels_and_incomplete_study_records() {
     let entry = &catalog::ENTRIES[0];
     let condition: toml::Table = toml::from_str(entry.condition).unwrap();
     let study = |text: &'static str| {
-        move |_: &str| -> Result<String, std::boxed::Box<dyn core::error::Error>> {
-            Ok(text.into())
-        }
+        move |_: &str| -> Result<String, crate::RecipeError> { Ok(text.into()) }
     };
     let complete = "label = \"A et al. 2020\"\ncitation = \"A (2020).\"\n\
         source_url = \"https://doi.org/10.1234/x\"\n";
     let text = toml::to_string(&condition).unwrap();
     let merged = super::generated_recipe(&text, study(complete)).unwrap();
-    assert_eq!(
-        Recipe::parse(&merged).unwrap().sources()[0].label,
-        "A et al. 2020"
-    );
+    assert_eq!(merged.sources()[0].label, "A et al. 2020");
     let unlabeled = "citation = \"A (2020).\"\nsource_url = \"https://doi.org/10.1234/x\"\n";
     assert!(super::generated_recipe(&text, study(unlabeled)).is_err());
     let mut labeled = condition;
@@ -528,4 +528,42 @@ fn merging_refuses_condition_labels_and_incomplete_study_records() {
         .insert("label".into(), toml::Value::String("Local".into()));
     let labeled = toml::to_string(&labeled).unwrap();
     assert!(super::generated_recipe(&labeled, study(complete)).is_err());
+}
+
+#[test]
+fn typed_catalog_refuses_unknown_duplicate_and_unbound_authoring_records() {
+    let condition = catalog::ENTRIES[0].condition;
+    let read = |key: &str| {
+        Ok(super::STUDIES
+            .iter()
+            .find(|(id, _)| *id == key)
+            .unwrap()
+            .1
+            .to_string())
+    };
+    for text in [
+        condition.replace("schema_version = 5", "schema_version = 5\nunknown = true"),
+        condition.replace(
+            "schema_version = 5",
+            "schema_version = 5\nschema_version = 5",
+        ),
+        condition.replace(
+            "key = \"beauchene-2016\"",
+            "key = \"beauchene-2016\"\nlabel = \"not authoritative\"",
+        ),
+        condition.replace(
+            "[[evidence]]",
+            "[[source]]\nkey = \"beauchene-2016\"\n[[evidence]]",
+        ),
+        condition.replace("source = \"beauchene-2016\"", "source = \"absent-study\""),
+    ] {
+        assert!(super::generated_recipe(&text, read).is_err());
+    }
+    let direct = catalog::ENTRIES[0].recipe().unwrap();
+    let reparsed = Recipe::parse(&catalog::ENTRIES[0].text()).unwrap();
+    assert_eq!(direct, reparsed);
+    assert_eq!(
+        direct.document().id.to_string(),
+        "2a7e2aa0-1cfe-458c-9a29-a591a4d4a80b"
+    );
 }

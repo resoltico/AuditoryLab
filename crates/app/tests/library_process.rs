@@ -26,7 +26,7 @@ fn fixture() -> (
     let temp = tempfile::tempdir_in(base).unwrap();
     let root = temp.path().join("library");
     let store = auditorylab_app::services::library::Library::at_path(root.clone()).unwrap();
-    store.initialize().unwrap();
+    assert_eq!(store.initialize().unwrap().warnings, []);
     let mut draft = Draft::new().unwrap();
     draft.set_title("Initial".into());
     let record = store

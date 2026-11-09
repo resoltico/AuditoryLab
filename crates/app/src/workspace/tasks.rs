@@ -41,29 +41,51 @@ pub(crate) enum Conclusion {
     ExpectedCleanup,
     Failed,
 }
-/// What an audio task plays.
-#[derive(Debug, Clone)]
-pub(crate) enum AudioKind {
-    /// A finite snapshot, validated at the device rate during preparation.
-    Finite(RecipeSnapshot),
-    /// Revalidate a managed selection on the worker before device preparation.
-    Managed {
+/// Worker-owned captured audio input. Invalid finite/live payload combinations are absent.
+pub(crate) enum AudioWork {
+    Finite {
         snapshot: RecipeSnapshot,
-        store: crate::services::library::Library,
+        authority: Option<Box<crate::services::library::Library>>,
     },
-    /// A document's committed components, live until stopped.
+    Live {
+        draft: Box<Draft>,
+    },
+}
+/// Lightweight coordinator ownership, independent of worker captures.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum AudioOwner {
+    Finite,
     Live(DocumentId),
 }
-
+/// Preparation protocol state; rejection occupies the slot until Runner joins.
+pub(crate) enum AudioPreparation {
+    Preparing,
+    ReadyFinite,
+    ReadyLive {
+        rate: SampleRate,
+        control: LiveControl,
+    },
+    RejectedAwaitingJoin,
+}
 /// Metadata of the occupied audio slot; no thread is owned by the coordinator.
 pub(crate) struct AudioTask {
     pub(crate) id: TaskId,
-    pub(crate) kind: AudioKind,
+    pub(crate) owner: AudioOwner,
     pub(crate) title: String,
     pub(crate) control: PlaybackControl,
-    pub(crate) live: Option<LiveControl>,
-    pub(crate) rate: Option<SampleRate>,
-    pub(crate) protocol_failed: bool,
+    pub(crate) preparation: AudioPreparation,
+}
+impl AudioTask {
+    #[cfg(test)]
+    pub(crate) fn live(&self) -> Option<&LiveControl> {
+        match &self.preparation {
+            AudioPreparation::ReadyLive { control, .. } => Some(control),
+            _ => None,
+        }
+    }
+    pub(crate) fn rejected(&self) -> bool {
+        matches!(self.preparation, AudioPreparation::RejectedAwaitingJoin)
+    }
 }
 /// What a file task does.
 #[derive(Debug, Clone)]
@@ -96,7 +118,7 @@ pub enum FileOutcome {
     /// Captured external recipe load.
     Imported(Result<RecipeSnapshot, LoadError>),
     /// Identified recording file.
-    RecordingOpened(Result<crate::recording::RecordingFile, crate::services::FileError>),
+    RecordingOpened(Result<crate::recording::RecordingFile, crate::recording::RecordingError>),
     /// Measured recording; complete findings only.
     RecordingAnalyzed(
         Result<Box<crate::recording::AnalyzedRecording>, crate::recording::RecordingError>,
@@ -127,7 +149,7 @@ impl FileOutcome {
             Self::RecordingOpened(result) => result
                 .as_ref()
                 .err()
-                .map(crate::services::FileError::outcome),
+                .map(crate::recording::RecordingError::outcome),
             Self::RecipeExported(result) => result
                 .as_ref()
                 .err()
@@ -191,20 +213,17 @@ impl FileKind {
                 progress,
                 sound,
                 ..
-            } => FileOutcome::Exported(crate::services::export(
-                sound.snapshot(),
-                sound.signal().sample_rate(),
+            } => FileOutcome::Exported(crate::services::export_rendition(
+                &sound,
                 &path,
                 Replace::Allowed,
                 &cancel,
                 &progress,
+                || {},
             )),
         }
     }
 }
-
-#[cfg(test)]
-use crate::services::playback::revalidate_managed;
 
 /// An immutable admitted operation. Audio captures own their unique Session.
 pub struct Job {
@@ -213,11 +232,7 @@ pub struct Job {
 }
 enum Work {
     File(FileKind),
-    Audio {
-        session: Session,
-        kind: AudioKind,
-        draft: Option<Box<Draft>>,
-    },
+    Audio { session: Session, input: AudioWork },
 }
 impl std::fmt::Debug for Job {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -254,8 +269,8 @@ impl JobOutcome {
             Self::Audio(Err(error)) => crate::services::OperationError::from(error.clone()),
             Self::File(outcome) => match outcome {
                 FileOutcome::Imported(Err(error)) => error.clone().into(),
-                FileOutcome::RecordingOpened(Err(error)) => error.clone().into(),
-                FileOutcome::RecordingAnalyzed(Err(error)) => error.clone().into(),
+                FileOutcome::RecordingOpened(Err(error))
+                | FileOutcome::RecordingAnalyzed(Err(error)) => error.clone().into(),
                 FileOutcome::Managed(Err(error)) => error.clone(),
                 FileOutcome::RecipeExported(Err(error)) => error.clone().into(),
                 FileOutcome::Exported(Err(error)) => error.clone().into(),
@@ -274,19 +289,10 @@ impl Job {
             work: Box::new(Work::File(kind)),
         }
     }
-    pub(crate) fn audio(
-        id: TaskId,
-        session: Session,
-        kind: AudioKind,
-        draft: Option<Draft>,
-    ) -> Self {
+    pub(crate) fn audio(id: TaskId, session: Session, input: AudioWork) -> Self {
         Self {
             id,
-            work: Box::new(Work::Audio {
-                session,
-                kind,
-                draft: draft.map(Box::new),
-            }),
+            work: Box::new(Work::Audio { session, input }),
         }
     }
     /// Identity used to correlate responses with the still-occupied slot.
@@ -307,17 +313,9 @@ impl Job {
     pub fn execute(self, mut prepared: impl FnMut(Response)) -> Response {
         let outcome = match *self.work {
             Work::File(kind) => JobOutcome::File(kind.execute()),
-            Work::Audio {
-                session,
-                kind,
-                draft,
-            } => JobOutcome::Audio(execute_audio(
-                self.id,
-                session,
-                kind,
-                draft.map(|draft| *draft),
-                &mut prepared,
-            )),
+            Work::Audio { session, input } => {
+                JobOutcome::Audio(execute_audio(self.id, session, input, &mut prepared))
+            }
         };
         Response::Finished {
             job: self.id,
@@ -328,8 +326,7 @@ impl Job {
 fn execute_audio(
     id: TaskId,
     session: Session,
-    kind: AudioKind,
-    draft: Option<Draft>,
+    input: AudioWork,
     prepared: &mut impl FnMut(Response),
 ) -> Result<PlaybackReport, PlaybackError> {
     use {
@@ -343,12 +340,8 @@ fn execute_audio(
             .report()
             .ok_or(PlaybackError::MissingTerminalOutcome);
     }
-    let (kind, library) = match kind {
-        AudioKind::Managed { snapshot, store } => (AudioKind::Finite(snapshot), Some(store)),
-        kind => (kind, None),
-    };
-    match (kind, draft) {
-        (AudioKind::Live(_), Some(draft)) => match device::prepare_live(session, &draft)? {
+    match input {
+        AudioWork::Live { draft } => match device::prepare_live(session, &draft)? {
             Preparation::Ready(mut output) => {
                 let reader = output
                     .monitor(MonitorDetail::Waveform)
@@ -364,28 +357,25 @@ fn execute_audio(
             }
             Preparation::Stopped(report) => Ok(report),
         },
-        (AudioKind::Finite(snapshot), _) => {
-            match device::prepare_captured(session, &snapshot, library.as_ref())? {
-                Preparation::Ready(mut output) => {
-                    let reader = output
-                        .monitor(MonitorDetail::Waveform)
-                        .reader()
-                        .ok_or(PlaybackError::MonitorInUse)?;
-                    prepared(Response::Prepared {
-                        job: id,
-                        reader: Box::new(reader),
-                        rate: output.output().sample_rate,
-                        live: None,
-                    });
-                    output.play()
-                }
-                Preparation::Stopped(report) => Ok(report),
+        AudioWork::Finite {
+            snapshot,
+            authority,
+        } => match device::prepare_captured(session, &snapshot, authority.as_deref())? {
+            Preparation::Ready(mut output) => {
+                let reader = output
+                    .monitor(MonitorDetail::Waveform)
+                    .reader()
+                    .ok_or(PlaybackError::MonitorInUse)?;
+                prepared(Response::Prepared {
+                    job: id,
+                    reader: Box::new(reader),
+                    rate: output.output().sample_rate,
+                    live: None,
+                });
+                output.play()
             }
-        }
-        (AudioKind::Managed { .. }, _) => {
-            unreachable!("managed content resolved before device preparation")
-        }
-        (AudioKind::Live(_), None) => Err(PlaybackError::MissingDocument),
+            Preparation::Stopped(report) => Ok(report),
+        },
     }
 }
 struct Running {

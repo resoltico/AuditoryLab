@@ -1,6 +1,6 @@
 # Formats
 
-Auditory Lab reads recipe schema **5**, emits CLI JSON output **3**, uses nominal classifier revision **3**, and stores User Library layout **1**. These are separate contracts.
+Auditory Lab reads recipe schema **5**, emits CLI JSON output **4**, uses nominal classifier revision **3**, and stores User Library layout **1**. These are separate contracts.
 
 ## Recipe schema
 
@@ -37,7 +37,7 @@ Use New or Edit a copy in the desktop, or CLI `library add --as-copy`, to alloca
 | `[[evidence]]` | Bibliography key, scope, population, condition role, measures, methods, summary, limitations and adaptation. |
 | `[[lineage]]` | Flat ancestor title/note, optional `document_id`/`catalog_id` and referenced `source_keys`. |
 
-One authored budget permits 16 generator lanes: a tone or pulse train costs one; an explicit pair costs two. The maximum of 16 components follows from this budget. Crossfades run at most 32 lane-equivalents. Metadata allows 16 sources, 32 evidence records and 16 lineage descriptors. References must name existing bibliography keys. Copying refuses ancestry overflow.
+One authored budget permits 16 generator lanes: a tone or pulse train costs one; an explicit pair costs two. The maximum of 16 components follows from this budget. Crossfades run at most 32 lane-equivalents. Metadata allows 16 sources and 32 evidence records. Flat lineage is limited by the 65,536-byte portable document capacity, including the final copy identity, title and attribution. References must name existing bibliography keys.
 
 ### Components
 
@@ -63,6 +63,8 @@ Human references retain the authored `id`; a pair's second lane is its second to
 A component has one shared nonnegative modulation gain, including both lanes of either pair kind. A pulse source with pulsed modulation contains two separate authored repetition processes. There is no persisted isochronic kind, modulation chain or general DSP graph.
 
 Every pulse table requires `rate_hz`, a nested `width` and a nested `shape`. Width is either `{ kind = "duration", seconds = VALUE }` or `{ kind = "duty_cycle", fraction = VALUE }`; exactly one requested quantity is stored. Shape is `{ kind = "rectangular" }` or `{ kind = "raised_cosine", rise_seconds = VALUE, fall_seconds = VALUE }`. All numeric fields must be finite. Finite acoustic errors remain editable and serializable, with intrinsic/rate-specific diagnostics.
+
+HTTP(S) bibliography locators require an explicit `http://` or `https://` authority and a usable host. Whitespace and control characters are refused before URL parsing. Valid credentials, ports, IPv6 and Unicode hosts follow the `url` parser's syntax. Accepted text is stored verbatim, including case and percent escapes; validation performs no network request. DOI handling is independent.
 
 ### Dates, evidence and ancestry
 
@@ -158,19 +160,19 @@ These are the vocabulary keys used by queries, portable choices and JSON values.
 
 ## CLI JSON output
 
-Every envelope contains `output_schema_version`, `operation`, `complete`, `convention`, `query`, `unique_count`, `entries`, `groups` and `diagnostics`. `query` can be null. Optional operation fields are omitted when inapplicable.
+Every schema-4 envelope contains `output_schema_version` and `operation`. Private operation-specific wire payloads define the remaining fields; internal model serialization does not define this protocol. There is no global success/validity flag. `complete` describes discovery/inspection/recording work only; publication uses `status`, while failed operations have a typed failure status. Inapplicable fields are absent. Schema 3 is no longer emitted; consumers must adopt schema 4.
 
 | Operation | Data |
 | --- | --- |
 | List / Trash list | Exact query, `classifier_revision`, `effective_sort` as `[sort,direction]`, groups and retained `stages`. |
 | Describe | Entry adds `recipe_toml` and `history_warnings`. |
 | Inspect | `validation.status` is `valid` with rate/frames/peaks/`voices` facts, or `invalid` with rate/diagnostics. |
-| Library path | `root` reports configured path/source, existence, layout and initialization; unavailable existence can be null. |
-| Initialization | Root result and published/unchanged `status`. |
+| Library path | `root` reports configured path/source, existence, layout and initialization; unavailable existence and unverified initialization can be null. |
+| Initialization | Root result and published/published-with-warning/unchanged `status`. |
 | Library check | Bounded inventory, diagnostics and retained stages. |
-| Mutation | Confirmed `status`, `selector`, `version_token`, affected entry and diagnostics. |
+| Mutation | Confirmed `status`, `selector`, `version_token`, affected entries and diagnostics; purge has an explicit null token, unrelated payloads omit it. |
 | Analyze recording | `recording` with opened `path`, size in `bytes`, recognized container `format` and optional `analysis` findings. |
-| Failure | Outcome `status` and operation diagnostics. |
+| Failure | Outcome `status` and operation diagnostics. Read failures use `unreadable`; failed and unconfirmed mutations use `publication_failed` and `publication_unconfirmed`. |
 
 The [diagnostic contract](#diagnostic-codes) applies to nominal diagnostics, rate-validation diagnostics, declared-history warnings and publication warnings. Inspection exposes generator lanes under `voices`; authored components remain in recipe TOML. Pulse facts retain requested width mode/quantity and shape, resolved window/edge frames, and rate. Pair facts retain signed requested and resolved differences; unresolved pair checks have no resolved difference. Digital routes use `route`, and peak diagnostics name a `channel`.
 
@@ -197,7 +199,6 @@ For example, an out-of-range rate reports `sample_rate.range` with `hz`, `min_hz
 | `cli.json` |
 | `cli.output` |
 | `clock.range` |
-| `contract.copy_lineage_full` |
 | `contract.dangling_bibliography_reference` |
 | `contract.duplicate_source_key` |
 | `contract.empty_lineage_note` |
@@ -209,7 +210,6 @@ For example, an out-of-range rate reports `sample_rate.range` with `hz`, `min_hz
 | `contract.evidence_budget` |
 | `contract.invalid_doi` |
 | `contract.invalid_source_url` |
-| `contract.lineage_budget` |
 | `contract.missing_source_locator` |
 | `contract.reused_copy_identity` |
 | `contract.source_budget` |
@@ -302,6 +302,11 @@ For example, an out-of-range rate reports `sample_rate.range` with `hz`, `min_hz
 | `load.read` |
 | `load.temporary_selector` |
 | `load.unknown_builtin` |
+| `measurement.budget_exceeded` |
+| `measurement.cancelled` |
+| `measurement.invalid_frame` |
+| `measurement.too_short` |
+| `measurement.unsupported_channels` |
 | `monitor.fixed_range_exceeded` |
 | `monitor.incomplete_coverage` |
 | `monitor.stale` |
@@ -320,6 +325,7 @@ For example, an out-of-range rate reports `sample_rate.range` with `hz`, `min_hz
 | `query.range_order` |
 | `query.study` |
 | `query.temporary_files_scope` |
+| `recording.budget_exceeded` |
 | `recording.cancelled` |
 | `recording.decode` |
 | `recording.invalid_window` |
@@ -470,11 +476,15 @@ Read-only broken pipes are quiet success. A confirmed mutation remains successfu
 
 ## Recording measurements
 
-CLI JSON schema 3 represents recording identity with `path`, `bytes` and container `format`; successful analysis supplies `recording.analysis`. Successful CLI analysis includes `codec`, `lossy`, `duration_seconds`, `sample_rate`, `channels`, `window` and `envelope_window` (`start_seconds`, `end_seconds`), `resolution_hz`, `envelope_resolution_hz`, `minimum_resolved_envelope_hz`, `minimum_envelope_relative_power`, `tones`, `ear_differences`, `coincident_tones`, `pulsing`, `low_energy`, `stereo`, chart `spectrum` and machine `limits`. Failed work emits a diagnostic without partial analysis. Desktop identification can open undecodable files; Analyze performs decoding.
+CLI JSON schema 4 represents recording identity with `path`, `bytes` and container `format`; successful analysis supplies `recording.analysis`. Successful CLI analysis includes exact integer `frames`, `source_frames` (null when unknown), `start_frame` (inclusive) and `end_frame` (exclusive), then `codec`, `lossy`, `duration_seconds`, `sample_rate`, `channels`, `window` and `envelope_window` (`start_seconds`, `end_seconds`), `resolution_hz`, `envelope_resolution_hz`, `minimum_resolved_envelope_hz`, `minimum_envelope_relative_power`, `tones`, `ear_differences`, `coincident_tones`, `pulsing`, `low_energy`, `stereo`, chart `spectrum` and machine `limits`. Failed work emits a diagnostic without partial analysis. Desktop identification can open undecodable files; Analyze performs decoding.
 
 ### Input and selected window
 
-Measurements stream decoded f32 frames at their native sample rate. The default interval starts at 10% of the duration and lasts up to 600 seconds; an explicit integer duration of at least two seconds overrides its length. Duration is taken from container metadata when available; decoding validates the selected interval, not unexamined later packets. Raw MPEG/ADTS streams and streams lacking duration metadata are counted first and decoded again through the same file handle. Mono and stereo at rates of at least 1000 Hz are accepted. Format/rate/channel changes within a track and nonfinite samples are refused. No whole-file sample buffer is retained.
+Measurements stream decoded f32 frames at their native sample rate. The absolute start defaults to zero; `--start N` selects whole seconds from 0 through 86400. At-most duration defaults to 600 seconds; an explicit `--seconds N` accepts 2 through 3600. Both fields use unsigned ASCII decimal integers, converted exactly by checked multiplication with the decoded rate. Selected start/end and trustworthy source extent are retained as exact integer frames; absolute seconds derive once from those counts, avoiding floating-point addition at clipped endpoints. The selected endpoint clips to a trustworthy declared source end; every successful report still contains at least two seconds of actual samples. Unknown/estimated source duration remains absent and is never inferred from window length. EOF before a trustworthy selected endpoint is a decode failure. Reaching the requested endpoint does not validate later packets.
+
+There is no counting pass or reopen: one admitted handle/decoder sequentially skips to the selected frame under a work budget. Buffering starts with at most 2²⁰ source frames per channel, chooses a fitting FFT plan at clean early EOF, and replays that prefix exactly once. Mono/stereo rates of at least 1000 Hz remain separate from synthesis sample-rate admission. Measurement and skipped-frame budgets are each 2³² frames; packet count is at most 2²⁴ and one decoded packet at most 2²² frames. Exceeding a budget refuses the result rather than silently shortening it. These limits support a 3600-second window at 768 kHz and retain sparse RF64/BW64 support without a file-size ceiling. Welch window counters use u64; overlap and the 2³²-frame budget leave them far below overflow. No whole-file sample buffer is retained. Format changes and nonfinite samples are refused.
+
+Cooperative checkpoints cannot interrupt a decoder allocation/call, FFT call or blocked read; these bounds cover owned buffering and application-controlled work, not total third-party allocation or hard wall-clock latency. Pure `core::measurement` results contain no codec, file, job or absolute-placement placeholders. App composes those measurements with validated recording source facts and absolute placement.
 
 Symphonia 0.6.1 decodes PCM WAV, AIFF, FLAC up to 24 bits, MP3, AAC-LC, Vorbis, ALAC and CAF in enabled containers. Opus and 32-bit FLAC receive `recording.unsupported_codec`; the latter avoids a confirmed 33-bit stereo-side-channel decoder defect. HE-AAC/SBR is unsupported; the checked AAC patch rejects non-LC ADTS profiles and in-band SBR before samples can be mistaken for a complete LC decode. Decoder failures include packet position and preserve any previous desktop findings. Numerical checks compare resolved frequencies within one bin and levels within 0.5 dB. Synthesis has its own bit-level contract.
 

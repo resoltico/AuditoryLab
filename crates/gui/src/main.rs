@@ -10,6 +10,8 @@ mod licenses;
 mod motion;
 #[cfg(target_os = "macos")]
 mod native_application;
+#[cfg(debug_assertions)]
+mod native_qualification;
 mod native_text;
 mod preference_wake;
 mod scope;
@@ -89,7 +91,18 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         Capabilities::available(),
         auditorylab_app::workspace::LibraryBinding::configured()?,
     )?;
-    let onboarding = auditorylab_app::onboarding::Preference::configured();
+    // A debug-only native qualification run keeps onboarding state isolated.
+    // This is a private test seam, absent from distributed builds.
+    #[cfg(debug_assertions)]
+    let qualification =
+        std::env::var_os("AUDITORYLAB_NATIVE_QA_DIRECTORY").map(std::path::PathBuf::from);
+    #[cfg(not(debug_assertions))]
+    let qualification: Option<std::path::PathBuf> = None;
+    let onboarding = if let Some(root) = &qualification {
+        Ok(auditorylab_app::onboarding::Preference::at_config_directory(root.join("config")))
+    } else {
+        auditorylab_app::onboarding::Preference::configured()
+    };
     let (seen, notice) = match &onboarding {
         Ok(preference) => match preference.seen() {
             Ok(seen) => (seen, String::new()),
@@ -119,6 +132,12 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(target_os = "macos")]
     {
         *handler_slot.borrow_mut() = std::rc::Rc::downgrade(&adapter);
+    }
+    #[cfg(debug_assertions)]
+    if std::env::var_os("AUDITORYLAB_NATIVE_QA_RECREATE_SURFACE").is_some()
+        && let Some(directory) = std::env::var_os("AUDITORYLAB_NATIVE_QA_DIRECTORY")
+    {
+        native_qualification::install(&windows.main, &std::path::PathBuf::from(directory))?;
     }
     adapter.show_main()?;
     let result = slint::run_event_loop_until_quit();

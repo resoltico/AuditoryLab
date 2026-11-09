@@ -372,7 +372,9 @@ fn inspection_uses_its_selected_rate_throughout_and_states_requested_and_realize
         "100",
     ]);
     assert_eq!(invalid.status.code(), Some(2));
-    assert!(String::from_utf8_lossy(&invalid.stderr).contains("at 100 Hz"));
+    let report = String::from_utf8_lossy(&invalid.stdout);
+    assert!(report.contains("Sample rate: 100 Hz"), "{report}");
+    assert!(report.contains("at 100 Hz"), "{report}");
 }
 
 #[test]
@@ -533,7 +535,7 @@ fn json_failures_keep_fixed_codes_and_structured_values() {
     ]);
     assert_eq!(range.status.code(), Some(2));
     let value: serde_json::Value = serde_json::from_slice(&range.stdout).unwrap();
-    assert_eq!(value["output_schema_version"], 3);
+    assert_eq!(value["output_schema_version"], 4);
     assert_eq!(value["operation"], "inspect");
     assert_eq!(value["diagnostics"][0]["code"], "sample_rate.range");
     assert_eq!(
@@ -694,7 +696,7 @@ fn cli_meaning_cases() -> [(
 }
 
 #[test]
-fn grouped_schema_three_json_retains_display_labels_and_member_keys() {
+fn grouped_schema_four_json_retains_display_labels_and_member_keys() {
     for (group_by, expected) in [
         (
             "method",
@@ -732,7 +734,7 @@ fn grouped_schema_three_json_retains_display_labels_and_member_keys() {
         ]);
         assert!(output.status.success(), "{output:?}");
         let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-        assert_eq!(value["output_schema_version"], 3);
+        assert_eq!(value["output_schema_version"], 4);
         for (key, label) in expected {
             let group = value["groups"]
                 .as_array()

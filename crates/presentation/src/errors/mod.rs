@@ -732,11 +732,31 @@ impl Explain for auditorylab_app::recording::RecordingError {
             ),
             E::NoAudioTrack => "the recording contains no audio track".into(),
             E::TooShort => "the analysis window needs at least two seconds of audio".into(),
-            E::InvalidWindow => "analysis duration must be at least two seconds".into(),
+            E::InvalidWindow => {
+                "analysis needs unsigned whole seconds: start 0–86400, duration 2–3600 (blank: 600)"
+                    .into()
+            }
+            E::Measurement(error) => error.explain(),
+            E::BudgetExceeded { resource } => {
+                format!("recording analysis exceeded its {resource} work budget")
+            }
             E::UnsupportedChannels { channels } => {
                 format!("recording has {channels} channels; analysis supports mono or stereo")
             }
             E::Cancelled => "recording analysis cancelled; previous findings retained".into(),
+        }
+    }
+}
+
+impl Explain for auditorylab_core::measurement::MeasurementError {
+    fn explain(&self) -> String {
+        use auditorylab_core::measurement::MeasurementError as E;
+        match self {
+            E::UnsupportedChannels { channels } => format!("sample measurement has {channels} channels; mono or stereo is required"),
+            E::TooShort => "sample measurement needs two seconds and a complete fitting FFT prefix".into(),
+            E::InvalidFrame => "sample measurement frame has invalid channels, a nonfinite sample, or exceeds its admitted extent".into(),
+            E::Cancelled => "sample measurement cancelled; no partial findings were published".into(),
+            E::BudgetExceeded => "sample measurement exceeds its frame work budget".into(),
         }
     }
 }

@@ -1,6 +1,6 @@
 # Contributing
 
-Start from a clean checkout with the [source prerequisites](README.md#build-from-source). [rust-toolchain.toml](rust-toolchain.toml) owns the compiler/components; root [Cargo.toml](Cargo.toml) owns product name/copyright/version metadata, and [Cargo.lock](Cargo.lock) pins dependencies. [CI](.github/workflows/ci.yml) owns auxiliary tool versions and target/shard selection.
+Start from a clean checkout with the [source prerequisites](README.md#build-from-source). [rust-toolchain.toml](rust-toolchain.toml) owns the compiler/components; root [Cargo.toml](Cargo.toml) owns product name/copyright/version metadata, and [Cargo.lock](Cargo.lock) pins dependencies. [CI](.github/workflows/ci.yml) owns auxiliary tool versions and shard selection; [native target mapping](.github/native-targets.json) owns runner selection. Packaging owns supported target/platform pairs, checked against that map and deny policy by `cargo xtask check-targets`.
 
 ## Checks
 
@@ -12,6 +12,7 @@ export TMPDIR="$PWD/target/tmp"
 python3 artwork/onboarding/verify_art.py --scratch target/onboarding-art-qa
 cargo fmt --all -- --check
 cargo xtask check-style
+cargo xtask check-targets
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked
 cargo test -p auditorylab-core --release --locked
@@ -67,7 +68,7 @@ Prefer removing unnecessary work over lint suppression. For a necessary numeric 
 - What does this frontend change decide? Admission, defaults and validity belong to app/core owners.
 - Which owner holds the wording? Use its vocabulary/presentation function; labels are not protocol.
 - Does each module have one subject, with private state and explicit typed boundaries?
-- Are macro data tables written one entry per line? Formatting and width checks do not establish that layout.
+- Are macro data tables written one entry per line? Formatters do not establish that layout.
 
 ## Dependencies and native toolkit
 

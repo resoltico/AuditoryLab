@@ -246,7 +246,7 @@ fn process_child() {
     let mode = std::env::var("AUDITORYLAB_PUBLISH_MODE").unwrap();
     let library = LibraryRoot::explicit(root).unwrap();
     if mode == "initialize" {
-        library.initialize().unwrap();
+        assert_eq!(library.initialize().unwrap().warnings, []);
         return;
     }
     let store = LibraryStore::new(library).unwrap();
@@ -257,7 +257,7 @@ fn process_child() {
     if mode == "create" {
         let mut recipe = Draft::new().unwrap().recipe().unwrap().into_builder();
         recipe.document.id = id;
-        store
+        let _published = store
             .apply(
                 Mutation::Create(Arc::new(recipe.build().unwrap())),
                 &Cancel::default(),
@@ -290,7 +290,7 @@ fn process_child() {
             }
         }
     };
-    store.apply(mutation, &Cancel::default()).unwrap();
+    let _published = store.apply(mutation, &Cancel::default()).unwrap();
 }
 fn child(root: &Path, id: &str, mode: &str, phase: &str, ready: &Path) -> Child {
     Command::new(std::env::current_exe().unwrap())
@@ -344,7 +344,7 @@ fn store_fixture() -> (
         crate::storage::library::LibraryRoot::explicit(temp.path().join("library")).unwrap(),
     )
     .unwrap();
-    store.root().initialize().unwrap();
+    assert_eq!(store.root().initialize().unwrap().warnings, []);
     let record = store
         .apply(
             crate::storage::library::Mutation::Create(Arc::new(
@@ -381,7 +381,7 @@ fn killed_recipe_writers_leave_old_or_complete_bytes_and_no_stage_is_promoted() 
         );
         let before = observed.recipe_toml.clone();
         assert!(!store.scan(&Cancel::default()).stages.is_empty() || phase == "after");
-        store
+        let _published = store
             .apply(
                 Mutation::Rename {
                     key: record.key.clone(),
@@ -410,7 +410,7 @@ fn killed_creation_between_recipe_and_membership_keeps_readable_content_with_unk
     let record = store.load(&key).unwrap();
     assert_eq!(record.added_at, None);
     assert!(!record.trashed);
-    store
+    let _published = store
         .apply(
             Mutation::Rename {
                 key: key.clone(),
@@ -459,7 +459,7 @@ fn killed_moves_preserve_content_and_recognize_only_same_inode_duplicates() {
                 _ => mode == "trash",
             };
             assert_eq!(current.trashed, expected, "{mode} {phase}");
-            store
+            let _published = store
                 .apply(
                     Mutation::Trash {
                         key: record.key.clone(),
@@ -506,10 +506,21 @@ fn killed_initialization_marker_is_last_and_retry_cleans_owned_stages() {
     kill_at_pause(&mut process, &ready);
     assert!(!root.join("library.toml").exists());
     assert!(root.join("recipes").is_dir());
-    LibraryRoot::explicit(root.clone())
+    let initialized = LibraryRoot::explicit(root.clone())
         .unwrap()
         .initialize()
         .unwrap();
+    assert!(initialized.created);
+    match initialized.warnings.as_slice() {
+        [crate::storage::warning::StorageWarning::RemovedStage { path }] => {
+            assert_eq!(
+                path.parent(),
+                Some(fs::canonicalize(&root).unwrap().as_path())
+            );
+        }
+        warnings => panic!("expected one recovered stage notice, got {warnings:?}"),
+    }
+
     assert!(root.join("library.toml").is_file());
     assert!(!fs::read_dir(root).unwrap().any(|entry| {
         entry
@@ -567,7 +578,7 @@ fn failed_membership_write_is_saved_with_unknown_new_dates() {
     let (temp, _dir, _path) = fixture();
     let store =
         LibraryStore::new(LibraryRoot::explicit(temp.path().join("library")).unwrap()).unwrap();
-    store.root().initialize().unwrap();
+    assert_eq!(store.root().initialize().unwrap().warnings, []);
     AFTER_PUBLISH.with(|slot| *slot.borrow_mut() = Some(Box::new(|| inject(&[FaultPoint::Write]))));
     let result = store
         .apply(

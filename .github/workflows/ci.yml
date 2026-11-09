@@ -86,6 +86,11 @@ jobs:
           echo "$ACTIONLINT_LINUX_SHA256  target/$archive" | sha256sum --check
           tar -xzf "target/$archive" -C target actionlint
           target/actionlint
+      - name: Verify supported target consistency
+        if: github.event_name != 'schedule'
+        run: |
+          cargo xtask check-targets
+          python3 .github/qualification.py --test
       - name: Verify maintained dependency patches and target graphs
         if: github.event_name != 'schedule'
         run: cargo xtask verify-vendor
@@ -96,10 +101,6 @@ jobs:
         run: |
           rustc --edition=2018 --test third_party/spin_on/src/lib.rs -o target/debug/spin_on-tests
           target/debug/spin_on-tests
-      - if: github.event_name != 'schedule'
-        run: cargo doc --workspace --no-deps --locked
-        env:
-          RUSTDOCFLAGS: "-D warnings"
       - name: Cache cargo-deny
         id: deny-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -130,6 +131,22 @@ jobs:
           else
             echo 'core-changed=false' >> "$GITHUB_OUTPUT"
           fi
+  domain:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: |
+          mkdir -p target/tmp
+          echo "TMPDIR=${GITHUB_WORKSPACE}/target/tmp" >> "$GITHUB_ENV"
+          sudo apt-get update
+          sudo apt-get install --yes build-essential pkg-config libasound2-dev
+      - run: rustup toolchain install
+      - name: Domain and application state checks without building the desktop
+        run: cargo test -p auditorylab-core -p auditorylab-app --lib --locked
   icons:
     if: github.event_name != 'schedule'
     # Xcode's layered icon renderer needs Tahoe frameworks. Product binaries
@@ -154,31 +171,85 @@ jobs:
           name: macos-icons-${{ github.sha }}
           path: target/macos-icons/*
           if-no-files-found: error
-  test:
-    needs: icons
+  matrix:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-24.04
+    outputs:
+      native: ${{ steps.matrix.outputs.native }}
+      macos: ${{ steps.matrix.outputs.macos }}
+      other: ${{ steps.matrix.outputs.other }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: matrix
+        run: |
+          python3 - <<'PYTHON' >> "$GITHUB_OUTPUT"
+          import json
+          data = json.load(open('.github/native-targets.json'))
+          print('native=' + json.dumps(data))
+          for key, mac in [('macos', True), ('other', False)]:
+              print(key + '=' + json.dumps({'include': [x for x in data['include'] if x['platform'].startswith('macos-') == mac]}))
+          PYTHON
+  native:
+    needs: matrix
     if: github.event_name != 'schedule'
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - runner: macos-15
-            target: aarch64-apple-darwin
-            platform: macos-aarch64
-          - runner: macos-15-intel
-            target: x86_64-apple-darwin
-            platform: macos-x86_64
-          - runner: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
-            platform: linux-x86_64
-          - runner: ubuntu-22.04-arm
-            target: aarch64-unknown-linux-gnu
-            platform: linux-aarch64
-          - runner: windows-2022
-            target: x86_64-pc-windows-msvc
-            platform: windows-x86_64
-          - runner: windows-11-arm
-            target: aarch64-pc-windows-msvc
-            platform: windows-aarch64
+      matrix: ${{ fromJSON(needs.matrix.outputs.native) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Prepare temporary directory
+        run: |
+          mkdir -p target/tmp
+          for name in TMPDIR TMP TEMP; do
+            echo "${name}=${GITHUB_WORKSPACE}/target/tmp" >> "$GITHUB_ENV"
+          done
+          echo "${CARGO_HOME}/bin" >> "$GITHUB_PATH"
+      - name: Install Linux build prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes build-essential pkg-config libasound2-dev libfontconfig1-dev libglib2.0-bin libxkbcommon-x11-0
+      - run: rustup toolchain install
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --locked
+      - name: Check callback median cost
+        if: matrix.target == 'x86_64-unknown-linux-gnu' || matrix.target == 'aarch64-apple-darwin'
+        run: cargo test -p auditorylab-app --profile dist --locked callback_cost -- --ignored --nocapture
+      - run: cargo test -p auditorylab-app --test library_process --locked
+      - name: Verify native AT-SPI cache signal contracts
+        if: runner.os == 'Linux'
+        run: cargo test -p accesskit_unix --lib --locked
+      - name: Verify macOS termination request contracts
+        if: runner.os == 'macOS'
+        env:
+          CARGO_TARGET_DIR: target/vendor-tests
+        run: cargo test --manifest-path third_party/winit/Cargo.toml --locked --lib termination
+      - name: Verify native UIA typed selection arrays and COM ownership
+        if: runner.os == 'Windows'
+        env:
+          CARGO_TARGET_DIR: target/vendor-tests
+        run: cargo test --manifest-path third_party/accesskit_windows/Cargo.toml --locked --lib selection_tests
+      - run: cargo test -p auditorylab-core --release --locked
+      - name: Documentation warnings
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: cargo doc --workspace --no-deps --locked
+        env:
+          RUSTDOCFLAGS: '-D warnings'
+  package:
+    needs: matrix
+    if: github.event_name != 'schedule'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.matrix.outputs.other) }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     defaults:
@@ -207,21 +278,75 @@ jobs:
           developer="/Applications/Xcode_${MACOS_XCODE_VERSION}.app/Contents/Developer"
           test -d "$developer"
           echo "DEVELOPER_DIR=$developer" >> "$GITHUB_ENV"
-      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
-      - run: cargo test --workspace --locked
-      - name: Check callback median cost
-        if: matrix.target == 'x86_64-unknown-linux-gnu' || matrix.target == 'aarch64-apple-darwin'
-        run: cargo test -p auditorylab-app --profile dist --locked callback_cost -- --ignored --nocapture
-      - run: cargo test -p auditorylab-app --test library_process --locked
-      - name: Verify native AT-SPI cache signal contracts
-        if: runner.os == 'Linux'
-        run: cargo test -p accesskit_unix --lib --locked
-      - name: Verify macOS termination request contracts
+      - name: Cache cargo-about
+        id: about-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.CARGO_HOME }}/bin/cargo-about${{ runner.os == 'Windows' && '.exe' || '' }}
+          key: cargo-about-cli-release-locked-${{ matrix.runner }}-${{ runner.arch }}-${{ env.CARGO_ABOUT_VERSION }}-${{ hashFiles('rust-toolchain.toml', '.cargo/config.toml') }}
+      - name: Install cargo-about
+        if: steps.about-cache.outputs.cache-hit != 'true'
+        run: cargo install cargo-about --version "$CARGO_ABOUT_VERSION" --locked --features cli
+      - name: Download native icon resources for this source
         if: runner.os == 'macOS'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: macos-icons-${{ github.sha }}
+          path: target/macos-icons
+          digest-mismatch: error
+      # Package inspection also reads both Windows executables through VersionInfo.
+      - name: Build archives and run host smoke tests
         env:
-          CARGO_TARGET_DIR: target/vendor-tests
-        run: cargo test --manifest-path third_party/winit/Cargo.toml --locked --lib termination
-      - run: cargo test -p auditorylab-core --release --locked
+          DIST_TARGET: ${{ matrix.target }}
+        run: |
+          args=(--target "$DIST_TARGET")
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            args+=(--icons target/macos-icons)
+          fi
+          cargo xtask dist "${args[@]}"
+      - name: Upload distributions
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist-${{ matrix.platform }}
+          path: |
+            target/dist/*.tar.gz
+            target/dist/*.zip
+          if-no-files-found: error
+          compression-level: 0
+  package-macos:
+    needs: [matrix, icons]
+    if: github.event_name != 'schedule'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.matrix.outputs.macos) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Prepare temporary directory
+        run: |
+          mkdir -p target/tmp
+          for name in TMPDIR TMP TEMP; do
+            echo "${name}=${GITHUB_WORKSPACE}/target/tmp" >> "$GITHUB_ENV"
+          done
+          echo "${CARGO_HOME}/bin" >> "$GITHUB_PATH"
+      - name: Install Linux build prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes build-essential pkg-config libasound2-dev libfontconfig1-dev libglib2.0-bin libxkbcommon-x11-0
+      - run: rustup toolchain install
+      - name: Select icon-capable Xcode
+        if: runner.os == 'macOS'
+        run: |
+          developer="/Applications/Xcode_${MACOS_XCODE_VERSION}.app/Contents/Developer"
+          test -d "$developer"
+          echo "DEVELOPER_DIR=$developer" >> "$GITHUB_ENV"
       - name: Cache cargo-about
         id: about-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -335,10 +460,14 @@ jobs:
             shard: 0/1
           - source: render/waveform
             shard: 0/1
-    needs: [lint, icons]
+          - source: measurement/accumulate
+            shard: 0/1
+    needs: lint
     if: github.event_name != 'schedule' && (inputs.release || needs.lint.outputs.core-changed == 'true')
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    # Core now includes numerical measurement tests. Keep every mutant and the
+    # 60-second per-mutant limit; allow the full single-worker cohort to finish.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -384,6 +513,11 @@ jobs:
             # rejected by the preceding !self.ended guard in begin_buffer.
             args+=(--exclude-re 'replace < with <= in FiniteSource::begin_buffer$')
           fi
+          if [[ "$MUTATION_SOURCE" == measurement/accumulate ]]; then
+            # Locally qualified push/finish guards cover malformed frames and extent;
+            # pair/silence controls also protect channel-coincidence predicates.
+            args+=(--re '(replace (\|\||!=|>=|<)|delete !) .*Measurement::(push|finish)$')
+          fi
           cargo mutants "${args[@]}"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
@@ -391,3 +525,90 @@ jobs:
           name: core-${{ strategy.job-index }}-mutations
           path: target/mutations/mutants.out/
           if-no-files-found: error
+  native-graphical-linux:
+    if: github.event_name != 'schedule'
+    strategy:
+      fail-fast: false
+      matrix:
+        session: [x11, wayland]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - run: |
+          sudo apt-get update
+          sudo apt-get install --yes build-essential pkg-config libasound2-dev libfontconfig1-dev libglib2.0-bin libxkbcommon-x11-0 libgl1-mesa-dri libegl1-mesa-dev xvfb xauth x11-utils xdotool openbox sway wayland-utils dbus-x11 at-spi2-core python3-pyatspi python3-pil xdg-desktop-portal xdg-desktop-portal-gtk ripgrep
+          mkdir -p target/tmp target/native-${{ matrix.session }}
+      - name: Prepare isolated temporary files
+        shell: bash
+        run: |
+          mkdir -p target/tmp
+          for name in TMPDIR TMP TEMP; do
+            echo "${name}=${GITHUB_WORKSPACE}/target/tmp" >> "$GITHUB_ENV"
+          done
+      - run: rustup toolchain install
+      - run: cargo build -p auditorylab-gui -p auditorylab-cli --locked
+      - name: Production native provider, keys, and portal parent qualification
+        timeout-minutes: 5
+        run: |
+          scratch="$PWD/target/native-${{ matrix.session }}"
+          target/debug/auditorylab --library-dir "$scratch/library" library init
+          timeout 240s dbus-run-session -- xvfb-run --auto-servernum --server-args='-screen 0 1920x1200x24 +extension GLX' bash crates/gui/native/linux-session.sh '${{ matrix.session }}' "$PWD/target/debug/auditorylab-gui" "$PWD/crates/core/tests/fixtures/recipes/custom-derived-pair.toml" "$scratch"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: failure()
+        with:
+          name: native-failure-${{ matrix.session }}-${{ github.sha }}
+          path: target/native-${{ matrix.session }}/*
+          if-no-files-found: error
+  native-graphical-windows:
+    if: github.event_name != 'schedule'
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Prepare isolated temporary files
+        shell: bash
+        run: |
+          mkdir -p target/tmp
+          for name in TMPDIR TMP TEMP; do
+            echo "${name}=${GITHUB_WORKSPACE}/target/tmp" >> "$GITHUB_ENV"
+          done
+      - run: rustup toolchain install
+      - name: Prepare authenticated test-only native OpenGL driver
+        shell: pwsh
+        run: '& crates/gui/native/prepare-windows-mesa.ps1'
+      - run: cargo build -p auditorylab-gui -p auditorylab-cli --locked
+      - name: Compile independent official-SDK text-range control
+        shell: pwsh
+        run: '& crates/gui/native/prepare-windows-control.ps1'
+      - name: Production UIA, native keys, and common-dialog owner qualification
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          $scratch = Join-Path $PWD 'target/native-windows'
+          & target/debug/auditorylab.exe --library-dir "$scratch/library" library init
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # Use the built-in desktop host as the controlled UIA client;
+          # retain MTA so its COM model matches the previous client host.
+          powershell.exe -MTA -NoProfile -File crates/gui/native/windows.ps1 -Binary target/debug/auditorylab-gui.exe -Fixture crates/core/tests/fixtures/recipes/custom-derived-pair.toml -Scratch $scratch
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: failure()
+        with:
+          name: native-failure-windows-${{ github.sha }}
+          path: target/native-windows/*
+          if-no-files-found: error
+  required:
+    if: always() && github.event_name != 'schedule'
+    needs: [lint, domain, matrix, icons, native, package, package-macos, mutation, native-graphical-linux, native-graphical-windows]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Require every applicable qualification
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+          RELEASE: ${{ inputs.release }}
+          CORE_CHANGED: ${{ needs.lint.outputs.core-changed }}
+        run: python3 .github/qualification.py

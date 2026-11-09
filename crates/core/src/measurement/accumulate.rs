@@ -1,9 +1,9 @@
 //! Streaming Welch measurements of mono or stereo digital samples, without I/O.
 use super::{
-    Analysis, AnalysisWindow, EarDifference, EnergyShare, EnvelopeBand, Pulsing, PulsingCause,
-    RecordingError, SpectrumPoint, Stereo, Tone,
+    AnalysisWindow, EarDifference, EnergyShare, EnvelopeBand, MeasurementError, Pulsing,
+    PulsingCause, SampleAnalysis, SampleFacts, SpectrumPoint, Stereo, Tone,
 };
-use crate::{core::rhythm::Band, job::Cancel};
+use crate::rhythm::Band;
 use realfft::{RealFftPlanner, RealToComplex, num_complex::Complex};
 use std::sync::Arc;
 mod envelope;
@@ -30,12 +30,15 @@ pub struct Measurement {
 }
 impl Measurement {
     /// Prepare bounded overlapping windows. At least two seconds are required.
-    pub fn new(rate: u32, channels: usize, frames: u64) -> Result<Self, RecordingError> {
+    pub fn new(rate: u32, channels: usize, frames: u64) -> Result<Self, MeasurementError> {
         if !(1..=2).contains(&channels) {
-            return Err(RecordingError::UnsupportedChannels { channels });
+            return Err(MeasurementError::UnsupportedChannels { channels });
         }
         if rate < 1000 || frames < u64::from(rate) * 2 {
-            return Err(RecordingError::TooShort);
+            return Err(MeasurementError::TooShort);
+        }
+        if frames > (1_u64 << 32) {
+            return Err(MeasurementError::BudgetExceeded);
         }
         let n = window_size(frames, 1 << 20);
         let envelope_frames = (n * 3 / 4) as u64 * 1000 / u64::from(rate);
@@ -66,15 +69,12 @@ impl Measurement {
         })
     }
     /// Feed one frame in channel order. Reject malformed samples before changing state.
-    pub fn push(&mut self, frame: &[f32]) -> Result<(), RecordingError> {
+    pub fn push(&mut self, frame: &[f32]) -> Result<(), MeasurementError> {
         if frame.len() != self.channels
             || frame.iter().any(|sample| !sample.is_finite())
             || self.frames >= self.expected
         {
-            return Err(RecordingError::Decode {
-                packet: 0,
-                cause: "invalid measurement frame".into(),
-            });
+            return Err(MeasurementError::InvalidFrame);
         }
         for (channel, &sample) in frame.iter().enumerate() {
             let x = f64::from(sample);
@@ -96,13 +96,20 @@ impl Measurement {
         self.frames += 1;
         Ok(())
     }
-    /// Finish a complete window. Cancellation produces no partial findings.
-    pub fn finish(mut self, cancel: &Cancel) -> Result<Analysis, RecordingError> {
-        if self.frames != self.expected {
-            return Err(RecordingError::TooShort);
+    /// Finish the actual supplied extent after two seconds and a full FFT prefix.
+    /// A shorter fitting plan must be selected before feeding a short source.
+    /// Cancellation produces no partial findings.
+    pub fn finish(
+        mut self,
+        cancel: &impl Fn() -> bool,
+    ) -> Result<SampleAnalysis, MeasurementError> {
+        if self.frames < u64::from(self.rate) * 2
+            || self.spectra[0].buffer.len() < self.spectra[0].window.len()
+        {
+            return Err(MeasurementError::TooShort);
         }
-        if cancel.is_requested() {
-            return Err(RecordingError::Cancelled);
+        if cancel() {
+            return Err(MeasurementError::Cancelled);
         }
         for channel in 0..self.channels {
             let tail = self.spectra[channel].since_window > 0;
@@ -140,35 +147,14 @@ impl Measurement {
         let pulsing = self.pulsing_findings(&tones, cancel)?;
         let low_energy = self.energy_shares(resolution);
         let frames = count_f64(self.frames);
-        let correlation = if self.channels == 2 {
-            let left = self.energy[0] - self.sum[0].powi(2) / frames;
-            let right = self.energy[1] - self.sum[1].powi(2) / frames;
-            let denominator = (left * right).sqrt();
-            (denominator > 0.0).then(|| {
-                ((self.cross - self.sum[0] * self.sum[1] / frames) / denominator).clamp(-1.0, 1.0)
-            })
-        } else {
-            None
-        };
-        let stereo = Stereo {
-            peak_dbfs: self.peak.iter().map(|peak| power_db(peak * peak)).collect(),
-            rms_dbfs: self
-                .energy
-                .iter()
-                .map(|energy| power_db(energy / frames))
-                .collect(),
-            correlation,
-            side_to_mid_db: if self.channels == 2 && self.mid > 0.0 {
-                power_db(self.side / self.mid)
-            } else {
-                None
-            },
-        };
+        let stereo = self.stereo();
         let spectrum = self.spectra.iter().map(Welch::chart).collect();
-        Ok(Analysis {
-            codec: String::new(),
-            lossy: false,
-            duration_seconds: frames / f64::from(self.rate),
+        if cancel() {
+            return Err(MeasurementError::Cancelled);
+        }
+        Ok(SampleAnalysis(SampleFacts {
+            frames: self.frames,
+            envelope_edge_frames: (self.spectra[0].window.len() / 8) as u64,
             sample_rate: self.rate,
             channels: self.channels,
             window: AnalysisWindow {
@@ -197,7 +183,34 @@ impl Measurement {
                 super::MeasurementLimit::PatternAttributionNotIntent,
                 super::MeasurementLimit::PeaksBelowRelativeFloorOmitted,
             ],
-        })
+        }))
+    }
+    fn stereo(&self) -> Stereo {
+        let frames = count_f64(self.frames);
+        let correlation = if self.channels == 2 {
+            let left = self.energy[0] - self.sum[0].powi(2) / frames;
+            let right = self.energy[1] - self.sum[1].powi(2) / frames;
+            let denominator = (left * right).sqrt();
+            (denominator > 0.0).then(|| {
+                ((self.cross - self.sum[0] * self.sum[1] / frames) / denominator).clamp(-1.0, 1.0)
+            })
+        } else {
+            None
+        };
+        Stereo {
+            peak_dbfs: self.peak.iter().map(|peak| power_db(peak * peak)).collect(),
+            rms_dbfs: self
+                .energy
+                .iter()
+                .map(|energy| power_db(energy / frames))
+                .collect(),
+            correlation,
+            side_to_mid_db: if self.channels == 2 && self.mid > 0.0 {
+                power_db(self.side / self.mid)
+            } else {
+                None
+            },
+        }
     }
     fn energy_shares(&self, resolution: f64) -> Vec<EnergyShare> {
         let mut low_energy = Vec::new();
@@ -229,16 +242,16 @@ impl Measurement {
     fn pulsing_findings(
         &mut self,
         tones: &[Tone],
-        cancel: &Cancel,
-    ) -> Result<Vec<Pulsing>, RecordingError> {
+        cancel: &impl Fn() -> bool,
+    ) -> Result<Vec<Pulsing>, MeasurementError> {
         let resolution = self.spectra[0].resolution();
         let envelope_resolution = self.envelopes[0][0].resolution();
         let minimum = self.minimum_envelope_hz();
         let mut pulsing = Vec::new();
         for channel in 0..self.channels {
             for (index, band) in EnvelopeBand::ALL.into_iter().enumerate() {
-                if cancel.is_requested() {
-                    return Err(RecordingError::Cancelled);
+                if cancel() {
+                    return Err(MeasurementError::Cancelled);
                 }
                 let spectrum = &mut self.envelopes[channel][index];
                 spectrum.finish();
@@ -309,7 +322,7 @@ struct Welch {
     output: Vec<Complex<f64>>,
     scratch: Vec<Complex<f64>>,
     psd: Vec<f64>,
-    windows: u32,
+    windows: u64,
     rate: f64,
     centered: bool,
     mean_power: f64,
@@ -419,9 +432,9 @@ impl Welch {
             self.since_window = 0;
         }
         if self.windows > 0 {
-            self.mean_power /= f64::from(self.windows);
+            self.mean_power /= count_f64(self.windows);
             for power in &mut self.psd {
-                *power /= f64::from(self.windows);
+                *power /= count_f64(self.windows);
             }
         }
     }

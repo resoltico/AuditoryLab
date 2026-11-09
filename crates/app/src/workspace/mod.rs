@@ -72,7 +72,7 @@ use status::{
 };
 use std::path::PathBuf;
 use std::sync::Arc;
-use tasks::{AudioKind, AudioTask, Conclusion, FileKind, FileTask};
+use tasks::{AudioOwner, AudioPreparation, AudioTask, AudioWork, Conclusion, FileKind, FileTask};
 use {crate::outcome::Outcome, crate::services::OperationError as Error};
 
 /// Which part of the workspace the person is using; it decides what Play,
@@ -564,7 +564,7 @@ impl Workspace {
             }
             Response::Finished { job, outcome } => {
                 if let Some(task) = self.audio.take_finished(job) {
-                    rejected = task.protocol_failed || matches!(outcome, JobOutcome::File(_));
+                    rejected = task.rejected() || matches!(outcome, JobOutcome::File(_));
                     self.finish_audio(
                         &task,
                         match outcome {
@@ -600,15 +600,31 @@ impl Workspace {
         }
     }
 
+    // Captured prompt content does not grant permission to perform later work.
+    fn path_continuation_admission(&self, state: &PromptState) -> Result<(), Refusal> {
+        let command = match state {
+            PromptState::Import => Command::File(FileCommand::Import),
+            PromptState::OpenRecording => Command::File(FileCommand::OpenRecording),
+            PromptState::ExportRecipe(_) => Command::File(FileCommand::ExportRecipe),
+            PromptState::Export(_) => Command::File(FileCommand::ExportWav),
+            _ => return Ok(()),
+        };
+        self.learning_command_admission(&command)?;
+        self.import_admission()?;
+        if matches!(command, Command::File(FileCommand::ExportWav)) {
+            self.audio.idle_admission()?;
+        }
+        Ok(())
+    }
+
     fn respond_prompt(&mut self, prompt: PromptId, response: PromptAnswer) -> bool {
         let Some(state) = self.prompts.take(prompt) else {
             return false;
         };
         if matches!(response, PromptAnswer::Path(Some(_)))
-            && (self.files.busy() || self.pending.is_some())
+            && let Err(refusal) = self.path_continuation_admission(&state)
         {
-            self.files
-                .record_status(FileStatus::Refused(Refusal::FileBusy));
+            self.files.record_status(FileStatus::Refused(refusal));
             self.deny(matches!(state, PromptState::Unsaved(DocumentAction::Close)));
             self.changed();
             return true;
@@ -966,14 +982,17 @@ impl Workspace {
                 self.recording_analysis = Some(*recording);
                 FileStatus::Idle
             }
-            (_, FileOutcome::RecordingAnalyzed(Err(error))) => FileStatus::Failed(error.into()),
+            (
+                _,
+                FileOutcome::RecordingAnalyzed(Err(error))
+                | FileOutcome::RecordingOpened(Err(error)),
+            ) => FileStatus::Failed(error.into()),
             (_, FileOutcome::RecordingOpened(Ok(recording))) => {
                 self.recording = Some(recording);
                 self.recording_analysis = None;
                 FileStatus::Idle
             }
             (_, FileOutcome::Imported(Err(error))) => FileStatus::Failed(error.into()),
-            (_, FileOutcome::RecordingOpened(Err(error))) => FileStatus::Failed(error.into()),
             (_, FileOutcome::RecipeExported(Err(error))) => FileStatus::Failed(error.into()),
             (_, FileOutcome::Exported(Err(error))) => FileStatus::Failed(error.into()),
             _ => FileStatus::WorkerFailed {

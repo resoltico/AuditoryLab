@@ -65,6 +65,7 @@ pub struct RecipeSnapshot {
     recipe: Arc<Recipe>,
     realizations: Arc<std::sync::Mutex<Realizations>>,
     nominal: Arc<auditorylab_core::rhythm::Analysis>,
+    copy_preview: Arc<std::sync::OnceLock<Result<(), auditorylab_core::RecipeError>>>,
     canonical_text: Arc<std::sync::OnceLock<Result<Arc<str>, auditorylab_core::RecipeError>>>,
 }
 
@@ -87,6 +88,7 @@ impl RecipeSnapshot {
         let nominal = Arc::new(auditorylab_core::rhythm::nominal(recipe.sound()));
         Self {
             nominal,
+            copy_preview: Arc::new(std::sync::OnceLock::new()),
             canonical_text: Arc::new(std::sync::OnceLock::new()),
             id: SnapshotId::next(),
             origin,
@@ -120,6 +122,22 @@ impl RecipeSnapshot {
     pub(crate) fn canonical_text(&self) -> Result<Arc<str>, auditorylab_core::RecipeError> {
         self.canonical_text
             .get_or_init(|| self.recipe.to_toml().map(Arc::<str>::from))
+            .clone()
+    }
+    /// Side-effect-free cached capacity check for this immutable snapshot's full copy.
+    pub(crate) fn copy_readiness(&self) -> Result<(), auditorylab_core::RecipeError> {
+        self.copy_preview
+            .get_or_init(|| {
+                let catalog = match self.origin() {
+                    Origin::BuiltIn(id) => Some((*id).into()),
+                    _ => None,
+                };
+                self.recipe.copy_preview(
+                    catalog,
+                    crate::core::vocabulary::copy_note(self.recipe()),
+                    crate::core::vocabulary::copy_title(&self.title()),
+                )
+            })
             .clone()
     }
     /// The captured document.
@@ -307,5 +325,28 @@ impl std::fmt::Display for Origin {
             Self::File(path) => write!(f, "{}", path.display()),
             Self::Stream(label) | Self::Draft(label) => f.write_str(label),
         }
+    }
+}
+
+#[cfg(test)]
+mod copy_tests {
+    use super::*;
+    #[test]
+    fn warmed_copy_availability_allocates_nothing_and_preserves_snapshot() {
+        let snapshot = RecipeSnapshot::new(
+            Origin::BuiltIn(crate::core::catalog::ENTRIES[0].id),
+            crate::core::catalog::ENTRIES[0].recipe().unwrap(),
+        );
+        let recipe = snapshot.recipe().clone();
+        let id = snapshot.id();
+        assert!(snapshot.copy_readiness().is_ok());
+        let measured = allocation_counter::measure(|| {
+            for _ in 0..100 {
+                assert!(snapshot.copy_readiness().is_ok());
+            }
+        });
+        assert_eq!(measured.count_total, 0);
+        assert_eq!(snapshot.id(), id);
+        assert_eq!(snapshot.recipe(), &recipe);
     }
 }

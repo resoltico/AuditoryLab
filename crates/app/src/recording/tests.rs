@@ -31,3 +31,45 @@ fn near_misses_and_short_input_are_unrecognized() {
     assert_eq!(with_head(&[0xFF, 0x00]), F::Unknown);
     assert_eq!(with_head(&[0xFF]), F::Unknown);
 }
+
+#[test]
+fn pure_measurement_cause_survives_the_recording_error_boundary() {
+    use crate::core::diagnostic::Code;
+    use std::error::Error;
+    let error = super::RecordingError::from(
+        auditorylab_core::measurement::MeasurementError::UnsupportedChannels { channels: 3 },
+    );
+    assert_eq!(error.code(), "measurement.unsupported_channels");
+    assert_eq!(error.params()["channels"], 3_u64.into());
+    assert_eq!(
+        error.source().unwrap().to_string(),
+        "measurement.unsupported_channels"
+    );
+}
+
+#[test]
+fn completed_source_extent_rejects_one_frame_overrun_and_overflow() {
+    let mut measurement = auditorylab_core::measurement::Measurement::new(1000, 1, 2000).unwrap();
+    for _ in 0..2000 {
+        measurement.push(&[0.0]).unwrap();
+    }
+    let samples = measurement.finish(&|| false).unwrap();
+    let complete = |source_frames, start_frame| {
+        super::Analysis::complete(
+            "PCM".into(),
+            false,
+            source_frames,
+            start_frame,
+            samples.clone(),
+        )
+    };
+    assert!(complete(Some(3000), 1000).is_ok());
+    assert!(matches!(
+        complete(Some(2999), 1000),
+        Err(super::RecordingError::InvalidWindow)
+    ));
+    assert!(matches!(
+        complete(None, u64::MAX),
+        Err(super::RecordingError::InvalidWindow)
+    ));
+}

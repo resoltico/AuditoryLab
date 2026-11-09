@@ -302,25 +302,56 @@ impl Recipe {
         &self.content
     }
 
-    /// Whether the flat ancestry has room for an independent copy.
-    ///
-    /// # Errors
-    /// Returns the exact capacity failure before a caller allocates a new identity.
-    pub fn copy_readiness(&self) -> Result<(), ContractError> {
-        if self.content.lineage.len() >= crate::provenance::MAX_LINEAGE {
-            return Err(ContractError::CopyLineageFull {
-                count: self.content.lineage.len(),
-            });
+    /// Preview the complete app copy without allocating an identity. Canonical UUID
+    /// widths are fixed; this preview uses no timestamps, like app-created identities.
+    /// The actual supplied identity is independently checked by `prepare_copy`.
+    pub fn copy_preview(
+        &self,
+        catalog_id: Option<String>,
+        note: String,
+        title: String,
+    ) -> Result<(), RecipeError> {
+        let mut bytes = [0; 16];
+        let mut id = crate::DocumentUuid::from_random_bytes(bytes);
+        if id == self.document.id {
+            bytes[0] = 1;
+            id = crate::DocumentUuid::from_random_bytes(bytes);
         }
-        Ok(())
+        self.prepare_copy(
+            DocumentIdentity {
+                id,
+                created_at: None,
+                modified_at: None,
+            },
+            catalog_id,
+            note,
+            title,
+        )
+        .map(|_| ())
     }
-    /// Fork under a new supplied identity and explicit attribution note.
-    /// Retain bibliography and demote evidence to ancestor scope.
+    /// Prepare a complete independent copy, including its final title, and enforce
+    /// the portable byte limit after every identity and attribution transformation.
+    /// Retains all bibliography and flat ancestry, demoting evidence to ancestor scope.
     ///
     /// # Errors
-    /// Refuses ancestry overflow, an empty note or reuse of the original UUID;
-    /// drops no history.
-    pub fn fork(
+    /// Refuses an empty note/title, reused identity, invalid metadata or excess bytes.
+    pub fn prepare_copy(
+        &self,
+        document: DocumentIdentity,
+        catalog_id: Option<String>,
+        note: String,
+        title: String,
+    ) -> Result<Self, RecipeError> {
+        let mut copy = self.copy_fields(document, catalog_id, note)?;
+        match &mut copy.content.description {
+            Some(description) => description.title = title,
+            absent => *absent = Some(Description { title, notes: None }),
+        }
+        copy.validate()?;
+        copy.to_toml()?;
+        Ok(copy)
+    }
+    fn copy_fields(
         &self,
         document: DocumentIdentity,
         catalog_id: Option<String>,
@@ -331,7 +362,6 @@ impl Recipe {
                 id: document.id,
             }));
         }
-        self.copy_readiness().map_err(RecipeError::Contract)?;
         if note.trim().is_empty() {
             return Err(RecipeError::Contract(ContractError::EmptyLineageNote {
                 index: self.content.lineage.len(),

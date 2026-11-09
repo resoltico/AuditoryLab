@@ -32,6 +32,7 @@ use std::path::Path;
 
 /// Confirmed recipe-file publication and any durability or cleanup warnings.
 #[derive(Debug, Clone, Default, PartialEq)]
+#[must_use = "confirmed publication warnings must be handled"]
 pub struct SaveOutcome {
     /// Warnings do not undo successful publication or prevent advancing a saved baseline.
     pub warnings: Vec<crate::storage::warning::StorageWarning>,
@@ -157,8 +158,10 @@ pub fn open_file(
 ///
 /// # Errors
 /// Preserves input admission and read failures.
-pub fn open_recording(path: &Path) -> Result<crate::recording::RecordingFile, FileError> {
-    crate::storage::recording::identify(path)
+pub fn open_recording(
+    path: &Path,
+) -> Result<crate::recording::RecordingFile, crate::recording::RecordingError> {
+    crate::storage::recording::identify(path).map_err(Into::into)
 }
 /// Read one bounded portable stream under an explicit captured attribution.
 ///

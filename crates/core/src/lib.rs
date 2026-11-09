@@ -6,7 +6,6 @@
 //! one [`SampleRate`]; [`Sound::target`] returns a validated [`Target`]. A
 //! [`Signal`] adds the finite envelope. [`live::Engine`] renders targets as an
 //! open-ended stream, and an [`Observation`] states the facts of a generated frame.
-#![no_std]
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 extern crate alloc;
@@ -24,15 +23,13 @@ use analysis::facts;
 pub use analysis::{rhythm, timing};
 
 pub mod diagnostic;
-use diagnostic::{Code, Params};
-#[cfg(test)]
-extern crate std;
 pub use authored::{
     Component, ComponentForm, Pair, PairError, PairIssue, PairKind, Sound, SoundSource,
     StructureError,
 };
 pub use compiled::{Target, TargetCheck};
 pub use contract::{ContractError, ReferenceOwner};
+use diagnostic::{Code, Params};
 pub use facts::{
     CarrierFacts, ModulationFacts, Observation, PairFacts, PhaseRate, PulseFacts, SlotRole,
     VoiceFacts, VoiceObservation,
@@ -67,3 +64,5 @@ pub use model::timing::FiniteTiming;
 
 #[cfg(any(test, feature = "test-support"))]
 pub use test_support::FiniteFixture;
+
+pub mod measurement;

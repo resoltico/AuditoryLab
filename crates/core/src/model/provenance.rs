@@ -9,8 +9,6 @@ use serde::{Deserialize, Serialize};
 pub const MAX_SOURCES: usize = 16;
 /// Maximum scoped evidence records.
 pub const MAX_EVIDENCE: usize = 32;
-/// Maximum flat ancestry descriptors; no entry is silently discarded.
-pub const MAX_LINEAGE: usize = 16;
 
 /// User-visible description of the current authored sound.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -155,11 +153,6 @@ pub fn validate(
             count: evidence.len(),
         });
     }
-    if lineage.len() > MAX_LINEAGE {
-        return Err(E::LineageBudget {
-            count: lineage.len(),
-        });
-    }
     for (index, source) in sources.iter().enumerate() {
         if source.key.trim().is_empty() {
             return Err(E::EmptySourceKey { index });
@@ -185,18 +178,13 @@ pub fn validate(
             });
         }
         if let Some(url) = &source.url {
-            let host = url
-                .strip_prefix("https://")
-                .or_else(|| url.strip_prefix("http://"))
-                .ok_or_else(|| E::UrlScheme {
+            if !(url.starts_with("https://") || url.starts_with("http://")) {
+                return Err(E::UrlScheme {
                     key: source.key.clone(),
                     url: url.clone(),
-                })?;
-            if host.is_empty()
-                || host.starts_with(['/', '?', '#'])
-                || url.chars().any(char::is_whitespace)
-                || url.chars().any(char::is_control)
-            {
+                });
+            }
+            if HttpLocator::new(url).is_none() {
                 return Err(E::InvalidUrl {
                     key: source.key.clone(),
                     url: url.clone(),
@@ -241,6 +229,36 @@ pub fn validate(
     }
     Ok(())
 }
+/// Validated explicit HTTP(S) locator, stored exactly as authored and never fetched.
+/// Credentials, valid ports, IPv6 and Unicode domains follow `url` authority syntax.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HttpLocator(String);
+impl HttpLocator {
+    /// Refuse whitespace/control characters and absent or invalid HTTP authorities.
+    #[must_use]
+    pub fn new(text: &str) -> Option<Self> {
+        if !(text.starts_with("http://") || text.starts_with("https://"))
+            || text.chars().any(|c| c.is_whitespace() || c.is_control())
+        {
+            return None;
+        }
+        // WHATWG parsing accepts missing slashes; require an authored authority
+        // before parsing so normalization cannot turn a path into the host.
+        let authority = text.split_once("://")?.1.split(['/', '?', '#']).next()?;
+        if authority.is_empty() || authority.contains('\\') {
+            return None;
+        }
+        let parsed = url::Url::parse(text).ok()?;
+        parsed.host_str().filter(|host| !host.is_empty())?;
+        Some(Self(text.into()))
+    }
+    /// Original valid authored text, without parser normalization.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 /// Normalize DOI identity without rewriting the displayed citation.
 #[must_use]
 pub fn normalize_doi(doi: &str) -> Option<String> {
@@ -290,3 +308,38 @@ crate::vocabulary::vocabulary! { Measure,"measure" {
     Hearing => ("hearing","Hearing","hearing"),
     Other => ("other","Other","other"),
 }}
+
+#[cfg(test)]
+mod locator_tests {
+    use super::*;
+    #[test]
+    fn real_authorities_are_required_without_normalizing_authored_text() {
+        for text in [
+            "https://user@",
+            "https://:",
+            "https:///path",
+            "https://",
+            "https://?x",
+            "https://#x",
+            "https://host:65536/",
+            "https://[::1",
+            "https://host\\bad/",
+            "ftp://host/",
+            "https://host/ x",
+            "https://host/\n",
+            " https://host",
+            "https://host/\u{0085}",
+        ] {
+            assert!(HttpLocator::new(text).is_none(), "{text:?}");
+        }
+        for text in [
+            "https://Example.COM/%2f?q=A#B",
+            "http://name:password@example.com:8080/a",
+            "https://[::1]:443/",
+            "https://münich.example/path",
+            "https://host.example/space%20here",
+        ] {
+            assert_eq!(HttpLocator::new(text).unwrap().as_str(), text);
+        }
+    }
+}

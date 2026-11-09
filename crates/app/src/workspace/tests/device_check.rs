@@ -202,6 +202,23 @@ fn analysis_admission_capture_cancellation_and_failure_preserve_complete_finding
     assert!(workspace.recording_analysis().is_none());
     workspace.respond(execute_file(job));
     let previous = workspace.recording_analysis().cloned().unwrap();
+    workspace.take_effects();
+    for command in [
+        DeviceCheckCommand::Answer(DeviceTest::Tone100Hz, DeviceAnswer::Heard),
+        DeviceCheckCommand::Answer(DeviceTest::Tone60Hz, DeviceAnswer::Heard),
+        DeviceCheckCommand::Answer(DeviceTest::Tone40Hz, DeviceAnswer::NotHeard),
+        DeviceCheckCommand::Clear,
+    ] {
+        workspace.apply(Command::DeviceCheck(command)).unwrap();
+        assert_eq!(workspace.recording_analysis(), Some(&previous));
+        assert!(
+            !workspace
+                .take_effects()
+                .iter()
+                .any(|effect| matches!(effect, Effect::Run(_)))
+        );
+    }
+
     workspace.apply(request).unwrap();
     let job = take_file_job(&mut workspace);
     workspace
@@ -222,7 +239,10 @@ fn analysis_admission_capture_cancellation_and_failure_preserve_complete_finding
     ));
     workspace
         .apply(Command::File(FileCommand::AnalyzeRecording(
-            AnalysisOptions { seconds: Some(0) },
+            AnalysisOptions {
+                start_seconds: 0,
+                seconds: Some(0),
+            },
         )))
         .unwrap();
     let job = take_file_job(&mut workspace);

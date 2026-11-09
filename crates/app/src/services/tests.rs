@@ -64,7 +64,7 @@ fn add_as_copy_creates_independent_history_without_rewriting_input() {
     let bytes = original.to_toml().unwrap();
     std::fs::write(&input, &bytes).unwrap();
     let library = Library::at_path(directory.path().join("library")).unwrap();
-    library.initialize().unwrap();
+    assert_eq!(library.initialize().unwrap().warnings, []);
     let imported = library
         .add_file(&input, false, &Cancel::default())
         .unwrap()
@@ -102,7 +102,7 @@ fn add_as_copy_creates_independent_history_without_rewriting_input() {
 fn trash_membership_refuses_current_and_captured_playback_before_device_access() {
     let directory = directory();
     let library = Library::at_path(directory.path().join("library")).unwrap();
-    library.initialize().unwrap();
+    assert_eq!(library.initialize().unwrap().warnings, []);
     let snapshot = crate::document::recipe::RecipeSnapshot::new(
         crate::document::recipe::Origin::Stream("silence".into()),
         crate::test_recipes::silent(1.0, 0.0),
@@ -114,7 +114,7 @@ fn trash_membership_refuses_current_and_captured_playback_before_device_access()
         .unwrap();
     let context = LibraryContext::from_library(library.clone());
     let before = resolve(Source::Selector(record.key.clone()), &context).unwrap();
-    library
+    let _published = library
         .trash(
             record.key.clone(),
             Some(record.version_token),
@@ -159,7 +159,7 @@ fn trash_membership_refuses_current_and_captured_playback_before_device_access()
 fn retained_user_provenance_does_not_invent_a_managed_selection() {
     let directory = directory();
     let library = Library::at_path(directory.path().join("library")).unwrap();
-    library.initialize().unwrap();
+    assert_eq!(library.initialize().unwrap().warnings, []);
     let input = crate::document::recipe::RecipeSnapshot::new(
         crate::document::recipe::Origin::Stream("original".into()),
         crate::test_recipes::silent(1.0, 0.0),
@@ -170,7 +170,7 @@ fn retained_user_provenance_does_not_invent_a_managed_selection() {
         .record
         .unwrap();
     let captured = record.snapshot;
-    library
+    let _published = library
         .rename(
             record.key,
             Some(record.version_token),
@@ -217,10 +217,10 @@ fn library_context_keeps_its_captured_root_and_revalidates_action_state() {
     let first = Library::at_path(directory.path().join("first")).unwrap();
     let second = Library::at_path(directory.path().join("second")).unwrap();
     for (library, title) in [(&first, "First root"), (&second, "Second root")] {
-        library.initialize().unwrap();
+        assert_eq!(library.initialize().unwrap().warnings, []);
         let mut draft = Draft::new().unwrap();
         draft.set_title(title.into());
-        library
+        let _published = library
             .apply(
                 library::Mutation::Create(std::sync::Arc::new(draft.recipe().unwrap())),
                 &Cancel::default(),
@@ -326,4 +326,95 @@ fn export_rendition_uses_the_capture_even_after_its_cache_entry_is_evicted() {
         .is_err()
     );
     assert!(!started_again, "a refused destination never starts writing");
+}
+
+#[test]
+fn input_and_publication_owners_classify_the_same_neutral_io_cause_independently() {
+    let cause = FileError::Io(IoFailure::new(
+        IoOperation::Open,
+        None,
+        std::io::Error::new(std::io::ErrorKind::PermissionDenied, "injected refusal"),
+    ));
+    assert_eq!(
+        crate::services::LoadError::from(cause.clone()).outcome(),
+        crate::outcome::Outcome::Unreadable
+    );
+    assert_eq!(
+        crate::recording::RecordingError::from(cause.clone()).outcome(),
+        crate::outcome::Outcome::Unreadable
+    );
+    assert_eq!(
+        SaveError::from(cause.clone()).outcome(),
+        crate::outcome::Outcome::Write
+    );
+    assert_eq!(
+        ExportError::from(cause).outcome(),
+        crate::outcome::Outcome::Write
+    );
+}
+
+#[test]
+fn publication_confirmation_survives_aggregate_error_and_cleanup_context() {
+    let error = FileError::AfterMutation {
+        phase: crate::services::MutationPhase::Publish,
+        path: "output.toml".into(),
+        confirmation: crate::services::Confirmation::Unchanged,
+        cause: IoCause::new(std::io::Error::other("injected publication failure")),
+    }
+    .with_leftover(
+        "stage.toml".into(),
+        std::io::Error::other("injected cleanup failure"),
+    );
+    let error = OperationError::from(SaveError::from(error));
+    assert!(matches!(
+        error.publication_confirmation(),
+        Some(crate::services::Confirmation::Unchanged)
+    ));
+    assert_eq!(error.outcome(), crate::outcome::Outcome::Write);
+    assert_eq!(error.leftover(), Some(std::path::Path::new("stage.toml")));
+}
+
+#[test]
+fn root_inspection_keeps_readonly_failures_busy_and_publication_categories_distinct() {
+    let directory = directory();
+    let file = directory.path().join("regular-file-root");
+    std::fs::write(&file, b"preserve this ordinary file").unwrap();
+    let context = LibraryContext::resolve(Some(&file));
+    let observed = library::path(&context).unwrap();
+    assert_eq!(observed.exists, Some(true));
+    let error = observed.result.unwrap_err();
+    assert_eq!(error.outcome(), Outcome::Unreadable);
+    assert!(
+        matches!(error, LibraryError::Read { ref error } if error.action == IoOperation::OpenDirectory)
+    );
+    assert_eq!(
+        std::fs::read(&file).unwrap(),
+        b"preserve this ordinary file"
+    );
+
+    let store = Library::at_path(directory.path().join("library")).unwrap();
+    assert_eq!(store.initialize().unwrap().warnings, []);
+    let lock = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(store.path().join(".library.lock"))
+        .unwrap();
+    lock.try_lock().unwrap();
+    let locked = library::path(&LibraryContext::resolve(Some(store.path()))).unwrap();
+    assert_eq!(locked.result.unwrap_err().outcome(), Outcome::Busy);
+    drop(lock);
+    assert!(store.inspect().unwrap().initialized);
+
+    let publication = LibraryError::File {
+        error: FileError::Io(IoFailure::new(
+            IoOperation::Write,
+            None,
+            std::io::Error::other("injected publication failure"),
+        )),
+    };
+    assert_eq!(publication.outcome(), Outcome::Write);
+    let conflict = LibraryError::StaleContent {
+        id: "00000000-0000-4000-8000-000000000001".parse().unwrap(),
+    };
+    assert_eq!(conflict.outcome(), Outcome::Conflict);
 }

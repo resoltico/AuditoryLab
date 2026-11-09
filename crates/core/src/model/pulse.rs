@@ -125,56 +125,46 @@ impl<'de> Deserialize<'de> for PulseShape {
     }
 }
 impl PulseSpec {
-    pub(crate) fn get(self, p: crate::ParameterId, modulation: bool) -> Option<Finite> {
+    #[cfg(test)]
+    pub(crate) fn get(mut self, p: crate::ParameterId, modulation: bool) -> Option<Finite> {
+        self.field_mut(p, modulation).copied()
+    }
+    #[cfg(test)]
+    pub(crate) fn set(&mut self, p: crate::ParameterId, v: Finite, modulation: bool) -> bool {
+        let Some(field) = self.field_mut(p, modulation) else {
+            return false;
+        };
+        *field = v;
+        true
+    }
+    pub(crate) fn field_mut(
+        &mut self,
+        p: crate::ParameterId,
+        modulation: bool,
+    ) -> Option<&mut Finite> {
         use crate::ParameterId as P;
         match (p, modulation) {
-            (P::ModulationPulseRate, true) | (P::SourcePulseRate, false) => Some(self.rate_hz),
+            (P::ModulationPulseRate, true) | (P::SourcePulseRate, false) => Some(&mut self.rate_hz),
             (P::ModulationPulseDuration, true) | (P::SourcePulseDuration, false) => {
-                match self.width {
+                match &mut self.width {
                     PulseWidth::Duration { seconds } => Some(seconds),
                     PulseWidth::DutyCycle { .. } => None,
                 }
             }
-            (P::ModulationDuty, true) | (P::SourceDuty, false) => match self.width {
+            (P::ModulationDuty, true) | (P::SourceDuty, false) => match &mut self.width {
                 PulseWidth::DutyCycle { fraction } => Some(fraction),
                 PulseWidth::Duration { .. } => None,
             },
-            (P::ModulationRise, true) | (P::SourceRise, false) => match self.shape {
+            (P::ModulationRise, true) | (P::SourceRise, false) => match &mut self.shape {
                 PulseShape::RaisedCosine { rise_seconds, .. } => Some(rise_seconds),
                 PulseShape::Rectangular {} => None,
             },
-            (P::ModulationFall, true) | (P::SourceFall, false) => match self.shape {
+            (P::ModulationFall, true) | (P::SourceFall, false) => match &mut self.shape {
                 PulseShape::RaisedCosine { fall_seconds, .. } => Some(fall_seconds),
                 PulseShape::Rectangular {} => None,
             },
             _ => None,
         }
-    }
-    pub(crate) fn set(&mut self, p: crate::ParameterId, v: Finite, modulation: bool) -> bool {
-        use crate::ParameterId as P;
-        match (p, modulation) {
-            (P::ModulationPulseRate, true) | (P::SourcePulseRate, false) => self.rate_hz = v,
-            (P::ModulationPulseDuration, true) | (P::SourcePulseDuration, false) => {
-                match &mut self.width {
-                    PulseWidth::Duration { seconds } => *seconds = v,
-                    PulseWidth::DutyCycle { .. } => return false,
-                }
-            }
-            (P::ModulationDuty, true) | (P::SourceDuty, false) => match &mut self.width {
-                PulseWidth::DutyCycle { fraction } => *fraction = v,
-                PulseWidth::Duration { .. } => return false,
-            },
-            (P::ModulationRise, true) | (P::SourceRise, false) => match &mut self.shape {
-                PulseShape::RaisedCosine { rise_seconds, .. } => *rise_seconds = v,
-                PulseShape::Rectangular {} => return false,
-            },
-            (P::ModulationFall, true) | (P::SourceFall, false) => match &mut self.shape {
-                PulseShape::RaisedCosine { fall_seconds, .. } => *fall_seconds = v,
-                PulseShape::Rectangular {} => return false,
-            },
-            _ => return false,
-        }
-        true
     }
     /// Requested window duration before frame rounding.
     pub fn requested_seconds(self) -> f64 {

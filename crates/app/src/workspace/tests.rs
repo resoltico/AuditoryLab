@@ -26,7 +26,7 @@ impl TestWorkspace {
         std::fs::create_dir_all(&base).unwrap();
         let root = tempfile::tempdir_in(base).unwrap();
         let store = crate::services::library::Library::at_path(root.path().join("library"))?;
-        store.initialize()?;
+        assert_eq!(store.initialize()?.warnings, []);
         let open_files = !catalog.is_empty()
             && catalog.iter().all(|snapshot| {
                 !matches!(
@@ -363,12 +363,14 @@ fn reopened_copy_navigation_keeps_declared_ancestry_without_reconstructing_origi
     .unwrap();
     let path = dir.path().join("original.toml");
     let original = crate::services::catalog().unwrap().remove(0);
-    crate::services::save_content(original.recipe(), &path, crate::job::Replace::Never).unwrap();
+    let _published =
+        crate::services::save_content(original.recipe(), &path, crate::job::Replace::Never)
+            .unwrap();
     let loaded = crate::storage::load::load_file(&path).unwrap();
     let mut draft = Draft::from_snapshot(&loaded).unwrap();
     draft.set_summary("Own notes".into());
     let derivative = dir.path().join("derivative.toml");
-    crate::services::save_content(
+    let _published = crate::services::save_content(
         &draft.recipe().unwrap(),
         &derivative,
         crate::job::Replace::Never,
@@ -616,7 +618,7 @@ fn over_budget_copy_content_is_refused_before_becoming_a_snapshot() {
 }
 
 #[test]
-fn copy_inputs_reject_nonfinite_construction_and_full_lineage() {
+fn copy_inputs_reject_nonfinite_construction_and_keep_seventeen_generations() {
     assert!(crate::core::Finite::new(f64::NAN).is_none());
     let mut source = Draft::new().unwrap().recipe().unwrap().into_builder();
     source
@@ -648,7 +650,7 @@ fn copy_inputs_reject_nonfinite_construction_and_full_lineage() {
         crate::document::recipe::Origin::Stream("full ancestry".into()),
         full.build().unwrap(),
     );
-    assert!(Workspace::copy_content_admission(&full).is_err());
+    assert!(Workspace::copy_content_admission(&full).is_ok());
 }
 
 #[test]
@@ -1186,7 +1188,7 @@ fn actual_import_completion_controls_dependent_close_and_never_runs_on_poll() {
         let directory = temporary_directory();
         let path = directory.path().join("chosen.toml");
         if exists {
-            crate::services::save_content(
+            let _published = crate::services::save_content(
                 short_silent_source().recipe(),
                 &path,
                 crate::job::Replace::Never,
@@ -1746,3 +1748,158 @@ fn workbench_save_activations_capture_jobs() {
 
 mod device_check;
 mod learning;
+
+#[test]
+fn editor_rows_keep_component_local_pair_errors_between_other_failures() {
+    let mut ws = workspace();
+    let mut recipe = Draft::new().unwrap().recipe().unwrap().into_builder();
+    let tone = |frequency_hz, peak_dbfs| crate::core::ComponentForm {
+        source: crate::core::SoundSource::Tone {
+            route: crate::core::ChannelRouting::Both,
+            frequency_hz: finite(frequency_hz),
+            peak_dbfs: finite(peak_dbfs),
+        },
+        modulation: None,
+    };
+    let pair = crate::core::ComponentForm {
+        source: crate::core::SoundSource::BinauralPair {
+            first_hz: finite(200.0),
+            offset_hz: finite(-300.0),
+            first_peak_dbfs: finite(-30.0),
+            second_peak_dbfs: finite(-30.0),
+        },
+        modulation: None,
+    };
+    recipe.content.sound = crate::core::Sound::new(
+        [tone(30_000.0, -30.0), pair, tone(440.0, 1.0)]
+            .into_iter()
+            .enumerate()
+            .map(|(i, form)| crate::core::Component {
+                id: ComponentId::numbered(i).unwrap(),
+                form,
+            })
+            .collect(),
+    )
+    .unwrap();
+    ws.install_document(EditorSession::new(Draft::from_recipe(recipe.build().unwrap())).unwrap());
+    let view = ws.editor_view();
+    assert!(
+        view.components[0]
+            .parameters
+            .iter()
+            .find(|p| p.parameter == ParameterId::ToneFrequency)
+            .unwrap()
+            .diagnostic
+            .is_some()
+    );
+    assert!(matches!(
+        view.components[1]
+            .parameters
+            .iter()
+            .find(|p| p.parameter == ParameterId::PairOffset)
+            .unwrap()
+            .diagnostic,
+        Some(FieldDiagnostic::Sound(crate::core::SoundError::Pair(_)))
+    ));
+    assert!(
+        view.components[2]
+            .parameters
+            .iter()
+            .find(|p| p.parameter == ParameterId::PeakLevel)
+            .unwrap()
+            .diagnostic
+            .is_some()
+    );
+}
+
+#[test]
+fn export_job_executes_the_admitted_rendition_after_realization_cache_eviction() {
+    let source = short_silent_source();
+    let mut ws = TestWorkspace::new(vec![source.clone()], Capabilities::available()).unwrap();
+    ws.select(0);
+    ws.take_effects();
+    ws.apply(Command::File(FileCommand::ExportWav)).unwrap();
+    let prompt = ws
+        .take_effects()
+        .into_iter()
+        .find_map(|effect| match effect {
+            Effect::ChoosePath { prompt, .. } => Some(prompt),
+            _ => None,
+        })
+        .unwrap();
+    let path = ws.store.path().parent().unwrap().join("captured.wav");
+    ws.apply(Command::Answer {
+        prompt,
+        answer: PromptAnswer::Path(Some(path.clone())),
+    })
+    .unwrap();
+    let job = ws
+        .take_effects()
+        .into_iter()
+        .find_map(|effect| match effect {
+            Effect::Run(job) => Some(job),
+            _ => None,
+        })
+        .unwrap();
+    source.at(SampleRate::new(96_000).unwrap()).unwrap();
+    source.at(SampleRate::new(192_000).unwrap()).unwrap();
+    let compilations = source.realization_count();
+    let Response::Finished {
+        outcome: JobOutcome::File(FileOutcome::Exported(Ok(exported))),
+        ..
+    } = job.execute(|_| panic!("file job must not prepare audio"))
+    else {
+        panic!("export succeeded")
+    };
+    assert_eq!(exported.warnings, []);
+    assert_eq!(exported.sample_rate, SampleRate::DEFAULT);
+    assert_eq!(source.realization_count(), compilations);
+    let bytes = std::fs::read(path).unwrap();
+    let data = bytes.windows(4).position(|word| word == b"data").unwrap();
+    assert!(bytes[data + 8..].iter().all(|byte| *byte == 0));
+    assert_eq!(
+        bytes.len() - data - 8,
+        usize::try_from(exported.frames * 8).unwrap()
+    );
+}
+
+#[test]
+fn recording_input_failures_keep_their_context_through_worker_completion() {
+    let mut ws = workspace();
+    let missing = ws.store.path().parent().unwrap().join("missing.wav");
+    let error = crate::services::open_recording(&missing).unwrap_err();
+    assert_eq!(error.outcome(), crate::outcome::Outcome::Unreadable);
+    let outcome = JobOutcome::File(FileOutcome::RecordingOpened(Err(error)));
+    let TaskFailure::Operation(error) = outcome.failure().unwrap() else {
+        panic!("operation")
+    };
+    assert_eq!(error.outcome(), crate::outcome::Outcome::Unreadable);
+    ws.take_effects();
+    ws.apply(Command::File(FileCommand::OpenRecording)).unwrap();
+    let prompt = ws
+        .take_effects()
+        .into_iter()
+        .find_map(|effect| match effect {
+            Effect::ChoosePath { prompt, .. } => Some(prompt),
+            _ => None,
+        })
+        .unwrap();
+    ws.apply(Command::Answer {
+        prompt,
+        answer: PromptAnswer::Path(Some(missing)),
+    })
+    .unwrap();
+    let job = ws
+        .take_effects()
+        .into_iter()
+        .find_map(|effect| match effect {
+            Effect::Run(job) => Some(job),
+            _ => None,
+        })
+        .unwrap();
+    ws.respond(job.execute(|_| panic!("no audio")));
+    assert!(
+        matches!(ws.action_view().file_status, FileStatus::Failed(ref error)
+        if error.outcome() == crate::outcome::Outcome::Unreadable)
+    );
+}

@@ -47,7 +47,8 @@ pub fn find(name: &str) -> Option<&'static Entry> {
     ENTRIES.iter().find(|entry| entry.id == name)
 }
 
-use alloc::{boxed::Box, string::String};
+use alloc::{string::String, vec::Vec};
+use serde::Deserialize;
 
 /// Recipes adapted from published conditions share this evidence boundary.
 const LIMITATIONS: &str = "Source findings concern the stated population and condition; \
@@ -187,98 +188,139 @@ const STUDIES: &[(&str, &str)] = &[
 ];
 
 impl Entry {
-    /// Standalone portable TOML, with study citations and evidence limitations.
-    #[must_use]
-    pub fn text(&self) -> String {
+    /// Build the strict typed portable recipe, merging authoritative study facts.
+    /// No serialization or portable-text reparsing occurs on this path.
+    pub fn recipe(&self) -> Result<crate::Recipe, crate::RecipeError> {
         generated_recipe(self.condition, |key| {
             STUDIES
                 .iter()
                 .find(|(id, _)| *id == key)
                 .map(|(_, text)| String::from(*text))
-                .ok_or_else(|| "unknown built-in study".into())
+                .ok_or_else(|| author_error("unknown built-in study"))
         })
-        .unwrap_or_else(|error| panic!("invalid built-in {}: {error}", self.id))
+    }
+    /// Standalone portable TOML, with study citations and evidence limitations.
+    #[must_use]
+    pub fn text(&self) -> String {
+        self.recipe()
+            .and_then(|recipe| recipe.to_toml())
+            .unwrap_or_else(|error| panic!("invalid built-in {}: {error}", self.id))
     }
 }
 
-fn generated_recipe(
-    condition: &str,
-    mut read: impl FnMut(&str) -> Result<String, Box<dyn core::error::Error>>,
-) -> Result<String, Box<dyn core::error::Error>> {
-    let mut document: toml::Table = toml::from_str(condition)?;
-    let sources = document
-        .get_mut("source")
-        .and_then(toml::Value::as_array_mut)
-        .ok_or("missing condition bibliography")?;
-    if sources.is_empty() {
-        return Err("catalog conditions require a bibliography record".into());
-    }
-    for source in sources {
-        merge_study(
-            source.as_table_mut().ok_or("source must be a table")?,
-            &mut read,
-        )?;
-    }
-    let evidence = document
-        .get_mut("evidence")
-        .and_then(toml::Value::as_array_mut)
-        .ok_or("missing condition evidence")?;
-    for record in evidence {
-        record
-            .as_table_mut()
-            .ok_or("evidence must be a table")?
-            .entry("limitations")
-            .or_insert_with(|| toml::Value::String(LIMITATIONS.into()));
-    }
-    Ok(toml::to_string(&document)?)
+fn author_error(message: &str) -> crate::RecipeError {
+    crate::RecipeError::Format(<toml::de::Error as serde::de::Error>::custom(message))
 }
-
-/// Complete one condition bibliography key from its study record, which alone
-/// owns the label, citation and DOI.
-fn merge_study(
-    source: &mut toml::Table,
-    read: &mut impl FnMut(&str) -> Result<String, Box<dyn core::error::Error>>,
-) -> Result<(), Box<dyn core::error::Error>> {
-    let key = source
-        .get("key")
-        .and_then(toml::Value::as_str)
-        .ok_or("missing source key")?;
-    if key.is_empty()
-        || !key
-            .bytes()
-            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'-')
-    {
-        return Err("invalid study source ID".into());
-    }
-    let study: toml::Table = toml::from_str(&read(key)?)?;
-    if study.len() != 3
-        || !["label", "citation", "source_url"]
-            .iter()
-            .all(|k| study.contains_key(*k))
-    {
-        return Err("study must contain only label, citation and source_url".into());
-    }
-    let url = study
-        .get("source_url")
-        .and_then(toml::Value::as_str)
-        .ok_or("missing URL")?;
-    let doi = url
-        .strip_prefix("https://doi.org/")
-        .ok_or("study URL must be a DOI URL")?;
-    for (field, value) in [
-        ("label", study.get("label").cloned().ok_or("missing label")?),
-        (
-            "citation",
-            study.get("citation").cloned().ok_or("missing citation")?,
-        ),
-        ("url", toml::Value::String(url.into())),
-        ("doi", toml::Value::String(doi.to_ascii_lowercase())),
-    ] {
-        if source.insert(field.into(), value).is_some() {
-            return Err("condition duplicates authoritative study label/citation/DOI".into());
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Condition {
+    schema_version: u32,
+    document: crate::DocumentIdentity,
+    description: Option<crate::Description>,
+    timing: crate::FiniteTiming,
+    sound: ConditionSound,
+    source: Vec<ConditionSource>,
+    evidence: Vec<ConditionEvidence>,
+    #[serde(default)]
+    lineage: Vec<crate::Lineage>,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ConditionSound {
+    component: Vec<crate::Component>,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ConditionSource {
+    key: String,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Study {
+    label: String,
+    citation: String,
+    source_url: String,
+}
+fn default_limitations() -> String {
+    LIMITATIONS.into()
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ConditionEvidence {
+    source: String,
+    scope: crate::EvidenceScope,
+    population: crate::Population,
+    population_detail: Option<String>,
+    condition_role: crate::ConditionRole,
+    measures: Vec<crate::Measure>,
+    methods_locator: String,
+    summary: String,
+    #[serde(default = "default_limitations")]
+    limitations: String,
+    adaptation: String,
+}
+impl From<ConditionEvidence> for crate::Evidence {
+    fn from(value: ConditionEvidence) -> Self {
+        Self {
+            source: value.source,
+            scope: value.scope,
+            population: value.population,
+            population_detail: value.population_detail,
+            condition_role: value.condition_role,
+            measures: value.measures,
+            methods_locator: value.methods_locator,
+            summary: value.summary,
+            limitations: value.limitations,
+            adaptation: value.adaptation,
         }
     }
-    Ok(())
+}
+fn generated_recipe(
+    condition: &str,
+    mut read: impl FnMut(&str) -> Result<String, crate::RecipeError>,
+) -> Result<crate::Recipe, crate::RecipeError> {
+    let condition: Condition = toml::from_str(condition).map_err(crate::RecipeError::Format)?;
+    if condition.schema_version != crate::Recipe::SCHEMA_VERSION {
+        return Err(crate::RecipeError::UnsupportedVersion {
+            found: condition.schema_version,
+        });
+    }
+    if condition.source.is_empty() {
+        return Err(author_error(
+            "catalog conditions require a bibliography record",
+        ));
+    }
+    let mut sources = Vec::with_capacity(condition.source.len());
+    for source in condition.source {
+        if !crate::catalog_id::valid(&source.key) {
+            return Err(author_error("invalid study source ID"));
+        }
+        let study: Study =
+            toml::from_str(&read(&source.key)?).map_err(crate::RecipeError::Format)?;
+        let doi = study
+            .source_url
+            .strip_prefix("https://doi.org/")
+            .and_then(crate::provenance::normalize_doi)
+            .ok_or_else(|| author_error("study URL must be a DOI URL"))?;
+        sources.push(crate::BibliographySource {
+            key: source.key,
+            label: study.label,
+            citation: study.citation,
+            doi: Some(doi),
+            url: Some(study.source_url),
+        });
+    }
+    let mut builder = crate::Recipe::builder(condition.document);
+    builder.content = crate::RecipeContent {
+        sound: crate::Sound::new(condition.sound.component)
+            .map_err(crate::RecipeError::Structure)?,
+        timing: condition.timing,
+        description: condition.description,
+        sources,
+        evidence: condition.evidence.into_iter().map(Into::into).collect(),
+        lineage: condition.lineage,
+    };
+    builder.build()
 }
 
 #[cfg(test)]
