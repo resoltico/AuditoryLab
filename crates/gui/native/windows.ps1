@@ -166,8 +166,12 @@ try {
     for ($attempt=0; $attempt -lt 3; $attempt++) {
         Invoke-Native (Wait-Native 'enabled Open recipe' { Find-Named $window $openRecipe })
         $dialog = Wait-Native 'native common file dialog' {
-            foreach ($candidate in $root.FindAll([System.Windows.Automation.TreeScope]::Children,$condition)) {
-                if ($candidate.Current.ClassName -eq '#32770' -and $null -ne (Find-Named $candidate 'Cancel')) { return $candidate }
+            # UIA may nest an owned modal under its main window. Its actual
+            # native top-level HWND/owner remain the authoritative shell facts.
+            foreach ($native in [NativeQaWindow]::HandlesFor([uint32]$process.Id)) {
+                if (-not [NativeQaWindow]::IsWindowVisible($native)) { continue }
+                $candidate = $uia::FromHandle($native)
+                if ($candidate.Current.ClassName -eq '#32770' -and -not $candidate.Current.IsOffscreen -and $null -ne (Find-Named $candidate 'Cancel')) { return $candidate }
             }
             return $null
         }
