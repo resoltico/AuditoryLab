@@ -45,6 +45,7 @@ pub struct Inspection<'a> {
     source: &'a Resolved,
     rate: SampleRate,
     result: Result<Rendition, LoadError>,
+    component_check: Option<crate::core::TargetCheck>,
 }
 impl<'a> Inspection<'a> {
     /// Captured source and ownership.
@@ -64,6 +65,12 @@ impl<'a> Inspection<'a> {
     pub fn sound(&self) -> Result<&Rendition, &LoadError> {
         self.result.as_ref()
     }
+    /// Complete component diagnostics and surviving lane facts for invalid sound.
+    /// Valid inspections expose their compiled facts through `sound` instead.
+    #[must_use]
+    pub const fn component_check(&self) -> Option<&crate::core::TargetCheck> {
+        self.component_check.as_ref()
+    }
     /// Frontend-independent failure category; a valid inspection has none.
     #[must_use]
     pub fn outcome(&self) -> Option<Outcome> {
@@ -73,9 +80,15 @@ impl<'a> Inspection<'a> {
 /// Validate one captured source at a rate, retaining an invalid result for structured reporting.
 #[must_use]
 pub fn inspect(source: &Resolved, rate: SampleRate) -> Inspection<'_> {
+    let result = source.snapshot.at(rate).map_err(Into::into);
+    let component_check = result
+        .as_ref()
+        .err()
+        .map(|_| source.snapshot.sound().check(rate));
     Inspection {
         source,
         rate,
-        result: source.snapshot.at(rate).map_err(Into::into),
+        result,
+        component_check,
     }
 }

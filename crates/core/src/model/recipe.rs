@@ -331,6 +331,10 @@ impl Recipe {
     }
     /// Prepare a complete independent copy, including its final title, and enforce
     /// the portable byte limit after every identity and attribution transformation.
+    /// Retains all bibliography and flat ancestry, demoting evidence to ancestor scope.
+    ///
+    /// # Errors
+    /// Refuses an empty note/title, reused identity, invalid metadata or excess bytes.
     pub fn prepare_copy(
         &self,
         document: DocumentIdentity,
@@ -344,22 +348,6 @@ impl Recipe {
             absent => *absent = Some(Description { title, notes: None }),
         }
         copy.validate()?;
-        copy.to_toml()?;
-        Ok(copy)
-    }
-    /// Fork under a new supplied identity and explicit attribution note.
-    /// Retain bibliography and demote evidence to ancestor scope.
-    ///
-    /// # Errors
-    /// Refuses byte-capacity overflow, an empty note or reuse of the original UUID;
-    /// drops no history.
-    pub fn fork(
-        &self,
-        document: DocumentIdentity,
-        catalog_id: Option<String>,
-        note: String,
-    ) -> Result<Self, RecipeError> {
-        let copy = self.copy_fields(document, catalog_id, note)?;
         copy.to_toml()?;
         Ok(copy)
     }

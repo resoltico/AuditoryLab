@@ -10,7 +10,12 @@ use crate as auditorylab_core;
 use auditorylab_core::catalog::{self, Entry};
 use auditorylab_core::{ChannelRouting, Modulation, Recipe, SampleRate};
 use std::path::Path;
-use std::{borrow::ToOwned, format, string::String, vec::Vec};
+use std::{
+    borrow::ToOwned,
+    format,
+    string::{String, ToString},
+    vec::Vec,
+};
 
 /// How an independently written recipe modulates a component.
 #[derive(Debug, Clone, Copy)]
@@ -523,4 +528,42 @@ fn merging_refuses_condition_labels_and_incomplete_study_records() {
         .insert("label".into(), toml::Value::String("Local".into()));
     let labeled = toml::to_string(&labeled).unwrap();
     assert!(super::generated_recipe(&labeled, study(complete)).is_err());
+}
+
+#[test]
+fn typed_catalog_refuses_unknown_duplicate_and_unbound_authoring_records() {
+    let condition = catalog::ENTRIES[0].condition;
+    let read = |key: &str| {
+        Ok(super::STUDIES
+            .iter()
+            .find(|(id, _)| *id == key)
+            .unwrap()
+            .1
+            .to_string())
+    };
+    for text in [
+        condition.replace("schema_version = 5", "schema_version = 5\nunknown = true"),
+        condition.replace(
+            "schema_version = 5",
+            "schema_version = 5\nschema_version = 5",
+        ),
+        condition.replace(
+            "key = \"beauchene-2016\"",
+            "key = \"beauchene-2016\"\nlabel = \"not authoritative\"",
+        ),
+        condition.replace(
+            "[[evidence]]",
+            "[[source]]\nkey = \"beauchene-2016\"\n[[evidence]]",
+        ),
+        condition.replace("source = \"beauchene-2016\"", "source = \"absent-study\""),
+    ] {
+        assert!(super::generated_recipe(&text, read).is_err());
+    }
+    let direct = catalog::ENTRIES[0].recipe().unwrap();
+    let reparsed = Recipe::parse(&catalog::ENTRIES[0].text()).unwrap();
+    assert_eq!(direct, reparsed);
+    assert_eq!(
+        direct.document().id.to_string(),
+        "2a7e2aa0-1cfe-458c-9a29-a591a4d4a80b"
+    );
 }

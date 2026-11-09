@@ -327,3 +327,26 @@ impl std::fmt::Display for Origin {
         }
     }
 }
+
+#[cfg(test)]
+mod copy_tests {
+    use super::*;
+    #[test]
+    fn warmed_copy_availability_allocates_nothing_and_preserves_snapshot() {
+        let snapshot = RecipeSnapshot::new(
+            Origin::BuiltIn(crate::core::catalog::ENTRIES[0].id),
+            crate::core::catalog::ENTRIES[0].recipe().unwrap(),
+        );
+        let recipe = snapshot.recipe().clone();
+        let id = snapshot.id();
+        assert!(snapshot.copy_readiness().is_ok());
+        let measured = allocation_counter::measure(|| {
+            for _ in 0..100 {
+                assert!(snapshot.copy_readiness().is_ok());
+            }
+        });
+        assert_eq!(measured.count_total, 0);
+        assert_eq!(snapshot.id(), id);
+        assert_eq!(snapshot.recipe(), &recipe);
+    }
+}

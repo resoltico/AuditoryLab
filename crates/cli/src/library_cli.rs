@@ -446,11 +446,12 @@ pub(super) fn describe(resolved: &Resolved, format: ReadFormat) -> Result<()> {
 pub(super) fn inspect(resolved: &Resolved, rate: SampleRate, format: ReadFormat) -> Result<u8> {
     let inspection = lab::services::inspect(resolved, rate);
     if format == ReadFormat::Text {
-        let sound = inspection.sound().map_err(Clone::clone)?;
         output(
             format!(
                 "{}\n",
-                prose(&auditorylab_presentation::rendition_inspection(sound))
+                prose(&auditorylab_presentation::inspection_description(
+                    &inspection
+                ))
             )
             .as_bytes(),
         )?;

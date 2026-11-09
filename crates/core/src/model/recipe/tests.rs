@@ -230,7 +230,12 @@ fn copies_keep_scoped_sources_without_an_arbitrary_generation_limit() {
         modified_at: None,
     };
     let copy = original
-        .fork(document.clone(), None, "Explicit attribution".into())
+        .prepare_copy(
+            document.clone(),
+            None,
+            "Explicit attribution".into(),
+            "Copy".into(),
+        )
         .unwrap();
     assert_eq!(copy.content.sources, original.content.sources);
     assert_eq!(
@@ -238,7 +243,7 @@ fn copies_keep_scoped_sources_without_an_arbitrary_generation_limit() {
         "Explicit attribution"
     );
     assert!(matches!(
-        original.fork(document.clone(), None, " ".into()),
+        original.prepare_copy(document.clone(), None, " ".into(), "Copy".into()),
         Err(RecipeError::Contract(
             ContractError::EmptyLineageNote { .. }
         ))
@@ -259,7 +264,7 @@ fn copies_keep_scoped_sources_without_an_arbitrary_generation_limit() {
         .lineage
         .resize(16, full.content.lineage[0].clone());
     assert_eq!(
-        full.fork(document, None, "Explicit attribution".into())
+        full.prepare_copy(document, None, "Explicit attribution".into(), "Copy".into())
             .unwrap()
             .content
             .lineage

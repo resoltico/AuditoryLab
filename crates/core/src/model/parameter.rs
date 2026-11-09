@@ -385,3 +385,224 @@ mod tests {
         assert_eq!(ComponentId::numbered(usize::MAX), None);
     }
 }
+
+#[cfg(test)]
+mod access_oracles {
+    use crate::test_support::finite;
+    use crate::{
+        ChannelRouting, ComponentForm, Modulation, ParameterId as P, PulseShape, PulseSpec,
+        PulseWidth, SoundSource,
+    };
+    #[test]
+    fn tone_and_sinusoidal_fields_address_named_fields_without_touching_routes() {
+        let mut form = ComponentForm {
+            source: SoundSource::Tone {
+                route: ChannelRouting::Left,
+                frequency_hz: finite(317.0),
+                peak_dbfs: finite(-0.0),
+            },
+            modulation: Some(Modulation::Sinusoidal {
+                rate_hz: finite(8.0),
+                depth: finite(0.3),
+            }),
+        };
+        for (p, value) in [
+            (P::ToneFrequency, 317.0_f64),
+            (P::PeakLevel, -0.0),
+            (P::ModulationRate, 8.0),
+            (P::ModulationDepth, 0.3),
+        ] {
+            assert_eq!(form.get(p).unwrap().get().to_bits(), value.to_bits());
+        }
+        assert!(form.set(P::ToneFrequency, finite(1000.0)));
+        assert!(form.set(P::PeakLevel, finite(-30.0)));
+        assert!(form.set(P::ModulationRate, finite(12.0)));
+        assert!(form.set(P::ModulationDepth, finite(-0.0)));
+        assert_eq!(
+            form,
+            ComponentForm {
+                source: SoundSource::Tone {
+                    route: ChannelRouting::Left,
+                    frequency_hz: finite(1000.0),
+                    peak_dbfs: finite(-30.0)
+                },
+                modulation: Some(Modulation::Sinusoidal {
+                    rate_hz: finite(12.0),
+                    depth: finite(-0.0)
+                })
+            }
+        );
+        assert_eq!(
+            form.get(P::ModulationDepth).unwrap().get().to_bits(),
+            (-0.0_f64).to_bits()
+        );
+    }
+    #[test]
+    fn source_and_shared_pulse_fields_preserve_independently_named_values_and_bits() {
+        let shaped = PulseSpec {
+            rate_hz: finite(4.0),
+            width: PulseWidth::DutyCycle {
+                fraction: finite(0.2),
+            },
+            shape: PulseShape::RaisedCosine {
+                rise_seconds: finite(0.001),
+                fall_seconds: finite(0.002),
+            },
+        };
+        let mut form = ComponentForm {
+            source: SoundSource::PulseTrain {
+                route: ChannelRouting::Right,
+                pulse: shaped,
+                peak_dbfs: finite(-0.0),
+            },
+            modulation: Some(Modulation::Pulsed { pulse: shaped }),
+        };
+        for (p, expected) in [
+            (P::SourcePulseRate, 4.0),
+            (P::SourceDuty, 0.2),
+            (P::SourceRise, 0.001),
+            (P::SourceFall, 0.002),
+            (P::ModulationPulseRate, 4.0),
+            (P::ModulationDuty, 0.2),
+            (P::ModulationRise, 0.001),
+            (P::ModulationFall, 0.002),
+        ] {
+            assert_eq!(form.get(p), Some(finite(expected)));
+        }
+        for (p, value) in [
+            (P::SourcePulseRate, 5.0),
+            (P::SourceDuty, 0.3),
+            (P::SourceRise, 0.003),
+            (P::SourceFall, 0.004),
+            (P::ModulationPulseRate, 6.0),
+            (P::ModulationDuty, 0.4),
+            (P::ModulationRise, 0.005),
+            (P::ModulationFall, 0.006),
+        ] {
+            assert!(form.set(p, finite(value)));
+        }
+        assert_eq!(
+            form.source,
+            SoundSource::PulseTrain {
+                route: ChannelRouting::Right,
+                peak_dbfs: finite(-0.0),
+                pulse: PulseSpec {
+                    rate_hz: finite(5.0),
+                    width: PulseWidth::DutyCycle {
+                        fraction: finite(0.3)
+                    },
+                    shape: PulseShape::RaisedCosine {
+                        rise_seconds: finite(0.003),
+                        fall_seconds: finite(0.004)
+                    }
+                }
+            }
+        );
+        assert_eq!(
+            form.modulation,
+            Some(Modulation::Pulsed {
+                pulse: PulseSpec {
+                    rate_hz: finite(6.0),
+                    width: PulseWidth::DutyCycle {
+                        fraction: finite(0.4)
+                    },
+                    shape: PulseShape::RaisedCosine {
+                        rise_seconds: finite(0.005),
+                        fall_seconds: finite(0.006)
+                    }
+                }
+            })
+        );
+        assert_eq!(
+            form.get(P::PeakLevel).unwrap().get().to_bits(),
+            (-0.0_f64).to_bits()
+        );
+        let before = form;
+        for p in [
+            P::ToneFrequency,
+            P::PairFirstFrequency,
+            P::PairOffset,
+            P::PairFirstLevel,
+            P::PairSecondLevel,
+            P::SourcePulseDuration,
+            P::ModulationPulseDuration,
+            P::ModulationRate,
+            P::ModulationDepth,
+            P::Duration,
+            P::Fade,
+        ] {
+            assert!(form.get(p).is_none());
+            assert!(!form.set(p, finite(12.0)));
+            assert_eq!(form, before);
+        }
+    }
+    #[test]
+    fn duration_widths_address_their_source_and_modulation_fields_independently() {
+        let shaped = PulseSpec {
+            rate_hz: finite(4.0),
+            width: PulseWidth::DutyCycle {
+                fraction: finite(0.2),
+            },
+            shape: PulseShape::RaisedCosine {
+                rise_seconds: finite(0.001),
+                fall_seconds: finite(0.002),
+            },
+        };
+        let mut duration = ComponentForm {
+            source: SoundSource::PulseTrain {
+                route: ChannelRouting::Left,
+                peak_dbfs: finite(-20.0),
+                pulse: PulseSpec {
+                    width: PulseWidth::Duration {
+                        seconds: finite(0.007),
+                    },
+                    shape: PulseShape::Rectangular {},
+                    ..shaped
+                },
+            },
+            modulation: Some(Modulation::Pulsed {
+                pulse: PulseSpec {
+                    width: PulseWidth::Duration {
+                        seconds: finite(0.008),
+                    },
+                    shape: PulseShape::Rectangular {},
+                    ..shaped
+                },
+            }),
+        };
+        assert_eq!(duration.get(P::SourcePulseDuration), Some(finite(0.007)));
+        assert_eq!(
+            duration.get(P::ModulationPulseDuration),
+            Some(finite(0.008))
+        );
+        assert!(duration.set(P::SourcePulseDuration, finite(0.009)));
+        assert!(duration.set(P::ModulationPulseDuration, finite(0.010)));
+        let SoundSource::PulseTrain {
+            pulse,
+            route,
+            peak_dbfs,
+        } = duration.source
+        else {
+            panic!("pulse source")
+        };
+        assert_eq!(
+            (pulse.width, route, peak_dbfs),
+            (
+                PulseWidth::Duration {
+                    seconds: finite(0.009)
+                },
+                ChannelRouting::Left,
+                finite(-20.0)
+            )
+        );
+        let Some(Modulation::Pulsed { pulse }) = duration.modulation else {
+            panic!("pulse modulation")
+        };
+        assert_eq!(
+            pulse.width,
+            PulseWidth::Duration {
+                seconds: finite(0.010)
+            }
+        );
+    }
+}
