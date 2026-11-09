@@ -10,11 +10,16 @@ $vcvars = Join-Path $installation 'VC/Auxiliary/Build/vcvars64.bat'
 $source = Join-Path $PSScriptRoot 'text-range-control.cpp'
 $object = Join-Path $scratch 'text-range-control.obj'
 $executable = Join-Path $scratch 'text-range-control.exe'
+$stockSource = Join-Path $PSScriptRoot 'stock-edit-host.cpp'
+$stockObject = Join-Path $scratch 'stock-edit-host.obj'
+$stockExecutable = Join-Path $scratch 'stock-edit-host.exe'
 $commands = @(
     '@echo off',
     "call `"$vcvars`" >nul",
     'if errorlevel 1 exit /b %errorlevel%',
     "cl.exe /nologo /EHsc /W4 /WX /std:c++17 /O2 `"$source`" /Fo:`"$object`" /Fe:`"$executable`" /link ole32.lib oleaut32.lib uiautomationcore.lib uuid.lib",
+    'if errorlevel 1 exit /b %errorlevel%',
+    "cl.exe /nologo /EHsc /W4 /WX /std:c++17 /O2 `"$stockSource`" /Fo:`"$stockObject`" /Fe:`"$stockExecutable`" /link /SUBSYSTEM:WINDOWS user32.lib gdi32.lib ole32.lib",
     'exit /b %errorlevel%'
 )
 [IO.File]::WriteAllLines((Join-Path $scratch 'build-control.cmd'),$commands,[Text.Encoding]::ASCII)

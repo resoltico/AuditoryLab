@@ -34,8 +34,9 @@ function Reference-Keys([string]$Keys) {
     if ($foregroundPid -ne $referenceProcess.Id) { throw 'Stock reference native keyboard focus is outside its owned process' }
     [Windows.Forms.SendKeys]::SendWait($Keys)
 }
-$hostScript = Join-Path $PSScriptRoot 'windows-reference-host.ps1'
-$referenceProcess = Start-Process -FilePath "$env:SystemRoot/System32/WindowsPowerShell/v1.0/powershell.exe" -ArgumentList @('-STA','-NoProfile','-File',"`"$hostScript`"") -PassThru
+$referenceExecutable = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../../target/native-ui-control/stock-edit-host.exe'))
+if (-not (Test-Path $referenceExecutable)) { throw 'Required official-SDK stock EDIT host was not compiled' }
+$referenceProcess = Start-Process -FilePath $referenceExecutable -PassThru
 try {
     $condition = [Windows.Automation.PropertyCondition]::new($uia::ProcessIdProperty,$referenceProcess.Id)
     $window = Wait-Reference 'visible owned stock window' {
@@ -48,7 +49,7 @@ try {
     foreach ($child in ($window.FindAll($scope,[Windows.Automation.Condition]::TrueCondition) | Select-Object -First 32)) {
         Write-Host "Stock reference observed provider: type=$($child.Current.ControlType.ProgrammaticName) class=$($child.Current.ClassName) name=$($child.Current.Name) offscreen=$($child.Current.IsOffscreen)"
     }
-    # This independent host owns exactly one real WinForms/Win32 EDIT. Its
+    # This independent host owns exactly one real Win32 EDIT. Its
     # AccessibleName need not be surfaced by the OS's legacy Win32 proxy.
     $editType = [Windows.Automation.PropertyCondition]::new($uia::ControlTypeProperty,[Windows.Automation.ControlType]::Edit)
     $notes = Wait-Reference 'single stock EDIT provider' {
@@ -57,12 +58,14 @@ try {
         return $null
     }
     Write-Host "Stock reference control class=$($notes.Current.ClassName)"
+    if ($notes.Current.ClassName -ne 'Edit') { throw 'Stock reference is inconclusive: actual control class is not exact Win32 Edit' }
+    $textPattern = $notes.GetCurrentPattern([Windows.Automation.TextPattern]::Pattern)
+    Write-Host 'Stock reference exact Edit class/control type/TextPattern verified before input'
     $notes.SetFocus()
     Wait-Reference 'actual stock keyboard focus' { $notes.Current.HasKeyboardFocus } | Out-Null
     foreach ($character in "first native line`nsecond native line".ToCharArray()) {
         if ($character -eq "`n") { Reference-Keys '{ENTER}' } else { Reference-Keys ([string]$character) }
     }
-    $textPattern = $notes.GetCurrentPattern([Windows.Automation.TextPattern]::Pattern)
     Wait-Reference 'stock document exact text' {
         $textPattern.DocumentRange.GetText(-1).Replace("`r",'').TrimEnd("`n") -eq "first native line`nsecond native line"
     } | Out-Null
