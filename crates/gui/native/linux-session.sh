@@ -23,13 +23,36 @@ openbox --sm-disable > "$scratch/window-manager.log" 2>&1 &
 wm_pid=$!
 compositor_pid=
 portal_pid=
+stop_process() {
+  local child=$1
+  kill "$child" 2>/dev/null || true
+  for attempt in {1..20}; do
+    if ! kill -0 "$child" 2>/dev/null; then wait "$child" 2>/dev/null || true; return; fi
+    sleep 0.1
+  done
+  kill -KILL "$child" 2>/dev/null || true
+  wait "$child" 2>/dev/null || true
+}
 cleanup() {
-  if [[ -n "$portal_pid" ]]; then kill "$portal_pid" 2>/dev/null || true; wait "$portal_pid" 2>/dev/null || true; fi
-  if [[ -n "$compositor_pid" ]]; then kill "$compositor_pid" 2>/dev/null || true; wait "$compositor_pid" 2>/dev/null || true; fi
-  kill "$wm_pid" 2>/dev/null || true
-  wait "$wm_pid" 2>/dev/null || true
+  if [[ -n "$portal_pid" ]]; then stop_process "$portal_pid"; fi
+  if [[ -n "$compositor_pid" ]]; then stop_process "$compositor_pid"; fi
+  stop_process "$wm_pid"
 }
 trap cleanup EXIT
+wm_ready=
+for attempt in {1..100}; do
+  if ! kill -0 "$wm_pid" 2>/dev/null; then cat "$scratch/window-manager.log"; exit 1; fi
+  if xprop -root _NET_SUPPORTED 2>/dev/null | rg -q '(^|[ ,])_NET_ACTIVE_WINDOW([, ]|$)'; then
+    wm_ready=yes
+    break
+  fi
+  sleep 0.1
+done
+if [[ -z "$wm_ready" ]]; then
+  xprop -root _NET_SUPPORTED > "$scratch/failure-window-manager.txt"
+  echo 'Native window manager did not establish EWMH activation support' >&2
+  exit 1
+fi
 if [[ "$session" == wayland ]]; then
   cat > "$scratch/sway.conf" <<'CONFIG'
 xwayland disable
