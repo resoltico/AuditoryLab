@@ -6301,7 +6301,7 @@ fn recording_analysis_callbacks_project_all_findings_at_compact_large_text_size(
     h.adapter.respond(prompt, PromptAnswer::Path(Some(path)));
     h.wait_for_files();
     h.settle();
-    ui.invoke_analyze_recording("2".into());
+    ui.invoke_analyze_recording("".into(), "2".into());
     assert!(
         ui.get_analyzing_recording(),
         "start must project before completion"
@@ -6341,14 +6341,15 @@ fn recording_analysis_callbacks_project_all_findings_at_compact_large_text_size(
         }
         assert!(ui.window().take_snapshot().is_ok());
     }
-    ui.invoke_analyze_recording("invalid".into());
+    ui.invoke_analyze_recording("".into(), "invalid".into());
     h.wait_for_files();
     h.settle();
     assert_eq!(ui.get_recording_findings(), findings);
     assert!(
-        ui.get_status().contains("at least two seconds"),
+        ui.get_recording_input_error()
+            .contains("unsigned whole seconds"),
         "{}",
-        ui.get_status()
+        ui.get_recording_input_error()
     );
     assert!(!h.adapter.inspect(|w| w.audio_busy()));
 }
@@ -6369,7 +6370,7 @@ fn recording_analysis_review_screenshots() {
     };
     h.adapter.respond(prompt, PromptAnswer::Path(Some(path)));
     h.wait_for_files();
-    ui.invoke_analyze_recording("".into());
+    ui.invoke_analyze_recording("".into(), "".into());
     h.wait_for_files();
     h.settle();
     let destination =
@@ -6388,5 +6389,45 @@ fn recording_analysis_review_screenshots() {
             reveal_scrolled_control(&h, label, "Recording content");
             save_desktop_review_frame(ui, &destination, &format!("{name}-{section}"));
         }
+    }
+}
+
+#[test]
+fn silent_recording_energy_is_undefined_in_native_models_and_accessible_text() {
+    use std::io::Write;
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("silence.wav");
+    let mut file = std::fs::File::create(&path).unwrap();
+    file.write_all(b"RIFF").unwrap();
+    file.write_all(&4036_u32.to_le_bytes()).unwrap();
+    file.write_all(b"WAVEfmt \x10\0\0\0\x01\0\x01\0").unwrap();
+    file.write_all(&1000_u32.to_le_bytes()).unwrap();
+    file.write_all(&2000_u32.to_le_bytes()).unwrap();
+    file.write_all(b"\x02\0\x10\0data").unwrap();
+    file.write_all(&4000_u32.to_le_bytes()).unwrap();
+    file.set_len(4044).unwrap();
+    drop(file);
+    let h = Harness::new();
+    let ui = h.ui();
+    ui.invoke_tab_changed(3);
+    h.settle();
+    ui.invoke_open_recording();
+    let [Request::Path(prompt, PathPurpose::OpenRecording, None)] = h.take()[..] else {
+        panic!("recording dialog");
+    };
+    h.adapter.respond(prompt, PromptAnswer::Path(Some(path)));
+    h.wait_for_files();
+    h.settle();
+    ui.invoke_analyze_recording("".into(), "2".into());
+    h.wait_for_files();
+    h.settle();
+    assert!(ui.get_has_recording_analysis());
+    let shares = ui.get_recording_energy();
+    assert_eq!(shares.row_count(), 4);
+    for share in shares.iter() {
+        assert!(!share.defined);
+        assert!(share.label.contains("undefined (digital silence)"));
+        let item = reveal_scrolled_control(&h, share.label.as_str(), "Recording content");
+        assert!(item.geometry().size.height > 0.0);
     }
 }

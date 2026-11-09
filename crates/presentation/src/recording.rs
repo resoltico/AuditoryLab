@@ -1,5 +1,6 @@
 //! An opened recording's identity, as text.
-use auditorylab_app::recording::{EnvelopeBand, RecordingFile};
+use auditorylab_app::recording::RecordingFile;
+use auditorylab_core::measurement::EnvelopeBand;
 
 const PULSING_ATTRIBUTION_LIMIT: &str =
     "Beating/modulation labels describe spectral patterns, not creator intent.";
@@ -56,15 +57,16 @@ pub struct Findings {
     pub limits: String,
 }
 /// Render findings from samples alone. Device-check answers add context, never change measurements.
-pub fn findings(a: &auditorylab_app::recording::Analysis, lowest: Option<f64>) -> Findings {
+pub fn findings(
+    a: &auditorylab_core::measurement::SampleAnalysis,
+    lowest: Option<f64>,
+) -> Findings {
     let facts = format!(
-        "{} · {} Hz · {} channel(s) · {:.1} s\n\
+        "{} Hz · {} channel(s)\n\
         Analyzed: {:.1}–{:.1} s · resolution {:.3} Hz · envelope {:.3} Hz\n\
         Envelope window: {:.1}–{:.1} s",
-        a.codec,
         a.sample_rate,
         a.channels,
-        a.duration_seconds,
         a.window.start_seconds,
         a.window.end_seconds,
         a.resolution_hz,
@@ -147,7 +149,50 @@ pub fn findings(a: &auditorylab_app::recording::Analysis, lowest: Option<f64>) -
         limits: analysis_limits(a),
     }
 }
-fn ear_findings(a: &auditorylab_app::recording::Analysis) -> String {
+/// Render a completed recording with source facts and absolute selected placement.
+pub fn recording_findings(
+    a: &auditorylab_app::recording::Analysis,
+    lowest: Option<f64>,
+) -> Findings {
+    let mut rendered = findings(a.samples(), lowest);
+    rendered.facts = format!(
+        "{} · {}\nAnalyzed: {:.1}–{:.1} s\nEnvelope window: {:.1}–{:.1} s\n{}",
+        a.codec,
+        a.duration_seconds.map_or_else(
+            || "source duration unknown".into(),
+            |seconds| format!("{seconds:.1} s")
+        ),
+        a.window.start_seconds,
+        a.window.end_seconds,
+        a.envelope_window.start_seconds,
+        a.envelope_window.end_seconds,
+        rendered.facts
+    );
+    rendered.limits.push_str(if a.lossy {
+        "\nLossy codec: compression can change measured details."
+    } else {
+        "\nLossless decoded samples."
+    });
+    rendered
+}
+/// Render retained samples under current app-owned device interpretation.
+pub fn contextual_findings(
+    a: &auditorylab_app::recording::Analysis,
+    context: auditorylab_app::recording::InterpretationContext,
+) -> Findings {
+    let mut rendered = recording_findings(a, context.lowest_heard_hz());
+    let assessment = context.assessment();
+    rendered.ears.push('\n');
+    rendered
+        .ears
+        .push_str(&crate::device_check::channel_result(assessment.channels));
+    rendered.low_tones.push('\n');
+    rendered
+        .low_tones
+        .push_str(&crate::device_check::low_tone_result(assessment.low_tones));
+    rendered
+}
+fn ear_findings(a: &auditorylab_core::measurement::SampleAnalysis) -> String {
     if a.channels == 1 {
         "Mono recording; no left/right comparison is available.".into()
     } else if a.coincident_tones {
@@ -176,8 +221,8 @@ fn ear_findings(a: &auditorylab_app::recording::Analysis) -> String {
             .join("\n")
     }
 }
-fn pulsing_summary(a: &auditorylab_app::recording::Analysis) -> Vec<String> {
-    use auditorylab_app::recording::PulsingCause;
+fn pulsing_summary(a: &auditorylab_core::measurement::SampleAnalysis) -> Vec<String> {
+    use auditorylab_core::measurement::PulsingCause;
     let mut sentences = Vec::new();
     for channel in 0..a.channels {
         let whole: Vec<_> = a
@@ -241,8 +286,8 @@ fn pulsing_summary(a: &auditorylab_app::recording::Analysis) -> Vec<String> {
     }
     sentences
 }
-fn pulsing_findings(a: &auditorylab_app::recording::Analysis) -> String {
-    use auditorylab_app::recording::{EnvelopeBand, PulsingCause};
+fn pulsing_findings(a: &auditorylab_core::measurement::SampleAnalysis) -> String {
+    use auditorylab_core::measurement::{EnvelopeBand, PulsingCause};
     if a.pulsing.is_empty() {
         return "No envelope rates met the detection thresholds.".into();
     }
@@ -283,7 +328,10 @@ fn pulsing_findings(a: &auditorylab_app::recording::Analysis) -> String {
         .collect::<Vec<_>>()
         .join("\n")
 }
-fn low_tone_findings(a: &auditorylab_app::recording::Analysis, lowest: Option<f64>) -> String {
+fn low_tone_findings(
+    a: &auditorylab_core::measurement::SampleAnalysis,
+    lowest: Option<f64>,
+) -> String {
     let mut lines = a
         .low_energy
         .iter()
@@ -309,10 +357,10 @@ fn low_tone_findings(a: &auditorylab_app::recording::Analysis, lowest: Option<f6
     }
     lines.join("\n")
 }
-fn analysis_limits(a: &auditorylab_app::recording::Analysis) -> String {
+fn analysis_limits(a: &auditorylab_core::measurement::SampleAnalysis) -> String {
     format!(
         "Window {:.1}–{:.1} s; tone resolution {:.3} Hz; envelope resolution {:.3} Hz. \
-        Envelope rates below {minimum:.2} Hz are unresolved. {}. Digital samples only; \
+        Envelope rates below {minimum:.2} Hz are unresolved. Digital samples only; \
         device output and hearing are not measured. \
         Quiet pairs \
         under other sounds may be missed. {PULSING_ATTRIBUTION_LIMIT} \
@@ -326,11 +374,6 @@ fn analysis_limits(a: &auditorylab_app::recording::Analysis) -> String {
         a.window.end_seconds,
         a.resolution_hz,
         a.envelope_resolution_hz,
-        if a.lossy {
-            "Lossy codec: compression can change measured details"
-        } else {
-            "Lossless decoded samples"
-        },
         minimum = a.minimum_resolved_envelope_hz,
         contrast = 10.0 * a.minimum_envelope_relative_power.log10(),
     )
@@ -358,7 +401,7 @@ fn optional_number(value: Option<f64>) -> String {
 }
 /// Complete terminal report, using the same sections as the desktop.
 pub fn analysis_description(recording: &auditorylab_app::recording::AnalyzedRecording) -> String {
-    let f = findings(&recording.analysis, None);
+    let f = recording_findings(&recording.analysis, None);
     format!(
         "Recording: {}\nFile: {}\nFormat: {} · {}\n\nSummary\n{}\n\nTones\n{}\n\n\
         Left versus right\n{}\n\nPulsing\n{}\n\nLow tones\n{}\n\n\
@@ -375,4 +418,28 @@ pub fn analysis_description(recording: &auditorylab_app::recording::AnalyzedReco
         f.stereo,
         f.limits
     )
+}
+
+/// Shared channel/threshold label and truthful energy state for native rows.
+pub fn energy_row(share: &auditorylab_core::measurement::EnergyShare, channels: usize) -> String {
+    let label = format!(
+        "{} · below {:.0} Hz",
+        channel_label(share.channel, channels),
+        share.below_hz
+    );
+    match share.fraction {
+        Some(fraction) => format!("{label}: {:.1}%", fraction * 100.0),
+        None => format!("{label}: undefined (digital silence)"),
+    }
+}
+
+/// Shared stage wording for recording progress; preparing/completing are indeterminate.
+pub fn progress_phase(phase: auditorylab_app::job::ProgressPhase) -> &'static str {
+    use auditorylab_app::job::ProgressPhase;
+    match phase {
+        ProgressPhase::Preparing => "Opening recording…",
+        ProgressPhase::Skipping => "Reaching selected start…",
+        ProgressPhase::Processing => "Measuring selected samples…",
+        ProgressPhase::Completing => "Completing numerical findings…",
+    }
 }

@@ -2,10 +2,9 @@
 mod analysis;
 pub use analysis::*;
 mod error;
+use auditorylab_core::vocabulary;
 pub(crate) use error::CODES;
 pub use error::RecordingError;
-pub mod measure;
-use auditorylab_core::vocabulary;
 use std::path::PathBuf;
 
 /// A container format recognized from a file's leading bytes.

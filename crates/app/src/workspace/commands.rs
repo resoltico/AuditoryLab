@@ -614,6 +614,18 @@ impl Workspace {
             .task()
             .is_some_and(|task| matches!(task.kind, FileKind::AnalyzeRecording { .. }))
     }
+    /// Current recording stage; absent when no analysis occupies the file slot.
+    pub fn recording_phase(&self) -> Option<crate::job::ProgressPhase> {
+        if let Some(super::FileTask {
+            kind: FileKind::AnalyzeRecording { progress, .. },
+            ..
+        }) = self.files.task()
+        {
+            Some(progress.phase())
+        } else {
+            None
+        }
+    }
     /// Completed fraction once the decoder has established the selected window.
     pub fn recording_progress(&self) -> f64 {
         if let Some(super::FileTask {

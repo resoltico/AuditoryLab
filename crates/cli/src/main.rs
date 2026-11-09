@@ -98,9 +98,12 @@ enum Command {
         /// Output as readable text or JSON for scripts.
         #[arg(long, value_enum, default_value = "text")]
         format: library_cli::ReadFormat,
-        /// Analyze this many seconds after the 10% offset (default: up to ten minutes).
-        #[arg(long, value_name = "N", value_parser = clap::value_parser!(u32).range(2..))]
+        /// Measure at most this many seconds (default 600, maximum 3600).
+        #[arg(long, value_name = "N", value_parser = recording_cli::parse_duration)]
         seconds: Option<u32>,
+        /// Absolute starting second in the recording (default zero).
+        #[arg(long, default_value_t = 0, value_parser = recording_cli::parse_start)]
+        start: u32,
     },
     /// Save a sound as a stereo WAV file (32-bit float); an existing file is never replaced.
     Export {
@@ -597,7 +600,8 @@ fn run(cli: Cli) -> Result<Ended, CliError> {
             file,
             format,
             seconds,
-        } => recording_cli::analyze(&file, format, seconds)?,
+            start,
+        } => recording_cli::analyze(&file, format, seconds, start)?,
     }
     Ok(Ended::Normally)
 }

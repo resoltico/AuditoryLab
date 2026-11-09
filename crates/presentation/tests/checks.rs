@@ -108,14 +108,13 @@ fn measured_findings_state_the_device_check_comparison_and_all_measurement_limit
 fn summary_signal(
     channels: usize,
     signal: impl Fn(f64) -> [f64; 2],
-) -> auditorylab_app::recording::Analysis {
-    let mut m =
-        auditorylab_app::recording::measure::Measurement::new(8000, channels, 160_000).unwrap();
+) -> auditorylab_core::measurement::SampleAnalysis {
+    let mut m = auditorylab_core::measurement::Measurement::new(8000, channels, 160_000).unwrap();
     for frame in 0..160_000 {
         let samples = signal(f64::from(frame) / 8000.0).map(|x| x as f32);
         m.push(&samples[..channels]).unwrap();
     }
-    m.finish(&auditorylab_app::job::Cancel::default()).unwrap()
+    m.finish(&|| false).unwrap()
 }
 fn tone(hz: f64, t: f64) -> f64 {
     0.1 * (std::f64::consts::TAU * hz * t).sin()
@@ -159,7 +158,14 @@ fn summary_explains_beating_harmonics_and_differing_channel_modulation() {
             bytes: 0,
             format: ContainerFormat::Wav,
         },
-        analysis: a,
+        analysis: auditorylab_app::recording::Analysis::complete(
+            "synthetic PCM".into(),
+            false,
+            Some(20.0),
+            0.0,
+            a,
+        )
+        .unwrap(),
     });
     let json = serde_json::to_value(report).unwrap();
     assert!(
@@ -236,4 +242,63 @@ fn summary_names_mono_modulation_and_does_not_invent_silent_rates() {
     let silent = summary_signal(2, |_| [0.0; 2]);
     let s = recording::findings(&silent, None).summary;
     assert!(!s.contains("loudness variation"), "{s}");
+}
+
+#[test]
+fn undefined_energy_and_zero_have_distinct_shared_text() {
+    let mut share = auditorylab_core::measurement::EnergyShare {
+        channel: 0,
+        below_hz: 50.0,
+        fraction: None,
+    };
+    assert_eq!(
+        recording::energy_row(&share, 1),
+        "Mono · below 50 Hz: undefined (digital silence)"
+    );
+    share.fraction = Some(0.0);
+    assert_eq!(recording::energy_row(&share, 2), "Left · below 50 Hz: 0.0%");
+}
+#[test]
+fn current_device_context_reinterprets_retained_samples_without_mutation() {
+    use auditorylab_app::device_check::{Assessment, LowToneResult};
+    use auditorylab_app::recording::{Analysis, InterpretationContext};
+    let a = Analysis::complete(
+        "PCM".into(),
+        false,
+        None,
+        0.0,
+        summary_signal(1, |_| [0.0; 2]),
+    )
+    .unwrap();
+    let captured = a.clone();
+    for channels in [
+        ChannelResult::Incomplete,
+        ChannelResult::Separate,
+        ChannelResult::Swapped,
+        ChannelResult::Mixed,
+        ChannelResult::Silent,
+        ChannelResult::OneSide(DeviceTest::LeftChannel),
+        ChannelResult::Inconsistent,
+    ] {
+        for low_tones in [
+            LowToneResult::Incomplete,
+            LowToneResult::AllHeard,
+            LowToneResult::LowestHeard {
+                test: DeviceTest::Tone60Hz,
+            },
+            LowToneResult::NoneHeard,
+        ] {
+            let context = InterpretationContext::from(Assessment {
+                channels,
+                low_tones,
+            });
+            let f = recording::contextual_findings(&a, context);
+            assert!(f.ears.contains(&device_check::channel_result(channels)));
+            assert!(
+                f.low_tones
+                    .contains(&device_check::low_tone_result(low_tones))
+            );
+            assert_eq!(a, captured);
+        }
+    }
 }

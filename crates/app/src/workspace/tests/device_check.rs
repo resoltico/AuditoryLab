@@ -222,7 +222,10 @@ fn analysis_admission_capture_cancellation_and_failure_preserve_complete_finding
     ));
     workspace
         .apply(Command::File(FileCommand::AnalyzeRecording(
-            AnalysisOptions { seconds: Some(0) },
+            AnalysisOptions {
+                start_seconds: 0,
+                seconds: Some(0),
+            },
         )))
         .unwrap();
     let job = take_file_job(&mut workspace);

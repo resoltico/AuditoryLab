@@ -1,13 +1,13 @@
 //! Packet streaming through a single admitted file handle.
-use crate::job::{Cancel, Progress};
+use crate::job::{Cancel, Progress, ProgressPhase};
 use crate::recording::{
     AnalysisOptions, AnalyzedRecording, ContainerFormat, RecordingError, RecordingFile,
-    measure::Measurement,
 };
 use crate::storage::{
     error::{FileError, IoFailure, IoOperation},
     input_admission,
 };
+use auditorylab_core::measurement::Measurement;
 use std::{
     fs::File,
     io::{Read, Seek, SeekFrom},
@@ -145,8 +145,7 @@ impl Decoder {
         } else {
             decoder.codec_info().long_name.into()
         };
-        // Native MPEG/ADTS readers may estimate num_frames from bitrate. A
-        // counted pass establishes the exact timeline before choosing its 10% offset.
+        // MPEG/ADTS frame counts may be bitrate estimates, never trusted endpoints.
         let estimated = matches!(
             format.format_info().short_name,
             "aac" | "mp1" | "mp2" | "mp3"
@@ -177,7 +176,11 @@ impl Decoder {
             let Some(packet) = packet else {
                 return Ok(false);
             };
-            self.packet += 1;
+            self.packet = self
+                .packet
+                .checked_add(1)
+                .filter(|p| *p <= (1 << 24))
+                .ok_or(RecordingError::BudgetExceeded { resource: "packet" })?;
             if packet.track_id != self.track {
                 continue;
             }
@@ -191,6 +194,11 @@ impl Decoder {
                     self.packet,
                     "audio format changed within the recording",
                 ));
+            }
+            if audio.samples_interleaved() / self.channels > (1 << 22) {
+                return Err(RecordingError::BudgetExceeded {
+                    resource: "decoded packet",
+                });
             }
             self.samples.resize(audio.samples_interleaved(), 0.0);
             audio.copy_to_slice_interleaved(&mut self.samples);
@@ -208,6 +216,7 @@ pub(crate) fn analyze(
     cancel: &Cancel,
     progress: &Progress,
 ) -> Result<AnalyzedRecording, RecordingError> {
+    progress.set_phase(ProgressPhase::Preparing);
     let options = options.validate()?;
     if cancel.is_requested() {
         return Err(RecordingError::Cancelled);
@@ -233,59 +242,155 @@ pub(crate) fn analyze(
         bytes,
         format: ContainerFormat::from_signature(&head[..read]),
     };
-    let mut decoder = Decoder::new(
-        file.try_clone()
-            .map_err(|error| failure(IoOperation::Read, error))?,
-    )?;
-    // Some streams have no declared duration. Count them without retaining samples, then
-    // decode the selected window from the same handle, never reopening a possibly replaced path.
-    let total = if let Some(frames) = decoder.frames {
-        frames
-    } else {
-        let mut frames = 0;
-        while decoder.next(cancel)? {
-            frames += (decoder.samples.len() / decoder.channels) as u64;
-        }
-        decoder = Decoder::new(file)?;
-        frames
-    };
-    let start = total / 10;
-    let requested = u64::from(options.seconds.unwrap_or(600)) * u64::from(decoder.rate);
-    let end = start.saturating_add(requested).min(total);
-    progress.set_total(end);
-    let mut measurement = Measurement::new(decoder.rate, decoder.channels, end - start)?;
-    let mut cursor = 0;
-    while cursor < end && decoder.next(cancel)? {
-        for frame in decoder.samples.chunks_exact(decoder.channels) {
-            if cursor >= start && cursor < end {
-                measurement.push(frame)?;
-            }
-            cursor += 1;
-        }
-        progress.set(cursor.min(end));
-    }
-    if cursor < end {
-        return Err(decode_error(
-            decoder.packet,
-            "audio ended before its declared duration",
-        ));
-    }
-    if cancel.is_requested() {
-        return Err(RecordingError::Cancelled);
-    }
-    let mut analysis = measurement.finish(cancel)?;
-    analysis.codec = decoder.codec;
-    analysis.lossy = decoder.lossy;
-    analysis.duration_seconds = frames_seconds(total, decoder.rate);
-    let offset = frames_seconds(start, decoder.rate);
-    analysis.envelope_window.start_seconds += offset;
-    analysis.envelope_window.end_seconds += offset;
-    analysis.window.start_seconds = offset;
-    analysis.window.end_seconds = frames_seconds(end, decoder.rate);
+    let analysis = measure_decoder(Decoder::new(file)?, options, cancel, progress)?;
     Ok(AnalyzedRecording {
         file: identity,
         analysis,
     })
+}
+#[derive(Debug, PartialEq, Eq)]
+struct Selection {
+    start: u64,
+    end: u64,
+    selected: u64,
+    prefix_capacity: usize,
+}
+impl Selection {
+    fn new(
+        sample_rate: u32,
+        channels: usize,
+        source_frames: Option<u64>,
+        options: AnalysisOptions,
+    ) -> Result<Self, RecordingError> {
+        let options = options.validate()?;
+        let rate = u64::from(sample_rate);
+        let start = u64::from(options.start_seconds)
+            .checked_mul(rate)
+            .filter(|f| *f <= (1 << 32))
+            .ok_or(RecordingError::BudgetExceeded {
+                resource: "skip frames",
+            })?;
+        let requested = u64::from(options.seconds.unwrap_or(600))
+            .checked_mul(rate)
+            .filter(|f| *f <= (1 << 32))
+            .ok_or(RecordingError::BudgetExceeded {
+                resource: "measurement frames",
+            })?;
+        let requested_end = start
+            .checked_add(requested)
+            .ok_or(RecordingError::BudgetExceeded {
+                resource: "timeline",
+            })?;
+        let end = source_frames.map_or(requested_end, |total| requested_end.min(total));
+        let selected = end
+            .checked_sub(start)
+            .filter(|n| *n >= rate * 2)
+            .ok_or(RecordingError::TooShort)?;
+        // Prefix is bounded by the desired FFT plan, not the whole selected window.
+        let prefix_frames = (1_u64 << selected.min(1 << 20).ilog2()).min(1 << 20);
+        let prefix_capacity = usize::try_from(prefix_frames)
+            .map_err(|_| RecordingError::BudgetExceeded { resource: "prefix" })?
+            .checked_mul(channels)
+            .ok_or(RecordingError::BudgetExceeded { resource: "prefix" })?;
+        Ok(Self {
+            start,
+            end,
+            selected,
+            prefix_capacity,
+        })
+    }
+}
+
+fn measure_decoder(
+    mut decoder: Decoder,
+    options: AnalysisOptions,
+    cancel: &Cancel,
+    progress: &Progress,
+) -> Result<crate::recording::Analysis, RecordingError> {
+    let options = options.validate()?;
+    let Selection {
+        start,
+        end,
+        selected,
+        prefix_capacity,
+    } = Selection::new(decoder.rate, decoder.channels, decoder.frames, options)?;
+    let rate = u64::from(decoder.rate);
+    progress.set_total(end);
+    progress.set_phase(if start == 0 {
+        ProgressPhase::Processing
+    } else {
+        ProgressPhase::Skipping
+    });
+    let mut prefix = Vec::with_capacity(prefix_capacity);
+    let mut measurement = None;
+    let mut cursor = 0_u64;
+    let mut measured = 0_u64;
+    while cursor < end && decoder.next(cancel)? {
+        for frame in decoder.samples.chunks_exact(decoder.channels) {
+            if cursor >= end {
+                break;
+            }
+            if cursor >= start {
+                if cursor == start {
+                    progress.set_phase(ProgressPhase::Processing);
+                }
+                if let Some(accumulator) = &mut measurement {
+                    Measurement::push(accumulator, frame)?;
+                } else {
+                    prefix.extend_from_slice(frame);
+                    if prefix.len() == prefix_capacity {
+                        let mut accumulator =
+                            Measurement::new(decoder.rate, decoder.channels, selected)?;
+                        for buffered in prefix.chunks_exact(decoder.channels) {
+                            accumulator.push(buffered)?;
+                        }
+                        prefix.clear();
+                        measurement = Some(accumulator);
+                    }
+                }
+                measured += 1;
+            }
+            cursor += 1;
+            if cursor.is_multiple_of(4096) && cancel.is_requested() {
+                return Err(RecordingError::Cancelled);
+            }
+        }
+        progress.set(cursor);
+    }
+    if cursor < end && decoder.frames.is_some() {
+        return Err(decode_error(
+            decoder.packet,
+            "audio ended before its declared selected endpoint",
+        ));
+    }
+    if measured < rate * 2 {
+        return Err(RecordingError::TooShort);
+    }
+    if cancel.is_requested() {
+        return Err(RecordingError::Cancelled);
+    }
+    let accumulator = if let Some(accumulator) = measurement {
+        accumulator
+    } else {
+        let mut accumulator = Measurement::new(decoder.rate, decoder.channels, measured)?;
+        for frame in prefix.chunks_exact(decoder.channels) {
+            accumulator.push(frame)?;
+        }
+        accumulator
+    };
+    progress.set_phase(ProgressPhase::Completing);
+    let samples = accumulator.finish(&|| cancel.is_requested())?;
+    let duration = decoder
+        .frames
+        .map(|frames| frames_seconds(frames, decoder.rate));
+    let analysis = crate::recording::Analysis::complete(
+        decoder.codec,
+        decoder.lossy,
+        duration,
+        frames_seconds(start, decoder.rate),
+        samples,
+    )?;
+    Ok(analysis)
 }
 #[expect(
     clippy::cast_precision_loss,

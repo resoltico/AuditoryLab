@@ -12,6 +12,7 @@ publish.workspace = true
 test-support = []
 
 [dependencies]
+realfft.workspace = true
 chrono.workspace = true
 uuid.workspace = true
 libm.workspace = true

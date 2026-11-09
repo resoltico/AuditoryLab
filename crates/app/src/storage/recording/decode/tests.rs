@@ -41,15 +41,18 @@ fn exporter_samples_are_measured_and_the_window_excludes_later_audio() {
     let progress = Progress::default();
     let result = analyze(
         &path,
-        AnalysisOptions { seconds: Some(2) },
+        AnalysisOptions {
+            start_seconds: 0,
+            seconds: Some(2),
+        },
         &Cancel::default(),
         &progress,
     )
     .unwrap();
     let a = result.analysis;
-    assert_eq!(a.window.start_seconds, 1.0);
-    assert_eq!(a.window.end_seconds, 3.0);
-    assert_eq!(a.duration_seconds, 10.0);
+    assert_eq!(a.window.start_seconds, 0.0);
+    assert_eq!(a.window.end_seconds, 2.0);
+    assert_eq!(a.duration_seconds, Some(10.0));
     assert!(!a.lossy);
     assert_eq!(a.channels, 2);
     assert!((a.tones[0].hz - 40.0).abs() < a.resolution_hz);
@@ -65,7 +68,10 @@ fn exporter_samples_are_measured_and_the_window_excludes_later_audio() {
     std::fs::write(&path, bytes).unwrap();
     let after = analyze(
         &path,
-        AnalysisOptions { seconds: Some(2) },
+        AnalysisOptions {
+            start_seconds: 0,
+            seconds: Some(2),
+        },
         &Cancel::default(),
         &Progress::default(),
     )
@@ -99,7 +105,10 @@ fn too_short_invalid_window_and_cancellation_are_typed() {
     assert!(matches!(
         analyze(
             &path,
-            AnalysisOptions { seconds: Some(0) },
+            AnalysisOptions {
+                start_seconds: 0,
+                seconds: Some(0)
+            },
             &Cancel::default(),
             &Progress::default()
         ),
@@ -150,11 +159,10 @@ fn checked_in_codec_fixtures_preserve_tone_and_modulation_and_opus_is_refused() 
             a.tones
         );
         assert!(
-            a.pulsing
-                .iter()
-                .any(|p| p.envelope_band == crate::recording::EnvelopeBand::Whole
-                    && (p.hz - 40.0).abs() < a.envelope_resolution_hz
-                    && p.cause == crate::recording::PulsingCause::Modulation),
+            a.pulsing.iter().any(|p| p.envelope_band
+                == auditorylab_core::measurement::EnvelopeBand::Whole
+                && (p.hz - 40.0).abs() < a.envelope_resolution_hz
+                && p.cause == auditorylab_core::measurement::PulsingCause::Modulation),
             "{name}: {:?}",
             a.pulsing
         );
@@ -223,11 +231,10 @@ fn exported_builtin_clicks_have_a_40hz_modulation_pattern() {
     .unwrap()
     .analysis;
     assert!(
-        a.pulsing
-            .iter()
-            .any(|p| p.envelope_band == crate::recording::EnvelopeBand::Whole
-                && (p.hz - 40.0).abs() < a.envelope_resolution_hz
-                && p.cause == crate::recording::PulsingCause::Modulation),
+        a.pulsing.iter().any(|p| p.envelope_band
+            == auditorylab_core::measurement::EnvelopeBand::Whole
+            && (p.hz - 40.0).abs() < a.envelope_resolution_hz
+            && p.cause == auditorylab_core::measurement::PulsingCause::Modulation),
         "{:?}",
         a.pulsing
     );
@@ -304,7 +311,10 @@ fn exported_pairs_keep_channel_routing_through_the_decoder() {
                     .any(|p| (p.hz - 10.0).abs() < a.envelope_resolution_hz
                         && matches!(
                             p.cause,
-                            crate::recording::PulsingCause::Beating { harmonic: 1, .. }
+                            auditorylab_core::measurement::PulsingCause::Beating {
+                                harmonic: 1,
+                                ..
+                            }
                         ))
             );
         }
@@ -548,4 +558,165 @@ fn rf64_seeks_and_reads_past_four_gibibytes_without_copying_the_payload() {
     assert!(decoder.next(&Cancel::default()).unwrap());
     assert!(decoder.samples.iter().all(|sample| *sample == 0.0));
     assert!(!decoder.next(&Cancel::default()).unwrap());
+}
+
+fn silent_decoder(rate: u32, frames: u32) -> Decoder {
+    use std::io::Write;
+    let mut file = tempfile::tempfile().unwrap();
+    let bytes = frames.checked_mul(2).unwrap();
+    file.write_all(b"RIFF").unwrap();
+    file.write_all(&(36 + bytes).to_le_bytes()).unwrap();
+    file.write_all(b"WAVEfmt \x10\0\0\0\x01\0\x01\0").unwrap();
+    file.write_all(&rate.to_le_bytes()).unwrap();
+    file.write_all(&(rate * 2).to_le_bytes()).unwrap();
+    file.write_all(b"\x02\0\x10\0data").unwrap();
+    file.write_all(&bytes.to_le_bytes()).unwrap();
+    file.set_len(u64::from(bytes) + 44).unwrap();
+    Decoder::new(file).unwrap()
+}
+#[test]
+fn actual_two_second_minimum_applies_after_prefix_at_all_rates() {
+    for rate in [1000, 48_000, 768_000] {
+        for delta in [-1_i64, 0, 1] {
+            let frames = u32::try_from(i64::from(rate) * 2 + delta).unwrap();
+            let mut decoder = silent_decoder(rate, frames);
+            decoder.frames = None;
+            let result = measure_decoder(
+                decoder,
+                AnalysisOptions::default(),
+                &Cancel::default(),
+                &Progress::default(),
+            );
+            if delta < 0 {
+                assert!(
+                    matches!(result, Err(RecordingError::TooShort)),
+                    "rate={rate}"
+                );
+            } else {
+                let a = result.unwrap();
+                assert_eq!(a.duration_seconds, None);
+                assert_eq!(a.window.end_seconds, f64::from(frames) / f64::from(rate));
+                assert_eq!(a.stereo.rms_dbfs, vec![None]);
+                let n = 1_u32 << frames.min(1 << 20).ilog2();
+                assert_eq!(a.resolution_hz, f64::from(rate) / f64::from(n));
+            }
+        }
+    }
+}
+#[test]
+fn trustworthy_selected_endpoint_clips_normally_and_truncation_fails() {
+    for rate in [1000, 48_000, 768_000] {
+        let options = AnalysisOptions {
+            start_seconds: 1,
+            seconds: Some(4),
+        };
+        let a = measure_decoder(
+            silent_decoder(rate, rate * 3),
+            options,
+            &Cancel::default(),
+            &Progress::default(),
+        )
+        .unwrap();
+        assert_eq!(a.duration_seconds, Some(3.0));
+        assert_eq!(a.window.start_seconds, 1.0);
+        assert_eq!(a.window.end_seconds, 3.0);
+        let mut truncated = silent_decoder(rate, rate * 3);
+        truncated.frames = Some(u64::from(rate) * 4);
+        assert!(matches!(
+            measure_decoder(truncated, options, &Cancel::default(), &Progress::default()),
+            Err(RecordingError::Decode { .. })
+        ));
+    }
+}
+#[test]
+fn unknown_clean_eof_selects_fitting_fft_and_exact_limit_ignores_later_packets() {
+    for frames in [2047_u32, 2048, 2049, 4095, 4096, 4097] {
+        let mut decoder = silent_decoder(1000, frames);
+        decoder.frames = None;
+        let a = measure_decoder(
+            decoder,
+            AnalysisOptions::default(),
+            &Cancel::default(),
+            &Progress::default(),
+        )
+        .unwrap();
+        assert_eq!(a.resolution_hz, 1000.0 / f64::from(1_u32 << frames.ilog2()));
+        assert_eq!(a.window.end_seconds, f64::from(frames) / 1000.0);
+    }
+    let mut decoder = silent_decoder(1000, 6000);
+    decoder.frames = None;
+    let a = measure_decoder(
+        decoder,
+        AnalysisOptions {
+            start_seconds: 2,
+            seconds: Some(2),
+        },
+        &Cancel::default(),
+        &Progress::default(),
+    )
+    .unwrap();
+    assert_eq!(
+        a.window,
+        auditorylab_core::measurement::AnalysisWindow {
+            start_seconds: 2.0,
+            end_seconds: 4.0
+        }
+    );
+    assert_eq!(a.samples().window.end_seconds, 2.0);
+}
+#[test]
+fn request_grammar_and_frame_budgets_refuse_before_owned_allocation() {
+    for (start, duration) in [
+        ("-1", "2"),
+        (" 1", "2"),
+        ("1.0", "2"),
+        ("0", "1"),
+        ("0", "3601"),
+        ("86401", "2"),
+        ("0", "4294967296"),
+        ("０", "2"),
+    ] {
+        assert!(AnalysisOptions::from_text(start, duration).is_err());
+    }
+    assert_eq!(
+        AnalysisOptions::from_text("", "").unwrap(),
+        AnalysisOptions::default()
+    );
+    let max = AnalysisOptions {
+        start_seconds: 0,
+        seconds: Some(2),
+    };
+    assert!(Selection::new(1 << 31, 1, None, max).is_ok());
+    assert!(matches!(
+        Selection::new((1 << 31) + 1, 1, None, max),
+        Err(RecordingError::BudgetExceeded {
+            resource: "measurement frames"
+        })
+    ));
+    assert!(matches!(
+        Selection::new(
+            u32::MAX,
+            1,
+            None,
+            AnalysisOptions {
+                start_seconds: 2,
+                seconds: Some(2)
+            }
+        ),
+        Err(RecordingError::BudgetExceeded {
+            resource: "skip frames"
+        })
+    ));
+    assert!(
+        Selection::new(
+            768_000,
+            2,
+            None,
+            AnalysisOptions {
+                start_seconds: 0,
+                seconds: Some(3600)
+            }
+        )
+        .is_ok()
+    );
 }

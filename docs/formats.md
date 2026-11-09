@@ -320,9 +320,11 @@ For example, an out-of-range rate reports `sample_rate.range` with `hz`, `min_hz
 | `query.range_order` |
 | `query.study` |
 | `query.temporary_files_scope` |
+| `recording.budget_exceeded` |
 | `recording.cancelled` |
 | `recording.decode` |
 | `recording.invalid_window` |
+| `recording.measurement` |
 | `recording.no_audio_track` |
 | `recording.too_short` |
 | `recording.unsupported_channels` |
@@ -474,7 +476,11 @@ CLI JSON schema 4 represents recording identity with `path`, `bytes` and contain
 
 ### Input and selected window
 
-Measurements stream decoded f32 frames at their native sample rate. The default interval starts at 10% of the duration and lasts up to 600 seconds; an explicit integer duration of at least two seconds overrides its length. Duration is taken from container metadata when available; decoding validates the selected interval, not unexamined later packets. Raw MPEG/ADTS streams and streams lacking duration metadata are counted first and decoded again through the same file handle. Mono and stereo at rates of at least 1000 Hz are accepted. Format/rate/channel changes within a track and nonfinite samples are refused. No whole-file sample buffer is retained.
+Measurements stream decoded f32 frames at their native sample rate. The absolute start defaults to zero; `--start N` selects whole seconds from 0 through 86400. At-most duration defaults to 600 seconds; an explicit `--seconds N` accepts 2 through 3600. Both fields use unsigned ASCII decimal integers, converted exactly by checked multiplication with the decoded rate. The selected endpoint clips to a trustworthy declared source end; every successful report still contains at least two seconds of actual samples. Unknown/estimated source duration remains absent and is never inferred from window length. EOF before a trustworthy selected endpoint is a decode failure. Reaching the requested endpoint does not validate later packets.
+
+There is no counting pass or reopen: one admitted handle/decoder sequentially skips to the selected frame under a work budget. Buffering starts with at most 2²⁰ source frames per channel, chooses a fitting FFT plan at clean early EOF, and replays that prefix exactly once. Mono/stereo rates of at least 1000 Hz remain separate from synthesis sample-rate admission. Measurement and skipped-frame budgets are each 2³² frames; packet count is at most 2²⁴ and one decoded packet at most 2²² frames. Exceeding a budget refuses the result rather than silently shortening it. These limits support a 3600-second window at 768 kHz and retain sparse RF64/BW64 support without a file-size ceiling. Welch window counters use u64; overlap and the 2³²-frame budget leave them far below overflow. No whole-file sample buffer is retained. Format changes and nonfinite samples are refused.
+
+Cooperative checkpoints cannot interrupt a decoder allocation/call, FFT call or blocked read; these bounds cover owned buffering and application-controlled work, not total third-party allocation or hard wall-clock latency. Pure `core::measurement` results contain no codec, file, job or absolute-placement placeholders. App composes those measurements with validated recording source facts and absolute placement.
 
 Symphonia 0.6.1 decodes PCM WAV, AIFF, FLAC up to 24 bits, MP3, AAC-LC, Vorbis, ALAC and CAF in enabled containers. Opus and 32-bit FLAC receive `recording.unsupported_codec`; the latter avoids a confirmed 33-bit stereo-side-channel decoder defect. HE-AAC/SBR is unsupported; the checked AAC patch rejects non-LC ADTS profiles and in-band SBR before samples can be mistaken for a complete LC decode. Decoder failures include packet position and preserve any previous desktop findings. Numerical checks compare resolved frequencies within one bin and levels within 0.5 dB. Synthesis has its own bit-level contract.
 

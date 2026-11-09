@@ -7,6 +7,7 @@ pub(super) fn analyze(
     path: &Path,
     format: ReadFormat,
     seconds: Option<u32>,
+    start: u32,
 ) -> Result<(), CliError> {
     let cancel = auditorylab_app::job::Cancel::default();
     let request = cancel.clone();
@@ -16,14 +17,28 @@ pub(super) fn analyze(
         let worker = scope.spawn(|| {
             auditorylab_app::services::analyze_recording(
                 path,
-                auditorylab_app::recording::AnalysisOptions { seconds },
+                auditorylab_app::recording::AnalysisOptions {
+                    start_seconds: start,
+                    seconds,
+                },
                 &cancel,
                 &progress,
             )
         });
         let started = std::time::Instant::now();
         let mut last = None;
+        let mut last_phase = None;
         while !worker.is_finished() {
+            let phase = progress.phase();
+            if last_phase != Some(phase) {
+                use std::io::Write;
+                let _ = writeln!(
+                    std::io::stderr().lock(),
+                    "{}",
+                    auditorylab_presentation::recording::progress_phase(phase)
+                );
+                last_phase = Some(phase);
+            }
             let percent = progress
                 .frames()
                 .saturating_mul(100)
@@ -55,4 +70,18 @@ pub(super) fn analyze(
         )?;
     }
     Ok(())
+}
+
+/// Command grammar delegates to the same strict field interpretation as the desktop.
+pub(super) fn parse_duration(text: &str) -> Result<u32, String> {
+    use auditorylab_presentation::Explain;
+    auditorylab_app::recording::AnalysisOptions::from_text("", text)
+        .map(|options| options.seconds.unwrap_or(600))
+        .map_err(|error| error.explain())
+}
+pub(super) fn parse_start(text: &str) -> Result<u32, String> {
+    use auditorylab_presentation::Explain;
+    auditorylab_app::recording::AnalysisOptions::from_text(text, "")
+        .map(|options| options.start_seconds)
+        .map_err(|error| error.explain())
 }

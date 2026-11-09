@@ -40,7 +40,10 @@ export component RecordingsPane inherits Rectangle {
     in property <float> progress;
     in property <RecordingFindings> findings;
     in property <[RecordingEnergy]> energy;
-    callback analyze-recording(string);
+    callback analyze-recording(string, string);
+    in property <string> input-error;
+    in property <string> progress-phase;
+    in property <bool> progress-indeterminate;
     callback cancel-analysis();
 
     accessible-role: tab-panel;
@@ -138,12 +141,22 @@ export component RecordingsPane inherits Rectangle {
             if root.has-recording: VerticalLayout {
                 spacing: 8px;
                 Text {
-                    text: "Window length in seconds (blank: up to ten minutes)";
+                    text: "Start and at-most length in whole seconds (blank: 0 and 600)";
                     wrap: word-wrap;
                     min-width: 0px;
                     accessible-role: text;
                 }
 
+                window-start := LineEdit {
+                    placeholder-text: "0";
+                    enabled: !root.analyzing;
+                    accessible-label: "Absolute analysis start in seconds";
+                }
+                if root.input-error != "": Text {
+                    text: root.input-error;
+                    wrap: word-wrap;
+                    accessible-role: text;
+                }
                 seconds := LineEdit {
                     placeholder-text: "600";
                     enabled: !root.analyzing;
@@ -156,7 +169,7 @@ export component RecordingsPane inherits Rectangle {
                     Button {
                         text: Actions.analyze-recording.label;
                         enabled: Actions.analyze-recording.enabled;
-                        triggered => { root.analyze-recording(seconds.text); }
+                        triggered => { root.analyze-recording(window-start.text, seconds.text); }
                     }
 
                     Button {
@@ -166,8 +179,13 @@ export component RecordingsPane inherits Rectangle {
                     }
                 }
 
+                if root.analyzing: Text {
+                    text: root.progress-phase;
+                    accessible-role: text;
+                }
                 if root.analyzing: ProgressIndicator {
                     progress: root.progress;
+                    indeterminate: root.progress-indeterminate;
                 }
             }
             if !root.has-analysis: Text {
@@ -288,7 +306,7 @@ export component RecordingsPane inherits Rectangle {
                             accessible-role: text;
                         }
 
-                        Rectangle {
+                        if share.defined: Rectangle {
                             height: 8px;
                             background: Palette.border;
                             Rectangle {

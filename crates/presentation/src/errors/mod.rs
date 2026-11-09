@@ -732,7 +732,14 @@ impl Explain for auditorylab_app::recording::RecordingError {
             ),
             E::NoAudioTrack => "the recording contains no audio track".into(),
             E::TooShort => "the analysis window needs at least two seconds of audio".into(),
-            E::InvalidWindow => "analysis duration must be at least two seconds".into(),
+            E::InvalidWindow => {
+                "analysis needs unsigned whole seconds: start 0–86400, duration 2–3600 (blank: 600)"
+                    .into()
+            }
+            E::Measurement(error) => format!("sample measurement failed: {error:?}"),
+            E::BudgetExceeded { resource } => {
+                format!("recording analysis exceeded its {resource} work budget")
+            }
             E::UnsupportedChannels { channels } => {
                 format!("recording has {channels} channels; analysis supports mono or stereo")
             }
