@@ -98,12 +98,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         std::env::var_os("AUDITORYLAB_NATIVE_QA_DIRECTORY").map(std::path::PathBuf::from);
     #[cfg(not(debug_assertions))]
     let qualification: Option<std::path::PathBuf> = None;
-    let onboarding = qualification.as_ref().map_or_else(
-        auditorylab_app::onboarding::Preference::configured,
-        |root| {
-            Ok(auditorylab_app::onboarding::Preference::at_config_directory(root.join("config")))
-        },
-    );
+    let onboarding = if let Some(root) = &qualification {
+        Ok(auditorylab_app::onboarding::Preference::at_config_directory(root.join("config")))
+    } else {
+        auditorylab_app::onboarding::Preference::configured()
+    };
     let (seen, notice) = match &onboarding {
         Ok(preference) => match preference.seen() {
             Ok(seen) => (seen, String::new()),
