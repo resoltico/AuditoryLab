@@ -18,17 +18,17 @@ static int run(HINSTANCE instance, int show) {
     descriptor.hInstance = instance;
     descriptor.lpszClassName = class_name;
     descriptor.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-    descriptor.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
+    descriptor.hbrBackground = reinterpret_cast<HBRUSH>(static_cast<INT_PTR>(COLOR_WINDOW + 1));
     if (!RegisterClassW(&descriptor)) return 1;
     const HWND window = CreateWindowExW(0, class_name, L"Native UIA stock reference",
         WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 700, 400,
         nullptr, nullptr, instance, nullptr);
     if (!window) return 1;
     if (!CreateWindowExW(0, L"STATIC", L"Custom recipe notes", WS_CHILD | WS_VISIBLE,
-            20, 15, 640, 20, window, reinterpret_cast<HMENU>(101), instance, nullptr)) return 1;
+            20, 15, 640, 20, window, reinterpret_cast<HMENU>(static_cast<INT_PTR>(101)), instance, nullptr)) return 1;
     const HWND edit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"",
         WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN,
-        20, 40, 640, 300, window, reinterpret_cast<HMENU>(100), instance, nullptr);
+        20, 40, 640, 300, window, reinterpret_cast<HMENU>(static_cast<INT_PTR>(100)), instance, nullptr);
     if (!edit) return 1;
     SendMessageW(edit, WM_SETFONT, reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
     ShowWindow(window, show);

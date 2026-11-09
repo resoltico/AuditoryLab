@@ -17,9 +17,9 @@ $commands = @(
     '@echo off',
     "call `"$vcvars`" >nul",
     'if errorlevel 1 exit /b %errorlevel%',
-    "cl.exe /nologo /EHsc /W4 /WX /std:c++17 /O2 `"$source`" /Fo:`"$object`" /Fe:`"$executable`" /link ole32.lib oleaut32.lib uiautomationcore.lib uuid.lib",
+    "cl.exe /nologo /EHsc /W4 /WX /std:c++17 /O2 /DUNICODE /D_UNICODE `"$source`" /Fo:`"$object`" /Fe:`"$executable`" /link ole32.lib oleaut32.lib uiautomationcore.lib uuid.lib",
     'if errorlevel 1 exit /b %errorlevel%',
-    "cl.exe /nologo /EHsc /W4 /WX /std:c++17 /O2 `"$stockSource`" /Fo:`"$stockObject`" /Fe:`"$stockExecutable`" /link /SUBSYSTEM:WINDOWS user32.lib gdi32.lib ole32.lib",
+    "cl.exe /nologo /EHsc /W4 /WX /std:c++17 /O2 /DUNICODE /D_UNICODE `"$stockSource`" /Fo:`"$stockObject`" /Fe:`"$stockExecutable`" /link /SUBSYSTEM:WINDOWS user32.lib gdi32.lib ole32.lib",
     'exit /b %errorlevel%'
 )
 [IO.File]::WriteAllLines((Join-Path $scratch 'build-control.cmd'),$commands,[Text.Encoding]::ASCII)
