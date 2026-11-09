@@ -67,6 +67,18 @@ fn resolved_source(package: &serde_json::Value, version: &str, vendor: &Path) ->
             .is_some_and(|path| Path::new(path).parent() == Some(vendor))
 }
 
+fn expected_in_product(name: &str, product: &str, target: &str) -> Result<bool> {
+    Ok(match name {
+        "accesskit_windows" => product == "gui" && target.contains("windows"),
+        "accesskit_unix" => product == "gui" && target.contains("linux"),
+        "i-slint-core" | "i-slint-compiler" | "i-slint-backend-winit" | "winit" | "spin_on" => {
+            product == "gui"
+        }
+        "symphonia-codec-aac" | "symphonia-format-riff" => true,
+        _ => return Err(format!("missing target/product policy for patch {name}").into()),
+    })
+}
+
 pub(crate) fn verify() -> Result<()> {
     let record: toml::Table = toml::from_str(&fs::read_to_string("third_party/patches.toml")?)?;
     let patches = record["patch"].as_array().ok_or("patch records missing")?;
@@ -146,10 +158,18 @@ pub(crate) fn verify() -> Result<()> {
             for patch in patches {
                 let name = patch["name"].as_str().ok_or("patch name missing")?;
                 let vendor = fs::canonicalize(Path::new("third_party").join(name))?;
-                for line in tree
+                let lines = tree
                     .lines()
                     .filter(|line| line.starts_with(&format!("{name} v")))
-                {
+                    .collect::<Vec<_>>();
+                let present = !lines.is_empty();
+                if present != expected_in_product(name, product, target)? {
+                    return Err(format!(
+                        "{package} {target}: unexpected patch reachability for {name}"
+                    )
+                    .into());
+                }
+                for line in lines {
                     if !line.contains(vendor.to_str().ok_or("vendor path not UTF8")?) {
                         return Err(format!("{package} {target}: patch bypassed: {line}").into());
                     }
@@ -164,6 +184,25 @@ pub(crate) fn verify() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn platform_adapters_reach_only_their_native_gui_products() {
+        assert!(expected_in_product("accesskit_windows", "gui", "x86_64-pc-windows-msvc").unwrap());
+        assert!(
+            expected_in_product("accesskit_windows", "gui", "aarch64-pc-windows-msvc").unwrap()
+        );
+        assert!(
+            !expected_in_product("accesskit_windows", "cli", "x86_64-pc-windows-msvc").unwrap()
+        );
+        assert!(!expected_in_product("accesskit_windows", "gui", "aarch64-apple-darwin").unwrap());
+        assert!(
+            !expected_in_product("accesskit_windows", "gui", "x86_64-unknown-linux-gnu").unwrap()
+        );
+        assert!(expected_in_product("accesskit_unix", "gui", "x86_64-unknown-linux-gnu").unwrap());
+        assert!(
+            expected_in_product("symphonia-codec-aac", "cli", "aarch64-pc-windows-msvc").unwrap()
+        );
+        assert!(expected_in_product("unknown", "gui", "x86_64-pc-windows-msvc").is_err());
+    }
     #[test]
     fn registry_or_other_checkout_cannot_replace_the_reviewed_source() {
         let mut package = serde_json::json!({"version":"1.0.0", "source":null,

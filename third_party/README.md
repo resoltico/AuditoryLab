@@ -1,6 +1,6 @@
 # Dependency integration
 
-The workspace patches the native toolkit for accessibility, focus, multiline editing, modeless windows and macOS application menus, the RIFF reader for bounded RF64/BW64 lengths, and the AAC decoder to refuse unsupported profiles and SBR rather than report an incomplete LC-only decode. Font shaping and X11 DPI use the toolkit's upstream policy. The application embeds no fonts and uses system fonts; on Linux, Winit's Wayland window decorations embed the Cantarell title font, which packaging credits under its SIL Open Font License.
+The workspace patches the native toolkit for accessibility, focus, multiline editing, modeless windows and macOS application menus, including typed Windows UI Automation interface arrays, the RIFF reader for bounded RF64/BW64 lengths, and the AAC decoder to refuse unsupported profiles and SBR rather than report an incomplete LC-only decode. Font shaping and X11 DPI use the toolkit's upstream policy. The application embeds no fonts and uses system fonts; on Linux, Winit's Wayland window decorations embed the Cantarell title font, which packaging credits under its SIL Open Font License.
 
 [patches.toml](patches.toml) defines archive URLs, versions and SHA-256 digests. [patches/](patches/) contains the exact unified diffs. Vendored source must equal its authenticated archive with the corresponding patch applied. Archive `Cargo.lock` files are retained when present; `spin_on` ships none and uses the workspace lockfile.
 
@@ -17,6 +17,7 @@ The verifier authenticates archives before extraction, compares every source byt
 | spin_on | Slint's build tools stop resolving `pin-utils`, either through an updated executor or a replacement. | The executor's ready/pending unit tests and the workspace GUI build exercise `core::pin::pin!`; all target graphs must exclude `pin-utils` (RUSTSEC-2026-0441). |
 | Symphonia RIFF | Upstream reads RF64/BW64 ds64 lengths with checked bounds and bounded table metadata. | RF64/BW64 export-sample equivalence, invalid-size refusals and sparse seeking beyond 4 GiB in [recording decoder tests](../crates/app/src/storage/recording/decode/tests.rs). |
 | Symphonia AAC | Upstream rejects non-LC ADTS profiles and in-band SBR before returning incomplete samples. | The AAC-profile and in-band SBR service refusals in [recording decoder tests](../crates/app/src/storage/recording/decode/tests.rs), with AAC-LC fixture positive controls. |
+| AccessKit Windows | A compatible upstream adapter preserves typed provider interface pointers in UIA SAFEARRAYs instead of canonicalizing them to IUnknown. | Native `selection_tests` in [selection_tests.rs](accesskit_windows/src/selection_tests.rs) verify raw text/element pointers before QueryInterface and COM reference ownership; the [Windows native harness](../crates/gui/native/windows.ps1) must read actual selected multiline text through UI Automation. |
 | AccessKit Unix | A compatible Slint/AccessKit graph resolves `accesskit_unix` 0.24.1 or newer and emits each cache payload as one structured D-Bus argument. | Linux `cache_add_carries_one_complete_struct_argument` and `cache_remove_carries_one_object_reference_struct` in [bus.rs](accesskit_unix/src/atspi/bus.rs); removed/reinserted accessible controls refresh correctly. |
 | Slint core | Upstream provides equivalent aggregate modifier synchronization, complete shaped multiline extents/cursor height, semantic focus reveal, key focus for scroll-clipped editors and active-row focus validation. Retire individual hunks only when their behavior is covered. | `platform_modifiers_drive_text_shortcuts`, `text_edit_cursor_scrolls_into_view`, `control_focus_scrolls_into_view` and `partly_scrolled_editor_keeps_focus_through_keys` in [window tests](../crates/gui/src/window_tests.rs), plus both [focus/reflow tests](../crates/gui/src/focus_reflow_tests.rs) and retired-row callback tests in [adapter tests](../crates/gui/src/adapter_tests.rs). |
 | Slint compiler | TextEdit reveals the shaped cursor rectangle and its height; the paired core property exists in the same resolved Slint version. | `text_edit_cursor_scrolls_into_view` at supported text sizes, with the [compiler binding](i-slint-compiler/widgets/common/textedit-base.slint) and [core geometry](i-slint-core/items/text.rs) exercised together. |
@@ -42,6 +43,14 @@ The workspace GUI suite exercises the production controls and retained focus/inp
 ```sh
 CARGO_TARGET_DIR="$PWD/target" cargo test --manifest-path third_party/accesskit_unix/Cargo.toml --lib --locked
 ```
+
+On Windows, provider-array tests exercise the native SAFEARRAY ABI and reference ownership:
+
+```sh
+CARGO_TARGET_DIR="$PWD/target/vendor-tests" cargo test --manifest-path third_party/accesskit_windows/Cargo.toml --lib --locked selection_tests
+```
+
+The Windows patch preserves `ITextRangeProvider` and `IRawElementProviderSimple` pointers where UIA contracts require those interfaces. Canonical `IUnknown` identity is a different pointer/vtable for the resolved `windows-implement`; returning it in a typed selection array can crash clients reading selected text. `SafeArrayPutElement` retains the supplied interface and AddRefs it. Ordinary `GetPatternProvider` identity handling is unchanged. The adapter's original licenses and archive lockfile remain intact.
 
 On macOS, termination state tests exercise the request implementation:
 
