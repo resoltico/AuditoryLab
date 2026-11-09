@@ -54,7 +54,25 @@ CONFIG
   export XDG_SESSION_TYPE=wayland
   export GDK_BACKEND=wayland
   # Native X11 input goes into the compositor's real nested output surface.
-  outer=$(timeout 10s xdotool search --sync --onlyvisible --name '^wlroots - ' | head -n 1)
+  outer=
+  for attempt in {1..100}; do
+    mapfile -t windows < <(xwininfo -root -tree | sed -n 's/^[[:space:]]*\(0x[[:xdigit:]]*\).*/\1/p')
+    for window in "${windows[@]}"; do
+      # wlroots publishes the UTF-8 _NET_WM_NAME, not a legacy WM_NAME.
+      if xprop -id "$window" _NET_WM_NAME 2>/dev/null | rg -q '"wlroots - ' \
+        && xwininfo -id "$window" 2>/dev/null | rg -q 'Map State: IsViewable'; then
+        outer=$window
+        break
+      fi
+    done
+    if [[ -n "$outer" ]]; then break; fi
+    sleep 0.1
+  done
+  if [[ -z "$outer" ]]; then
+    xwininfo -root -tree > "$scratch/failure-x11-tree.txt"
+    echo 'No visible native compositor output with the expected _NET_WM_NAME' >&2
+    exit 1
+  fi
   xdotool windowactivate --sync "$outer"
   if ! rg -qi 'Creating pixman renderer|pixman' "$scratch/compositor.log"; then
     cat "$scratch/compositor.log"

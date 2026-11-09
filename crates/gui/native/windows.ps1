@@ -50,6 +50,8 @@ $env:AUDITORYLAB_NATIVE_QA_DIRECTORY = $Scratch
 $root = [System.Windows.Automation.AutomationElement]::RootElement
 $scope = [System.Windows.Automation.TreeScope]::Descendants
 $uia = [System.Windows.Automation.AutomationElement]
+Write-Host "Native UIA client: PowerShell=$($PSVersionTable.PSVersion) Runtime=$([Environment]::Version) Apartment=$([Threading.Thread]::CurrentThread.ApartmentState)"
+Write-Host "Native UIA assembly: $($uia.Assembly.FullName) Location=$($uia.Assembly.Location)"
 function Wait-Native([string]$Description, [scriptblock]$Probe) {
     $deadline = [DateTime]::UtcNow.AddSeconds(30)
     if ($deadline -gt $qualificationDeadline) { $deadline = $qualificationDeadline }
