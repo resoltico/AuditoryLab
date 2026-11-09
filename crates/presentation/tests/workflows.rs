@@ -106,7 +106,7 @@ fn public_export_progress_no_clobber_replace_and_cancellation() {
     );
     assert_eq!(fs::read(&path).unwrap(), original);
     fs::write(&path, b"old").unwrap();
-    export(
+    let published = export(
         sound.snapshot(),
         sound.signal().sample_rate(),
         &path,
@@ -115,6 +115,7 @@ fn public_export_progress_no_clobber_replace_and_cancellation() {
         &progress,
     )
     .unwrap();
+    assert_eq!(published.warnings, []);
     assert_eq!(fs::read(&path).unwrap(), original);
     let cancelled = Cancel::default();
     cancelled.request();

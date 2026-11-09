@@ -9,6 +9,10 @@ use auditorylab_core::{SampleRate, SampleRateError};
 use auditorylab_presentation::report::{ListingOperation, Report, json_bytes};
 use serde_json::{Value, json};
 
+#[expect(
+    clippy::unwrap_used,
+    reason = "Independent fixture structure failures must fail the test"
+)]
 fn subset(actual: &Value, expected: &Value) {
     match expected {
         Value::Object(fields) => {
@@ -25,6 +29,10 @@ fn subset(actual: &Value, expected: &Value) {
         _ => assert_eq!(actual, expected),
     }
 }
+#[expect(
+    clippy::unwrap_used,
+    reason = "Handwritten JSON fixtures must parse or fail the test"
+)]
 fn fixture(name: &str) -> Value {
     serde_json::from_str(match name {
         "invalid" => include_str!("fixtures/report/invalid-inspection.json"),
@@ -127,7 +135,7 @@ fn emitted_bytes_escape_boundary_characters_and_decoding_preserves_authored_data
     assert_eq!(decoded["diagnostics"][0]["message"], authored);
     assert_eq!(
         decoded["diagnostics"][0]["params"],
-        json!({"hz":0,"min_hz":1,"max_hz":768000})
+        json!({"hz":0,"min_hz":1,"max_hz":768_000})
     );
     let human = auditorylab_presentation::display_text(authored);
     assert!(!human.contains('\u{202e}'));

@@ -72,7 +72,7 @@ fn analyze_reports_file_identity_as_text_and_json_and_fails_on_missing_input() {
     assert_eq!(failed.status.code(), Some(1));
     let failed: serde_json::Value = serde_json::from_slice(&failed.stdout).unwrap();
     assert!(failed.get("complete").is_none());
-    assert_eq!(failed["status"], "failed");
+    assert_eq!(failed["status"], "unreadable");
     assert_eq!(failed["diagnostics"][0]["code"], "io.failure");
     assert!(failed.get("recording").is_none());
 

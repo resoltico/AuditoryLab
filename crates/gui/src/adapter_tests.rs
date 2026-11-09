@@ -2544,12 +2544,13 @@ fn local_dates_expose_exact_utc_and_reset_sort_preserves_committed_filters() {
     recipe.document.created_at = Some(created);
     recipe.document.modified_at = None;
     let id = recipe.document.id;
-    store
+    let published = store
         .apply(
             Mutation::Add(std::sync::Arc::new(recipe.build().unwrap())),
             &auditorylab_app::job::Cancel::default(),
         )
         .unwrap();
+    assert_eq!(published.diagnostics, []);
     let h = Harness::with_workspace(
         Workspace::with_library(
             auditorylab_app::services::catalog().unwrap(),
@@ -2803,7 +2804,8 @@ fn background_refresh_does_not_hide_a_failed_captured_save() {
     );
     ui.invoke_save_recipe();
     let save = take_job(&h, JobKind::File);
-    h.store()
+    let published = h
+        .store()
         .apply(
             Mutation::Rename {
                 key: saved.key.clone(),
@@ -2813,6 +2815,7 @@ fn background_refresh_does_not_hide_a_failed_captured_save() {
             &auditorylab_app::job::Cancel::default(),
         )
         .unwrap();
+    assert_eq!(published.diagnostics, []);
     h.adapter
         .command(|w| w.apply(Command::Library(LibraryCommand::Refresh)));
     finish_file(&h, save);
@@ -5672,7 +5675,8 @@ fn failed_real_save_keeps_the_guide_document_and_visible_example_focus() {
     };
     h.adapter.respond(prompt, PromptAnswer::Save);
     let save = take_job(&h, JobKind::File);
-    h.store()
+    let published = h
+        .store()
         .apply(
             Mutation::Rename {
                 key: saved.key.clone(),
@@ -5682,6 +5686,7 @@ fn failed_real_save_keeps_the_guide_document_and_visible_example_focus() {
             &auditorylab_app::job::Cancel::default(),
         )
         .unwrap();
+    assert_eq!(published.diagnostics, []);
     finish_file(&h, save);
     h.wait_for_files();
     h.settle();

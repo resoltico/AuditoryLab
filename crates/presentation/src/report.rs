@@ -348,17 +348,12 @@ struct AnalysisReport {
     spectrum: Vec<Vec<SpectrumPointReport>>,
     limits: Vec<String>,
 }
-impl From<&auditorylab_app::recording::Pulsing> for PulsingReport {
-    fn from(t: &auditorylab_app::recording::Pulsing) -> Self {
-        use auditorylab_app::recording::{EnvelopeBand, PulsingCause};
+impl From<&auditorylab_core::measurement::Pulsing> for PulsingReport {
+    fn from(t: &auditorylab_core::measurement::Pulsing) -> Self {
+        use auditorylab_core::measurement::PulsingCause;
         PulsingReport {
             channel: t.channel,
-            envelope_band: match t.envelope_band {
-                EnvelopeBand::Whole => "whole",
-                EnvelopeBand::Below100 => "below100",
-                EnvelopeBand::Above100 => "above100",
-            }
-            .into(),
+            envelope_band: t.envelope_band.key().into(),
             hz: t.hz,
             band: t.band,
             cause: match t.cause {
@@ -378,11 +373,10 @@ impl From<&auditorylab_app::recording::Pulsing> for PulsingReport {
 }
 impl From<&auditorylab_app::recording::Analysis> for AnalysisReport {
     fn from(a: &auditorylab_app::recording::Analysis) -> Self {
-        use auditorylab_app::recording::MeasurementLimit;
         Self {
             codec: a.codec.clone(),
             lossy: a.lossy,
-            duration_seconds: Some(a.duration_seconds),
+            duration_seconds: a.duration_seconds,
             sample_rate: a.sample_rate,
             channels: a.channels,
             window: WindowReport {
@@ -446,23 +440,7 @@ impl From<&auditorylab_app::recording::Analysis> for AnalysisReport {
                         .collect()
                 })
                 .collect(),
-            limits: a
-                .limits
-                .iter()
-                .map(|v| {
-                    match v {
-                        MeasurementLimit::DigitalSamplesOnly => "digital_samples_only",
-                        MeasurementLimit::QuietPairsMayBeMissed => "quiet_pairs_may_be_missed",
-                        MeasurementLimit::PatternAttributionNotIntent => {
-                            "pattern_attribution_not_intent"
-                        }
-                        MeasurementLimit::PeaksBelowRelativeFloorOmitted => {
-                            "peaks_below_relative_floor_omitted"
-                        }
-                    }
-                    .into()
-                })
-                .collect(),
+            limits: a.limits.iter().map(|value| value.key().into()).collect(),
         }
     }
 }
@@ -688,7 +666,7 @@ impl Report {
                 components: inspection
                     .component_check()
                     .into_iter()
-                    .flat_map(|check| check.components())
+                    .flat_map(auditorylab_core::TargetCheck::components)
                     .map(|(id, result)| ComponentValidation {
                         id: *id,
                         diagnostics: result
@@ -702,7 +680,7 @@ impl Report {
                 voices: inspection
                     .component_check()
                     .into_iter()
-                    .flat_map(|check| check.voices())
+                    .flat_map(auditorylab_core::TargetCheck::voices)
                     .map(|(id, result)| match result {
                         Ok(facts) => VoiceValidation::Valid {
                             id: *id,
