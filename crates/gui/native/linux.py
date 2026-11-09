@@ -110,10 +110,11 @@ def current_chooser():
         return None
 
 
-def focused_entry(root):
+def focused_location(root):
     for node in nodes(root):
         try:
-            if node.getRole() == pyatspi.ROLE_ENTRY and visible(node) and node.getState().contains(pyatspi.STATE_FOCUSED):
+            state = node.getState()
+            if node.getRole() == pyatspi.ROLE_TEXT and visible(node) and state.contains(pyatspi.STATE_EDITABLE) and state.contains(pyatspi.STATE_FOCUSED):
                 return node
         except (GLib.Error, RuntimeError):
             continue
@@ -253,8 +254,15 @@ def main():
             # Reopen and use the real location control to open an isolated recipe.
             activate(named(app, "Open recipe…"))
             cancel, chooser = wait_for("current focused native chooser reopened", current_chooser)
+            # GTK binds Ctrl+L on its chooser content widget; the Cancel action
+            # area is a sibling and intentionally does not own that shortcut.
+            files = wait_for("native chooser Files table", lambda: named(chooser, "Files"))
+            if files.getRole() != pyatspi.ROLE_TABLE or not files.queryComponent().grabFocus():
+                raise RuntimeError("native chooser Files table focus refused")
+            wait_for("actual Files table keyboard focus", lambda: files.getState().contains(pyatspi.STATE_FOCUSED))
             key("ctrl+l")
-            location = wait_for("actual focused native location control", lambda: focused_entry(chooser))
+            # GTK3 entries expose editable TEXT, unlike Slint's ENTRY role.
+            location = wait_for("actual focused editable GTK location control", lambda: focused_location(chooser))
             key("ctrl+a")
             fixture = str(args.fixture.resolve())
             type_text(fixture)
