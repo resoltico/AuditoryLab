@@ -5,7 +5,7 @@ import sys
 
 
 def require(results, release, core_changed):
-    expected = {'lint', 'domain', 'matrix', 'icons', 'native', 'package', 'package-macos', 'mutation'}
+    expected = {'lint', 'domain', 'matrix', 'icons', 'native', 'package', 'package-macos', 'mutation', 'native-graphical-linux', 'native-graphical-windows'}
     if set(results) != expected:
         raise ValueError('required job set differs from qualification contract')
     for name, job in results.items():
@@ -20,7 +20,7 @@ def test():
 
     class Qualification(unittest.TestCase):
         def test_every_required_failure_and_skip_blocks(self):
-            names = ['lint', 'domain', 'matrix', 'icons', 'native', 'package', 'package-macos', 'mutation']
+            names = ['lint', 'domain', 'matrix', 'icons', 'native', 'package', 'package-macos', 'mutation', 'native-graphical-linux', 'native-graphical-windows']
             good = {name: {'result': 'success'} for name in names}
             require(good, True, True)
             for name in names:
@@ -44,12 +44,12 @@ def test():
                 self.assertNotIn('icons', needs[1] if needs else '')
             self.assertIn('needs: [matrix, icons]', blocks['package-macos'])
             # Simulate GitHub's failed prerequisite -> skipped consumer result.
-            result = {name: {'result': 'success'} for name in ['lint', 'domain', 'matrix', 'icons', 'native', 'package', 'package-macos', 'mutation']}
+            result = {name: {'result': 'success'} for name in ['lint', 'domain', 'matrix', 'icons', 'native', 'package', 'package-macos', 'mutation', 'native-graphical-linux', 'native-graphical-windows']}
             result['icons']['result'] = 'failure'
             result['package-macos']['result'] = 'skipped'
             with self.assertRaisesRegex(ValueError, 'icons'):
                 require(result, True, True)
-            self.assertIn('needs: [lint, domain, matrix, icons, native, package, package-macos, mutation]', blocks['required'])
+            self.assertIn('needs: [lint, domain, matrix, icons, native, package, package-macos, mutation, native-graphical-linux, native-graphical-windows]', blocks['required'])
             self.assertIn('needs: [check, build]', Path('.github/workflows/release.yml').read_text())
 
     suite = unittest.defaultTestLoader.loadTestsFromTestCase(Qualification)
