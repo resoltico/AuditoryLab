@@ -7,8 +7,7 @@ $ErrorActionPreference = 'Stop'
 $env:GALLIUM_DRIVER = 'llvmpipe'
 $env:LP_NUM_THREADS = '2'
 $qualificationDeadline = [DateTime]::UtcNow.AddSeconds(180)
-Add-Type -AssemblyName UIAutomationClient
-Add-Type -AssemblyName UIAutomationTypes
+. (Join-Path $PSScriptRoot 'windows-uia-client.ps1')
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 Add-Type @'

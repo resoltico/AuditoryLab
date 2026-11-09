@@ -1,7 +1,6 @@
 # Same legacy client/runtime/MTA and actual keys against a stock Microsoft EDIT.
 $ErrorActionPreference = 'Stop'
-Add-Type -AssemblyName UIAutomationClient
-Add-Type -AssemblyName UIAutomationTypes
+. (Join-Path $PSScriptRoot 'windows-uia-client.ps1')
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type @'
 using System;
