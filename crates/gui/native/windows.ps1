@@ -146,9 +146,13 @@ try {
     Native-Text "first native line`nsecond native line"
     Write-Host 'Native witness: multiline keys delivered; reading actual provider text'
     Wait-Native 'native multiline text input' { (Read-NativeText $notes).Replace("`r",'') -eq "first native line`nsecond native line" } | Out-Null
-    Write-Host 'Native witness: multiline provider text verified'
-    Native-Keys '^a'
+    Write-Host 'Native witness: multiline provider text verified; reading explicit TextPattern document range'
     $textPattern = $notes.GetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern)
+    Wait-Native 'actual TextPattern document range text' {
+        $textPattern.DocumentRange.GetText(-1).Replace("`r",'').TrimEnd("`n") -eq "first native line`nsecond native line"
+    } | Out-Null
+    Write-Host 'Native witness: explicit TextPattern document range verified'
+    Native-Keys '^a'
     Wait-Native 'native modifier selection' { $textPattern.GetSelection()[0].GetText(-1).Replace("`r",'').TrimEnd("`n") -eq "first native line`nsecond native line" } | Out-Null
     Write-Host 'Native witness: actual modifier selection verified'
     Native-Keys '{BACKSPACE}'
