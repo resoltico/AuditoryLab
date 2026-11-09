@@ -147,32 +147,14 @@ impl Measurement {
         let pulsing = self.pulsing_findings(&tones, cancel)?;
         let low_energy = self.energy_shares(resolution);
         let frames = count_f64(self.frames);
-        let correlation = if self.channels == 2 {
-            let left = self.energy[0] - self.sum[0].powi(2) / frames;
-            let right = self.energy[1] - self.sum[1].powi(2) / frames;
-            let denominator = (left * right).sqrt();
-            (denominator > 0.0).then(|| {
-                ((self.cross - self.sum[0] * self.sum[1] / frames) / denominator).clamp(-1.0, 1.0)
-            })
-        } else {
-            None
-        };
-        let stereo = Stereo {
-            peak_dbfs: self.peak.iter().map(|peak| power_db(peak * peak)).collect(),
-            rms_dbfs: self
-                .energy
-                .iter()
-                .map(|energy| power_db(energy / frames))
-                .collect(),
-            correlation,
-            side_to_mid_db: if self.channels == 2 && self.mid > 0.0 {
-                power_db(self.side / self.mid)
-            } else {
-                None
-            },
-        };
+        let stereo = self.stereo();
         let spectrum = self.spectra.iter().map(Welch::chart).collect();
+        if cancel() {
+            return Err(MeasurementError::Cancelled);
+        }
         Ok(SampleAnalysis(SampleFacts {
+            frames: self.frames,
+            envelope_edge_frames: (self.spectra[0].window.len() / 8) as u64,
             sample_rate: self.rate,
             channels: self.channels,
             window: AnalysisWindow {
@@ -202,6 +184,33 @@ impl Measurement {
                 super::MeasurementLimit::PeaksBelowRelativeFloorOmitted,
             ],
         }))
+    }
+    fn stereo(&self) -> Stereo {
+        let frames = count_f64(self.frames);
+        let correlation = if self.channels == 2 {
+            let left = self.energy[0] - self.sum[0].powi(2) / frames;
+            let right = self.energy[1] - self.sum[1].powi(2) / frames;
+            let denominator = (left * right).sqrt();
+            (denominator > 0.0).then(|| {
+                ((self.cross - self.sum[0] * self.sum[1] / frames) / denominator).clamp(-1.0, 1.0)
+            })
+        } else {
+            None
+        };
+        Stereo {
+            peak_dbfs: self.peak.iter().map(|peak| power_db(peak * peak)).collect(),
+            rms_dbfs: self
+                .energy
+                .iter()
+                .map(|energy| power_db(energy / frames))
+                .collect(),
+            correlation,
+            side_to_mid_db: if self.channels == 2 && self.mid > 0.0 {
+                power_db(self.side / self.mid)
+            } else {
+                None
+            },
+        }
     }
     fn energy_shares(&self, resolution: f64) -> Vec<EnergyShare> {
         let mut low_energy = Vec::new();

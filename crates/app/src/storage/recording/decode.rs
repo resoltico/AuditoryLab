@@ -195,11 +195,7 @@ impl Decoder {
                     "audio format changed within the recording",
                 ));
             }
-            if audio.samples_interleaved() / self.channels > (1 << 22) {
-                return Err(RecordingError::BudgetExceeded {
-                    resource: "decoded packet",
-                });
-            }
+            admit_decoded_frames(audio.samples_interleaved() / self.channels)?;
             self.samples.resize(audio.samples_interleaved(), 0.0);
             audio.copy_to_slice_interleaved(&mut self.samples);
             if self.samples.iter().any(|sample| !sample.is_finite()) {
@@ -208,6 +204,15 @@ impl Decoder {
             return Ok(true);
         }
     }
+}
+
+fn admit_decoded_frames(frames: usize) -> Result<(), RecordingError> {
+    if frames > (1 << 22) {
+        return Err(RecordingError::BudgetExceeded {
+            resource: "decoded packet",
+        });
+    }
+    Ok(())
 }
 
 pub(crate) fn analyze(
@@ -243,10 +248,7 @@ pub(crate) fn analyze(
         format: ContainerFormat::from_signature(&head[..read]),
     };
     let analysis = measure_decoder(Decoder::new(file)?, options, cancel, progress)?;
-    Ok(AnalyzedRecording {
-        file: identity,
-        analysis,
-    })
+    Ok(AnalyzedRecording::complete(identity, analysis))
 }
 #[derive(Debug, PartialEq, Eq)]
 struct Selection {
@@ -380,24 +382,17 @@ fn measure_decoder(
     };
     progress.set_phase(ProgressPhase::Completing);
     let samples = accumulator.finish(&|| cancel.is_requested())?;
-    let duration = decoder
-        .frames
-        .map(|frames| frames_seconds(frames, decoder.rate));
+    if cancel.is_requested() {
+        return Err(RecordingError::Cancelled);
+    }
     let analysis = crate::recording::Analysis::complete(
         decoder.codec,
         decoder.lossy,
-        duration,
-        frames_seconds(start, decoder.rate),
+        decoder.frames,
+        start,
         samples,
     )?;
     Ok(analysis)
-}
-#[expect(
-    clippy::cast_precision_loss,
-    reason = "media frame counts converted to displayed seconds"
-)]
-fn frames_seconds(frames: u64, rate: u32) -> f64 {
-    frames as f64 / f64::from(rate)
 }
 
 #[cfg(test)]

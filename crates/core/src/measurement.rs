@@ -128,6 +128,10 @@ pub enum MeasurementLimit {
 /// Complete measurements of one captured window, with their interpretation limits.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SampleFacts {
+    /// Actual measured frames, including the prefix exactly once.
+    pub frames: u64,
+    /// Source frames excluded at each analytic-envelope FFT edge.
+    pub envelope_edge_frames: u64,
     /// Decoded source frames per second, independent of synthesis admission.
     pub sample_rate: u32,
     /// Number of channels, one or two.
@@ -214,3 +218,30 @@ impl MeasurementLimit {
         }
     }
 }
+
+crate::diagnostic_codes! {
+    pub(crate) const CODES;
+    MeasurementError {
+        codes {
+            Self::UnsupportedChannels { .. } => "measurement.unsupported_channels",
+            Self::TooShort => "measurement.too_short",
+            Self::InvalidFrame => "measurement.invalid_frame",
+            Self::Cancelled => "measurement.cancelled",
+            Self::BudgetExceeded => "measurement.budget_exceeded",
+        }
+        delegates {}
+        params(this) {
+            match this {
+                Self::UnsupportedChannels { channels } => crate::diagnostic_params! {"channels" => *channels},
+                _ => crate::diagnostic::Params::new(),
+            }
+        }
+    }
+}
+
+impl std::fmt::Display for MeasurementError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(crate::diagnostic::Code::code(self))
+    }
+}
+impl std::error::Error for MeasurementError {}

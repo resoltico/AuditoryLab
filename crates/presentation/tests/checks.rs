@@ -152,21 +152,16 @@ fn summary_explains_beating_harmonics_and_differing_channel_modulation() {
             .contains("beating consistent with 200.00 and 210.00 Hz")
     );
     assert!(f.pulsing.contains("modulation pattern"));
-    let report = Report::analyzed_recording(&auditorylab_app::recording::AnalyzedRecording {
-        file: RecordingFile {
-            path: "synthetic.wav".into(),
-            bytes: 0,
-            format: ContainerFormat::Wav,
-        },
-        analysis: auditorylab_app::recording::Analysis::complete(
-            "synthetic PCM".into(),
-            false,
-            Some(20.0),
-            0.0,
-            a,
-        )
-        .unwrap(),
-    });
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../app/tests/fixtures/recording/tone.flac");
+    let completed = auditorylab_app::services::analyze_recording(
+        &path,
+        auditorylab_app::recording::AnalysisOptions::default(),
+        &auditorylab_app::job::Cancel::default(),
+        &auditorylab_app::job::Progress::default(),
+    )
+    .unwrap();
+    let report = Report::analyzed_recording(&completed);
     let json = serde_json::to_value(report).unwrap();
     assert!(
         json["recording"]["analysis"]["pulsing"]
@@ -266,7 +261,7 @@ fn current_device_context_reinterprets_retained_samples_without_mutation() {
         "PCM".into(),
         false,
         None,
-        0.0,
+        0,
         summary_signal(1, |_| [0.0; 2]),
     )
     .unwrap();

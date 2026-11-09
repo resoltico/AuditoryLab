@@ -302,6 +302,11 @@ For example, an out-of-range rate reports `sample_rate.range` with `hz`, `min_hz
 | `load.read` |
 | `load.temporary_selector` |
 | `load.unknown_builtin` |
+| `measurement.budget_exceeded` |
+| `measurement.cancelled` |
+| `measurement.invalid_frame` |
+| `measurement.too_short` |
+| `measurement.unsupported_channels` |
 | `monitor.fixed_range_exceeded` |
 | `monitor.incomplete_coverage` |
 | `monitor.stale` |
@@ -324,7 +329,6 @@ For example, an out-of-range rate reports `sample_rate.range` with `hz`, `min_hz
 | `recording.cancelled` |
 | `recording.decode` |
 | `recording.invalid_window` |
-| `recording.measurement` |
 | `recording.no_audio_track` |
 | `recording.too_short` |
 | `recording.unsupported_channels` |
@@ -476,7 +480,7 @@ CLI JSON schema 4 represents recording identity with `path`, `bytes` and contain
 
 ### Input and selected window
 
-Measurements stream decoded f32 frames at their native sample rate. The absolute start defaults to zero; `--start N` selects whole seconds from 0 through 86400. At-most duration defaults to 600 seconds; an explicit `--seconds N` accepts 2 through 3600. Both fields use unsigned ASCII decimal integers, converted exactly by checked multiplication with the decoded rate. The selected endpoint clips to a trustworthy declared source end; every successful report still contains at least two seconds of actual samples. Unknown/estimated source duration remains absent and is never inferred from window length. EOF before a trustworthy selected endpoint is a decode failure. Reaching the requested endpoint does not validate later packets.
+Measurements stream decoded f32 frames at their native sample rate. The absolute start defaults to zero; `--start N` selects whole seconds from 0 through 86400. At-most duration defaults to 600 seconds; an explicit `--seconds N` accepts 2 through 3600. Both fields use unsigned ASCII decimal integers, converted exactly by checked multiplication with the decoded rate. Selected start/end and trustworthy source extent are retained as exact integer frames; absolute seconds derive once from those counts, avoiding floating-point addition at clipped endpoints. The selected endpoint clips to a trustworthy declared source end; every successful report still contains at least two seconds of actual samples. Unknown/estimated source duration remains absent and is never inferred from window length. EOF before a trustworthy selected endpoint is a decode failure. Reaching the requested endpoint does not validate later packets.
 
 There is no counting pass or reopen: one admitted handle/decoder sequentially skips to the selected frame under a work budget. Buffering starts with at most 2²⁰ source frames per channel, chooses a fitting FFT plan at clean early EOF, and replays that prefix exactly once. Mono/stereo rates of at least 1000 Hz remain separate from synthesis sample-rate admission. Measurement and skipped-frame budgets are each 2³² frames; packet count is at most 2²⁴ and one decoded packet at most 2²² frames. Exceeding a budget refuses the result rather than silently shortening it. These limits support a 3600-second window at 768 kHz and retain sparse RF64/BW64 support without a file-size ceiling. Welch window counters use u64; overlap and the 2³²-frame budget leave them far below overflow. No whole-file sample buffer is retained. Format changes and nonfinite samples are refused.
 

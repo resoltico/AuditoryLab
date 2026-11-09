@@ -122,6 +122,7 @@ macro_rules! diagnostic_params {
 
 /// Enumerable codes grouped by their authoritative core owner.
 pub const OWNERS: &[&[&str]] = &[
+    crate::measurement::CODES,
     crate::authored::CODES,
     crate::contract::CODES,
     crate::rate::CODES,

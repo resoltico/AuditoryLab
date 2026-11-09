@@ -49,7 +49,7 @@ fn exporter_samples_are_measured_and_the_window_excludes_later_audio() {
         &progress,
     )
     .unwrap();
-    let a = result.analysis;
+    let a = result.analysis.clone();
     assert_eq!(a.window.start_seconds, 0.0);
     assert_eq!(a.window.end_seconds, 2.0);
     assert_eq!(a.duration_seconds, Some(10.0));
@@ -146,7 +146,7 @@ fn checked_in_codec_fixtures_preserve_tone_and_modulation_and_opus_is_refused() 
             &Progress::default(),
         )
         .unwrap_or_else(|error| panic!("{name}: {error:?}"));
-        let a = result.analysis;
+        let a = result.analysis.clone();
         assert_eq!(a.lossy, lossy, "{name}");
         assert!(
             (a.tones[0].dbfs + 28.1157).abs() < 0.5,
@@ -229,7 +229,8 @@ fn exported_builtin_clicks_have_a_40hz_modulation_pattern() {
         &Progress::default(),
     )
     .unwrap()
-    .analysis;
+    .analysis
+    .clone();
     assert!(
         a.pulsing.iter().any(|p| p.envelope_band
             == auditorylab_core::measurement::EnvelopeBand::Whole
@@ -293,7 +294,8 @@ fn exported_pairs_keep_channel_routing_through_the_decoder() {
             &Progress::default(),
         )
         .unwrap()
-        .analysis;
+        .analysis
+        .clone();
         if binaural {
             assert_eq!(a.ear_differences.len(), 1);
             assert!((a.ear_differences[0].left_hz - 200.0).abs() < a.resolution_hz);
@@ -719,4 +721,99 @@ fn request_grammar_and_frame_budgets_refuse_before_owned_allocation() {
         )
         .is_ok()
     );
+}
+
+#[test]
+fn fractional_trustworthy_endpoints_are_checked_as_integer_frames() {
+    for (rate, start_seconds, frames) in [
+        (1000, 1, 4012),
+        (48_000, 2, 192_006),
+        (768_000, 2, 3_072_002),
+    ] {
+        let a = measure_decoder(
+            silent_decoder(rate, frames),
+            AnalysisOptions {
+                start_seconds,
+                seconds: Some(5),
+            },
+            &Cancel::default(),
+            &Progress::default(),
+        )
+        .unwrap();
+        assert_eq!(a.start_frame, u64::from(start_seconds) * u64::from(rate));
+        assert_eq!(a.end_frame, u64::from(frames));
+        assert_eq!(a.frames, a.end_frame - a.start_frame);
+        assert_eq!(a.window.end_seconds, f64::from(frames) / f64::from(rate));
+        assert_eq!(a.duration_seconds, Some(a.window.end_seconds));
+        assert_eq!(a.source_frames, Some(u64::from(frames)));
+    }
+}
+#[test]
+fn packet_and_prefix_budgets_accept_limits_and_refuse_one_past() {
+    assert!(admit_decoded_frames(1 << 22).is_ok());
+    assert!(matches!(
+        admit_decoded_frames((1 << 22) + 1),
+        Err(RecordingError::BudgetExceeded {
+            resource: "decoded packet"
+        })
+    ));
+    assert!(admit_decoded_frames(usize::MAX).is_err());
+    let mut decoder = silent_decoder(1000, 10_000);
+    decoder.packet = (1 << 24) - 1;
+    assert!(decoder.next(&Cancel::default()).unwrap());
+    assert_eq!(decoder.packet, 1 << 24);
+    assert!(matches!(
+        decoder.next(&Cancel::default()),
+        Err(RecordingError::BudgetExceeded { resource: "packet" })
+    ));
+    let options = AnalysisOptions {
+        start_seconds: 0,
+        seconds: Some(3600),
+    };
+    assert_eq!(
+        Selection::new(768_000, 2, None, options)
+            .unwrap()
+            .prefix_capacity,
+        2 * (1 << 20)
+    );
+    assert!(
+        Selection::new(
+            1 << 31,
+            1,
+            None,
+            AnalysisOptions {
+                start_seconds: 2,
+                seconds: Some(2)
+            }
+        )
+        .is_ok()
+    );
+    assert!(matches!(
+        Selection::new(
+            6_700_417,
+            1,
+            None,
+            AnalysisOptions {
+                start_seconds: 641,
+                seconds: Some(2)
+            }
+        ),
+        Err(RecordingError::BudgetExceeded {
+            resource: "skip frames"
+        })
+    ));
+    assert!(matches!(
+        Selection::new(
+            6_700_417,
+            1,
+            None,
+            AnalysisOptions {
+                start_seconds: 0,
+                seconds: Some(641)
+            }
+        ),
+        Err(RecordingError::BudgetExceeded {
+            resource: "measurement frames"
+        })
+    ));
 }

@@ -53,6 +53,7 @@ impl std::error::Error for RecordingError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::File(error) => Some(error),
+            Self::Measurement(error) => Some(error),
             _ => None,
         }
     }
@@ -61,7 +62,6 @@ crate::core::diagnostic_codes! {
     pub(crate) const CODES;
     RecordingError {
         codes {
-            Self::Measurement { .. } => "recording.measurement",
             Self::BudgetExceeded { .. } => "recording.budget_exceeded",
             Self::UnsupportedCodec { .. } => "recording.unsupported_codec",
             Self::Decode { .. } => "recording.decode",
@@ -71,7 +71,7 @@ crate::core::diagnostic_codes! {
             Self::UnsupportedChannels { .. } => "recording.unsupported_channels",
             Self::Cancelled => "recording.cancelled",
         }
-        delegates { Self::File(error) => error, }
+        delegates { Self::File(error) => error, Self::Measurement(error) => error, }
         params(this) {
             match this {
                 Self::BudgetExceeded { resource } => {

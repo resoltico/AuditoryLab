@@ -368,3 +368,19 @@ fn constructor_boundaries_reject_layout_minimum_and_excess_work() {
     ));
     assert!(Measurement::new(1 << 31, 1, 1 << 32).is_ok());
 }
+
+#[test]
+fn cancellation_during_final_numerical_work_refuses_publication() {
+    let mut measurement = Measurement::new(1000, 1, 2000).unwrap();
+    for _ in 0..2000 {
+        measurement.push(&[0.0]).unwrap();
+    }
+    let calls = std::cell::Cell::new(0);
+    let result = measurement.finish(&|| {
+        let next = calls.get() + 1;
+        calls.set(next);
+        next >= 5
+    });
+    assert!(matches!(result, Err(MeasurementError::Cancelled)));
+    assert_eq!(calls.get(), 5);
+}
