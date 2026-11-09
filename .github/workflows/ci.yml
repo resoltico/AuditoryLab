@@ -567,6 +567,9 @@ jobs:
             echo "${name}=${GITHUB_WORKSPACE}/target/tmp" >> "$GITHUB_ENV"
           done
       - run: rustup toolchain install
+      - name: Prepare authenticated test-only native OpenGL driver
+        shell: pwsh
+        run: '& crates/gui/native/prepare-windows-mesa.ps1'
       - run: cargo build -p auditorylab-gui -p auditorylab-cli --locked
       - name: Production UIA, native keys, and common-dialog owner qualification
         timeout-minutes: 5
