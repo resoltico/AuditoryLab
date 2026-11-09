@@ -766,6 +766,7 @@ mod operation_tests {
                 &CliError::Usage(Usage("fixture".into())),
                 "fixture",
                 Outcome::InvalidArgument,
+                None,
             );
             assert_eq!(
                 serde_json::to_value(report).unwrap()["operation"],

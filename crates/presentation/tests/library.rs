@@ -388,6 +388,7 @@ fn failed_report_completion_never_claims_a_failed_operation_was_confirmed() {
         &auditorylab_core::SampleRateError { hz: 0 },
         error.to_string(),
         Outcome::InvalidArgument,
+        None,
     );
     let text = auditorylab_presentation::library::report_completion_failure(
         report.completion_confirmed(),

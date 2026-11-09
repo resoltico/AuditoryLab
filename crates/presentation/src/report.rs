@@ -263,8 +263,10 @@ pub enum FailureStatus {
     Rejected,
     /// Existing input could not be read or decoded.
     Unreadable,
-    /// A requested publication failed; no confirmed mutation is claimed.
+    /// A requested publication failed; the expected mutation was not confirmed.
     PublicationFailed,
+    /// Post-mutation observation cannot establish the requested publication.
+    PublicationUnconfirmed,
     /// Another operation failed; inspect its typed diagnostic.
     Failed,
 }
@@ -739,6 +741,7 @@ impl Report {
             error,
             error.explain(),
             error.outcome(),
+            None,
         );
         if let Body::Failure(payload) = &mut report.body {
             payload.root = Some(UnavailableRoot {
@@ -843,6 +846,7 @@ impl Report {
         error: &impl Code,
         message: impl Into<String>,
         outcome: Outcome,
+        confirmation: Option<&auditorylab_app::services::Confirmation>,
     ) -> Self {
         let status = match outcome {
             Outcome::Conflict | Outcome::HistoryConflict => FailureStatus::Conflict,
@@ -855,7 +859,32 @@ impl Report {
             | Outcome::InvalidArgument
             | Outcome::ReadOnlyBuiltIn => FailureStatus::Rejected,
             Outcome::Unreadable => FailureStatus::Unreadable,
-            Outcome::Write => FailureStatus::PublicationFailed,
+            Outcome::Write
+                if matches!(
+                    confirmation,
+                    Some(
+                        auditorylab_app::services::Confirmation::Different
+                            | auditorylab_app::services::Confirmation::Unavailable(_)
+                    )
+                ) =>
+            {
+                FailureStatus::PublicationUnconfirmed
+            }
+            Outcome::Write
+                if matches!(
+                    operation,
+                    Operation::LibraryInit
+                        | Operation::LibraryAdd
+                        | Operation::LibraryUpdate
+                        | Operation::LibraryRename
+                        | Operation::LibraryTrash
+                        | Operation::LibraryRestore
+                        | Operation::LibraryPurge
+                ) =>
+            {
+                FailureStatus::PublicationFailed
+            }
+            Outcome::Write => FailureStatus::Failed,
             Outcome::Identity | Outcome::Device | Outcome::DestinationExists => {
                 FailureStatus::Failed
             }

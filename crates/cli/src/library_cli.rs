@@ -625,6 +625,10 @@ pub(super) fn error_json(operation: Operation, error: &super::CliError) -> Resul
         error,
         error.message(),
         error.outcome(),
+        match error {
+            super::CliError::Operation(cause) => cause.publication_confirmation(),
+            _ => None,
+        },
     ))
 }
 

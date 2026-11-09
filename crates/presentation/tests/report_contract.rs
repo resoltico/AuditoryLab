@@ -89,13 +89,14 @@ fn publication_states_and_explicit_absent_purge_token_are_independent_of_failure
         (Outcome::Conflict, "conflict"),
         (Outcome::InvalidArgument, "rejected"),
         (Outcome::Unreadable, "unreadable"),
-        (Outcome::Write, "publication_failed"),
+        (Outcome::Write, "failed"),
     ] {
         let report = serde_json::to_value(Report::error(
             Operation::AnalyzeRecording,
             &SampleRateError { hz: 0 },
             "Cancelled",
             outcome,
+            None,
         ))
         .unwrap();
         assert_eq!(report["status"], status);
@@ -115,6 +116,7 @@ fn emitted_bytes_escape_boundary_characters_and_decoding_preserves_authored_data
         &SampleRateError { hz: 0 },
         authored,
         Outcome::InvalidArgument,
+        None,
     ))
     .unwrap();
     let text = std::str::from_utf8(&bytes).unwrap();
@@ -129,4 +131,28 @@ fn emitted_bytes_escape_boundary_characters_and_decoding_preserves_authored_data
     );
     let human = auditorylab_presentation::display_text(authored);
     assert!(!human.contains('\u{202e}'));
+}
+
+#[test]
+fn failed_and_unconfirmed_publication_have_distinct_wire_states() {
+    use auditorylab_app::services::{Confirmation, FileError};
+    let unavailable = Confirmation::Unavailable(Box::new(FileError::MissingFilename));
+    for (confirmation, expected) in [
+        (None, "publication_failed"),
+        (Some(&Confirmation::Unchanged), "publication_failed"),
+        (Some(&Confirmation::Different), "publication_unconfirmed"),
+        (Some(&unavailable), "publication_unconfirmed"),
+    ] {
+        let report = Report::error(
+            Operation::LibraryAdd,
+            &SampleRateError { hz: 0 },
+            "publication failed",
+            Outcome::Write,
+            confirmation,
+        );
+        assert!(!report.completion_confirmed());
+        let value = serde_json::to_value(report).unwrap();
+        assert_eq!(value["status"], expected);
+        assert!(value.get("version_token").is_none());
+    }
 }
