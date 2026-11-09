@@ -14,6 +14,8 @@ using System.Runtime.InteropServices;
 public static class NativeQaWindow {
     [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr hwnd, uint cmd);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hwnd);
+    [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
 }
 '@
 if (-not [Environment]::UserInteractive) { throw 'Required interactive Windows desktop is unavailable' }
@@ -55,7 +57,12 @@ function Read-NativeText($Item) {
     if ($Item.TryGetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern,[ref]$pattern)) { return $pattern.DocumentRange.GetText(-1).TrimEnd("`r","`n") }
     throw 'Multiline field exposes neither Value nor Text UIA pattern'
 }
-function Native-Keys([string]$Keys) { [System.Windows.Forms.SendKeys]::SendWait($Keys) }
+function Native-Keys([string]$Keys) {
+    $foregroundPid = [uint32]0
+    [NativeQaWindow]::GetWindowThreadProcessId([NativeQaWindow]::GetForegroundWindow(),[ref]$foregroundPid) | Out-Null
+    if ($foregroundPid -ne $process.Id) { throw 'Native keyboard focus is outside the isolated application' }
+    [System.Windows.Forms.SendKeys]::SendWait($Keys)
+}
 function Native-Text([string]$Text) {
     foreach ($character in $Text.ToCharArray()) {
         if ($character -eq "`n") { Native-Keys '{ENTER}' }
@@ -93,6 +100,7 @@ try {
         Wait-Native 'scrolled multiline field' { -not $notes.Current.IsOffscreen } | Out-Null
     }
     $notes.SetFocus()
+    Wait-Native 'actual multiline keyboard focus' { $notes.Current.HasKeyboardFocus } | Out-Null
     Native-Text "first native line`nsecond native line"
     Wait-Native 'native multiline text input' { (Read-NativeText $notes).Replace("`r",'') -eq "first native line`nsecond native line" } | Out-Null
     Native-Keys '^a'

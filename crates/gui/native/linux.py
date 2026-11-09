@@ -164,6 +164,7 @@ def main():
                 wait_for("scrolled multiline field", lambda: visible(notes))
             if not notes.queryComponent().grabFocus():
                 raise RuntimeError("multiline OS-provider focus refused")
+            wait_for("actual multiline keyboard focus", lambda: notes.getState().contains(pyatspi.STATE_FOCUSED))
             type_text("first native line\nsecond native line")
             wait_for("native multiline input", lambda: text_of(notes) == "first native line\nsecond native line")
             key("ctrl+a")
