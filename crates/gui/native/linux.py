@@ -167,7 +167,9 @@ def main():
                 before_parent = wait_for("actual portal parent before recreation", first_parent)
                 lifetime = scratch / "surface-lifetime.txt"
                 wait_for("observed native GL first frame", lambda: lifetime.exists() and "first-frame-native-gl" in lifetime.read_text())
-                (scratch / "surface-parent-confirmed").write_bytes(b"native-parent-confirmed\n")
+                marker = scratch / "surface-parent-confirmed.pending"
+                marker.write_bytes(b"native-parent-confirmed\n")
+                marker.replace(scratch / "surface-parent-confirmed")
                 wait_for("actual rendered surface after hide/show", lambda: lifetime.exists() and "recreated-frame-native-gl" in lifetime.read_text())
                 trace = lifetime.read_text().splitlines()
                 if trace != ["first-frame-native-gl", "hidden", "shown", "recreated-frame-native-gl"]:
