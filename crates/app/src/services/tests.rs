@@ -64,7 +64,7 @@ fn add_as_copy_creates_independent_history_without_rewriting_input() {
     let bytes = original.to_toml().unwrap();
     std::fs::write(&input, &bytes).unwrap();
     let library = Library::at_path(directory.path().join("library")).unwrap();
-    library.initialize().unwrap();
+    assert_eq!(library.initialize().unwrap().warnings, []);
     let imported = library
         .add_file(&input, false, &Cancel::default())
         .unwrap()
@@ -102,7 +102,7 @@ fn add_as_copy_creates_independent_history_without_rewriting_input() {
 fn trash_membership_refuses_current_and_captured_playback_before_device_access() {
     let directory = directory();
     let library = Library::at_path(directory.path().join("library")).unwrap();
-    library.initialize().unwrap();
+    assert_eq!(library.initialize().unwrap().warnings, []);
     let snapshot = crate::document::recipe::RecipeSnapshot::new(
         crate::document::recipe::Origin::Stream("silence".into()),
         crate::test_recipes::silent(1.0, 0.0),
@@ -159,7 +159,7 @@ fn trash_membership_refuses_current_and_captured_playback_before_device_access()
 fn retained_user_provenance_does_not_invent_a_managed_selection() {
     let directory = directory();
     let library = Library::at_path(directory.path().join("library")).unwrap();
-    library.initialize().unwrap();
+    assert_eq!(library.initialize().unwrap().warnings, []);
     let input = crate::document::recipe::RecipeSnapshot::new(
         crate::document::recipe::Origin::Stream("original".into()),
         crate::test_recipes::silent(1.0, 0.0),
@@ -217,7 +217,7 @@ fn library_context_keeps_its_captured_root_and_revalidates_action_state() {
     let first = Library::at_path(directory.path().join("first")).unwrap();
     let second = Library::at_path(directory.path().join("second")).unwrap();
     for (library, title) in [(&first, "First root"), (&second, "Second root")] {
-        library.initialize().unwrap();
+        assert_eq!(library.initialize().unwrap().warnings, []);
         let mut draft = Draft::new().unwrap();
         draft.set_title(title.into());
         let _published = library
@@ -393,7 +393,7 @@ fn root_inspection_keeps_readonly_failures_busy_and_publication_categories_disti
     );
 
     let store = Library::at_path(directory.path().join("library")).unwrap();
-    store.initialize().unwrap();
+    assert_eq!(store.initialize().unwrap().warnings, []);
     let lock = std::fs::OpenOptions::new()
         .read(true)
         .write(true)

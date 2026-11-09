@@ -75,8 +75,10 @@ fn readonly_discovery_and_builtin_refusals_never_initialize_a_root() {
 #[test]
 fn full_lifecycle_preserves_identity_history_external_originals_and_stale_intent() {
     let (temp, path, store) = fixture();
-    store.initialize().unwrap();
-    assert!(!store.initialize().unwrap().created);
+    assert_eq!(store.initialize().unwrap().warnings, []);
+    let initialized = store.initialize().unwrap();
+    assert!(!initialized.created);
+    assert_eq!(initialized.warnings, []);
     let original = recipe("Imported unknown history");
     let id = original.document().id;
     let key = LibraryKey::User(id);
@@ -164,7 +166,7 @@ fn full_lifecycle_preserves_identity_history_external_originals_and_stale_intent
 #[test]
 fn new_creation_dates_are_assigned_only_to_the_confirmed_snapshot_and_noops_keep_bytes() {
     let (_temp, path, store) = fixture();
-    store.initialize().unwrap();
+    assert_eq!(store.initialize().unwrap().warnings, []);
     let provisional = recipe("New sound");
     let id = provisional.document().id;
     assert_eq!(provisional.document().created_at, None);
@@ -203,7 +205,7 @@ fn new_creation_dates_are_assigned_only_to_the_confirmed_snapshot_and_noops_keep
 #[test]
 fn exact_byte_digest_detects_manual_whitespace_edits() {
     let (_temp, path, store) = fixture();
-    store.initialize().unwrap();
+    assert_eq!(store.initialize().unwrap().warnings, []);
     let result = store
         .apply(Mutation::Add(Arc::new(recipe("bytes"))), &Cancel::default())
         .unwrap();
@@ -238,7 +240,7 @@ fn exact_byte_digest_detects_manual_whitespace_edits() {
 fn managed_descendant_symlinks_and_nonregular_entries_never_read_external_content() {
     use std::os::unix::fs::symlink;
     let (temp, path, store) = fixture();
-    store.initialize().unwrap();
+    assert_eq!(store.initialize().unwrap().warnings, []);
     let external = temp.path().join("outside");
     fs::write(&external, b"secret outside bytes").unwrap();
     let bad = path.join("recipes/00000000-0000-4000-8000-000000000001.toml");
@@ -266,7 +268,7 @@ fn managed_descendant_symlinks_and_nonregular_entries_never_read_external_conten
 #[test]
 fn lock_contention_waits_a_bounded_time_and_closure_releases_the_same_persistent_lock() {
     let (_temp, path, store) = fixture();
-    store.initialize().unwrap();
+    assert_eq!(store.initialize().unwrap().warnings, []);
     let lock = fs::OpenOptions::new()
         .read(true)
         .write(true)
@@ -306,7 +308,7 @@ fn initialization_refuses_unknown_data_and_records_without_a_marker() {
 #[test]
 fn corrupt_plain_files_and_owned_stages_are_reported_without_read_side_repairs() {
     let (_temp, path, store) = fixture();
-    store.initialize().unwrap();
+    assert_eq!(store.initialize().unwrap().warnings, []);
     let record = store
         .apply(
             Mutation::Add(Arc::new(recipe("healthy"))),
@@ -351,7 +353,7 @@ fn corrupt_plain_files_and_owned_stages_are_reported_without_read_side_repairs()
 #[test]
 fn unknown_membership_dates_remain_visible_in_human_descriptions() {
     let (_temp, path, store) = fixture();
-    store.initialize().unwrap();
+    assert_eq!(store.initialize().unwrap().warnings, []);
     let record = store
         .apply(
             Mutation::Add(Arc::new(recipe("Missing local dates"))),

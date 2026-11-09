@@ -18,7 +18,7 @@ fn fixture() -> (tempfile::TempDir, Library, Workspace) {
     std::fs::create_dir_all(&base).unwrap();
     let temp = tempfile::tempdir_in(base).unwrap();
     let store = crate::services::library::Library::at_path(temp.path().join("library")).unwrap();
-    store.initialize().unwrap();
+    assert_eq!(store.initialize().unwrap().warnings, []);
     let mut workspace = Workspace::with_library(
         crate::services::catalog().unwrap(),
         Capabilities::no_device_playback(),

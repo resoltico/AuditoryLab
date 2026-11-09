@@ -7,7 +7,7 @@ fn fixture() -> (tempfile::TempDir, PathBuf, LibraryStore) {
     let temp = tempfile::tempdir_in(base).unwrap();
     let path = temp.path().join("library");
     let store = LibraryStore::new(LibraryRoot::explicit(path.clone()).unwrap()).unwrap();
-    store.root().initialize().unwrap();
+    assert_eq!(store.root().initialize().unwrap().warnings, []);
     (temp, path, store)
 }
 #[test]

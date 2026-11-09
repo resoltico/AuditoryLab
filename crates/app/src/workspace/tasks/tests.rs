@@ -26,7 +26,7 @@ fn fixture() -> (tempfile::TempDir, Library, Workspace) {
     let directory = tempfile::tempdir_in(base).unwrap();
     let store =
         crate::services::library::Library::at_path(directory.path().join("library")).unwrap();
-    store.initialize().unwrap();
+    assert_eq!(store.initialize().unwrap().warnings, []);
     let mut workspace = Workspace::with_library(
         crate::services::catalog().unwrap(),
         Capabilities::available(),

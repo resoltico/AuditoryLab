@@ -26,7 +26,7 @@ impl TestWorkspace {
         std::fs::create_dir_all(&base).unwrap();
         let root = tempfile::tempdir_in(base).unwrap();
         let store = crate::services::library::Library::at_path(root.path().join("library"))?;
-        store.initialize()?;
+        assert_eq!(store.initialize()?.warnings, []);
         let open_files = !catalog.is_empty()
             && catalog.iter().all(|snapshot| {
                 !matches!(

@@ -246,7 +246,7 @@ fn process_child() {
     let mode = std::env::var("AUDITORYLAB_PUBLISH_MODE").unwrap();
     let library = LibraryRoot::explicit(root).unwrap();
     if mode == "initialize" {
-        library.initialize().unwrap();
+        assert_eq!(library.initialize().unwrap().warnings, []);
         return;
     }
     let store = LibraryStore::new(library).unwrap();
@@ -344,7 +344,7 @@ fn store_fixture() -> (
         crate::storage::library::LibraryRoot::explicit(temp.path().join("library")).unwrap(),
     )
     .unwrap();
-    store.root().initialize().unwrap();
+    assert_eq!(store.root().initialize().unwrap().warnings, []);
     let record = store
         .apply(
             crate::storage::library::Mutation::Create(Arc::new(
@@ -506,10 +506,21 @@ fn killed_initialization_marker_is_last_and_retry_cleans_owned_stages() {
     kill_at_pause(&mut process, &ready);
     assert!(!root.join("library.toml").exists());
     assert!(root.join("recipes").is_dir());
-    LibraryRoot::explicit(root.clone())
+    let initialized = LibraryRoot::explicit(root.clone())
         .unwrap()
         .initialize()
         .unwrap();
+    assert!(initialized.created);
+    match initialized.warnings.as_slice() {
+        [crate::storage::warning::StorageWarning::RemovedStage { path }] => {
+            assert_eq!(
+                path.parent(),
+                Some(fs::canonicalize(&root).unwrap().as_path())
+            );
+        }
+        warnings => panic!("expected one recovered stage notice, got {warnings:?}"),
+    }
+
     assert!(root.join("library.toml").is_file());
     assert!(!fs::read_dir(root).unwrap().any(|entry| {
         entry
@@ -567,7 +578,7 @@ fn failed_membership_write_is_saved_with_unknown_new_dates() {
     let (temp, _dir, _path) = fixture();
     let store =
         LibraryStore::new(LibraryRoot::explicit(temp.path().join("library")).unwrap()).unwrap();
-    store.root().initialize().unwrap();
+    assert_eq!(store.root().initialize().unwrap().warnings, []);
     AFTER_PUBLISH.with(|slot| *slot.borrow_mut() = Some(Box::new(|| inject(&[FaultPoint::Write]))));
     let result = store
         .apply(

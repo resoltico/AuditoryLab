@@ -854,3 +854,38 @@ fn assert_cli_purge(
     assert_eq!(json(&purged)["version_token"], serde_json::Value::Null);
     assert_eq!(fs::read(file).unwrap(), bytes);
 }
+
+#[test]
+fn initialization_reports_recovered_stage_notice_without_losing_publication_success() {
+    let temp = dir();
+    for format in ["text", "json"] {
+        let root = temp.path().join(format);
+        fs::create_dir(&root).unwrap();
+        let stage = root.join(".auditorylab-00000000-0000-4000-8000-000000000099.partial");
+        fs::write(&stage, b"interrupted owned bytes").unwrap();
+        let result = cli(&root, &["library", "init", "--format", format]);
+        assert!(result.status.success());
+        assert!(root.join("library.toml").is_file());
+        assert!(!stage.exists());
+        if format == "text" {
+            assert!(
+                String::from_utf8_lossy(&result.stderr)
+                    .contains(".auditorylab-00000000-0000-4000-8000-000000000099.partial")
+            );
+            assert!(String::from_utf8_lossy(&result.stdout).contains("initialized"));
+        } else {
+            let report = json(&result);
+            assert_eq!(report["status"], "published_with_warning");
+            assert_eq!(report["diagnostics"].as_array().unwrap().len(), 1);
+            assert_eq!(report["diagnostics"][0]["code"], "storage.removed_stage");
+            assert_eq!(
+                report["diagnostics"][0]["params"]["path"],
+                fs::canonicalize(&root)
+                    .unwrap()
+                    .join(stage.file_name().unwrap())
+                    .display()
+                    .to_string()
+            );
+        }
+    }
+}

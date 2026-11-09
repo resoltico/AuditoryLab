@@ -68,7 +68,7 @@ fn bound_workspace(
     let store =
         auditorylab_app::services::library::Library::at_path(directory.path().join("library"))
             .unwrap();
-    store.initialize().unwrap();
+    assert_eq!(store.initialize().unwrap().warnings, []);
     let workspace = Workspace::with_library(catalog, capabilities, store.clone()).unwrap();
     (workspace, directory, store)
 }
@@ -1779,7 +1779,7 @@ fn persistent_library_slint_bindings_publish_exact_draft_and_keep_filter_identit
     let temp = tempfile::tempdir().unwrap();
     let store =
         auditorylab_app::services::library::Library::at_path(temp.path().join("library")).unwrap();
-    store.initialize().unwrap();
+    assert_eq!(store.initialize().unwrap().warnings, []);
     let workspace = Workspace::with_library(
         auditorylab_app::services::catalog().unwrap(),
         Capabilities::no_device_playback(),
@@ -1856,7 +1856,7 @@ fn persistent_native_filters_use_shared_query_and_invalid_dates_preserve_it() {
     let temp = tempfile::tempdir().unwrap();
     let store =
         auditorylab_app::services::library::Library::at_path(temp.path().join("library")).unwrap();
-    store.initialize().unwrap();
+    assert_eq!(store.initialize().unwrap().warnings, []);
     let h = Harness::with_workspace(
         Workspace::with_library(
             auditorylab_app::services::catalog().unwrap(),
@@ -1979,7 +1979,7 @@ fn persistent_native_transport_stays_inside_800_by_600_with_large_text() {
     let temp = tempfile::tempdir().unwrap();
     let root =
         auditorylab_app::services::library::Library::at_path(temp.path().join("library")).unwrap();
-    root.initialize().unwrap();
+    assert_eq!(root.initialize().unwrap().warnings, []);
     let store = root;
     let h = Harness::with_workspace(
         Workspace::with_library(
@@ -2023,7 +2023,7 @@ fn native_open_add_external_save_conflict_and_independent_copy_keep_originals_di
     let temp = tempfile::tempdir().unwrap();
     let root =
         auditorylab_app::services::library::Library::at_path(temp.path().join("library")).unwrap();
-    root.initialize().unwrap();
+    assert_eq!(root.initialize().unwrap().warnings, []);
     let store = root;
     let file = temp.path().join("external.toml");
     let mut draft = auditorylab_app::document::editing::Draft::new().unwrap();
@@ -2115,7 +2115,7 @@ fn native_readonly_labels_escape_controls_and_bidi_without_rewriting_editable_co
     let temp = tempfile::tempdir().unwrap();
     let root =
         auditorylab_app::services::library::Library::at_path(temp.path().join("library")).unwrap();
-    root.initialize().unwrap();
+    assert_eq!(root.initialize().unwrap().warnings, []);
     let store = root;
     let raw = "Label \u{202e}User\u{001b}";
     let mut draft = auditorylab_app::document::editing::Draft::new().unwrap();
@@ -2172,7 +2172,7 @@ fn native_library_keyboard_has_one_tab_stop_and_keeps_selected_key_through_sort(
     let temp = tempfile::tempdir().unwrap();
     let root =
         auditorylab_app::services::library::Library::at_path(temp.path().join("library")).unwrap();
-    root.initialize().unwrap();
+    assert_eq!(root.initialize().unwrap().warnings, []);
     let store = root;
     let h = Harness::with_workspace(
         Workspace::with_library(
@@ -2276,7 +2276,7 @@ fn compact_empty_filters_and_recovery_remain_reachable_through_real_controls() {
     let temp = tempfile::tempdir().unwrap();
     let root =
         auditorylab_app::services::library::Library::at_path(temp.path().join("library")).unwrap();
-    root.initialize().unwrap();
+    assert_eq!(root.initialize().unwrap().warnings, []);
     let store = root;
     let h = Harness::with_workspace(
         Workspace::with_library(
@@ -2364,7 +2364,7 @@ fn compact_unavailable_root_keeps_recovery_and_non_authoritative_counts_visible(
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("library");
     let root = auditorylab_app::services::library::Library::at_path(path.clone()).unwrap();
-    root.initialize().unwrap();
+    assert_eq!(root.initialize().unwrap().warnings, []);
     let store = root;
     std::fs::rename(&path, temp.path().join("offline")).unwrap();
     std::fs::write(&path, "not a directory").unwrap();
@@ -2408,7 +2408,7 @@ fn first_selected_row_keeps_the_results_note_in_view_after_launch() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("library");
     let store = auditorylab_app::services::library::Library::at_path(path.clone()).unwrap();
-    store.initialize().unwrap();
+    assert_eq!(store.initialize().unwrap().warnings, []);
     // An unreadable records folder makes the inventory incomplete, so a note
     // sits above the first row.
     std::fs::remove_dir_all(path.join("recipes")).unwrap();
@@ -2445,7 +2445,7 @@ fn compact_back_keeps_result_scroll_and_large_text_rows_wrap_with_summary_dates(
     let temp = tempfile::tempdir().unwrap();
     let store =
         auditorylab_app::services::library::Library::at_path(temp.path().join("library")).unwrap();
-    store.initialize().unwrap();
+    assert_eq!(store.initialize().unwrap().warnings, []);
     let h = Harness::with_workspace(
         Workspace::with_library(
             auditorylab_app::services::catalog().unwrap(),
@@ -2534,7 +2534,7 @@ fn local_dates_expose_exact_utc_and_reset_sort_preserves_committed_filters() {
     let temp = tempfile::tempdir().unwrap();
     let store =
         auditorylab_app::services::library::Library::at_path(temp.path().join("library")).unwrap();
-    store.initialize().unwrap();
+    assert_eq!(store.initialize().unwrap().warnings, []);
     let draft = auditorylab_app::document::editing::Draft::from_snapshot(
         &auditorylab_app::services::builtin("ioannou-2015-binaural-2-hz").unwrap(),
     )
@@ -2607,7 +2607,7 @@ fn changing_display_vocabulary_preserves_typed_library_search() {
     let temp = tempfile::tempdir().unwrap();
     let root =
         auditorylab_app::services::library::Library::at_path(temp.path().join("library")).unwrap();
-    root.initialize().unwrap();
+    assert_eq!(root.initialize().unwrap().warnings, []);
     let store = root;
     let h = Harness::with_workspace(
         Workspace::with_library(
@@ -2656,7 +2656,7 @@ fn filter_controls_map_to_independent_typed_queries() {
     let temp = tempfile::tempdir().unwrap();
     let store =
         auditorylab_app::services::library::Library::at_path(temp.path().join("library")).unwrap();
-    store.initialize().unwrap();
+    assert_eq!(store.initialize().unwrap().warnings, []);
     let h = Harness::with_workspace(
         Workspace::with_library(
             auditorylab_app::services::catalog().unwrap(),

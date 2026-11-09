@@ -39,7 +39,7 @@ fn workspace() -> Harness {
     let root = tempfile::tempdir().unwrap();
     let library =
         auditorylab_app::services::library::Library::at_path(root.path().join("library")).unwrap();
-    library.initialize().unwrap();
+    assert_eq!(library.initialize().unwrap().warnings, []);
     let workspace = Workspace::with_library(
         auditorylab_app::services::catalog().unwrap(),
         Capabilities::available(),

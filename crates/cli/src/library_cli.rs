@@ -471,7 +471,7 @@ pub(super) fn library(command: LibraryCommand, context: &LibraryContext) -> Resu
             } else {
                 super::completed(
                     &auditorylab_presentation::library::initialization_description(&initialized),
-                    &[],
+                    &initialized.warnings,
                 );
             }
             Ok(0)
