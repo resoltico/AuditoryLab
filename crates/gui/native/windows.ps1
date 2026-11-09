@@ -50,6 +50,9 @@ $env:AUDITORYLAB_NATIVE_QA_DIRECTORY = $Scratch
 $root = [System.Windows.Automation.AutomationElement]::RootElement
 $scope = [System.Windows.Automation.TreeScope]::Descendants
 $uia = [System.Windows.Automation.AutomationElement]
+# Windows PowerShell5.1 reads BOM-less source as ANSI; construct the real label
+# from its Unicode code point while keeping this harness source ASCII.
+$openRecipe = 'Open recipe' + [char]0x2026
 Write-Host "Native UIA client: PowerShell=$($PSVersionTable.PSVersion) Runtime=$([Environment]::Version) Apartment=$([Threading.Thread]::CurrentThread.ApartmentState)"
 Write-Host "Native UIA assembly: $($uia.Assembly.FullName) Location=$($uia.Assembly.Location)"
 function Wait-Native([string]$Description, [scriptblock]$Probe) {
@@ -124,7 +127,7 @@ try {
         if ($driver[0].FileName -ne $expectedDriver) { throw 'Production renderer did not load the authenticated app-local Mesa driver' }
     }
     Invoke-Native $browse
-    foreach ($name in @('Open recipe…','Workbench')) { Wait-Native "operation provider $name" { Find-Named $window $name } | Out-Null }
+    foreach ($name in @($openRecipe,'Workbench')) { Wait-Native "operation provider $name" { Find-Named $window $name } | Out-Null }
     Invoke-Native (Find-Named $window 'Workbench')
     Wait-Native 'Workbench New sound provider' { Find-Named $window 'New sound' } | Out-Null
     $notesCondition = [System.Windows.Automation.PropertyCondition]::new($uia::NameProperty,'Custom recipe notes')
@@ -153,7 +156,7 @@ try {
     Invoke-Native (Find-Named $window 'Library')
     $dialogOwners = @()
     for ($attempt=0; $attempt -lt 3; $attempt++) {
-        Invoke-Native (Wait-Native 'enabled Open recipe' { Find-Named $window 'Open recipe…' })
+        Invoke-Native (Wait-Native 'enabled Open recipe' { Find-Named $window $openRecipe })
         $dialog = Wait-Native 'native common file dialog' {
             foreach ($candidate in $root.FindAll([System.Windows.Automation.TreeScope]::Children,$condition)) {
                 if ($candidate.Current.ClassName -eq '#32770' -and $null -ne (Find-Named $candidate 'Cancel')) { return $candidate }

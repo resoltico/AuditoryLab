@@ -74,6 +74,16 @@ def named(root, name, require_showing=True):
     return None
 
 
+def showing_main_frame(root):
+    for node in nodes(root):
+        try:
+            if node.getRole() == pyatspi.ROLE_FRAME and node.name == "Auditory Lab" and visible(node):
+                return node
+        except (GLib.Error, RuntimeError):
+            continue
+    return None
+
+
 def provider_description(root):
     lines = []
     for node in nodes(root):
@@ -186,10 +196,8 @@ def main():
             for name in ["Open recipe…", "Workbench"]:
                 wait_for("operation provider name " + name, lambda name=name: named(app, name))
             # Inspect real surface geometry after first-frame provider construction.
-            frames = [node for node in nodes(app) if node.getRole() == pyatspi.ROLE_FRAME and node.name == "Auditory Lab" and visible(node)]
-            if not frames:
-                raise RuntimeError("application exported no native top-level frame")
-            extent = frames[0].queryComponent().getExtents(pyatspi.DESKTOP_COORDS)
+            frame = wait_for("showing native main frame", lambda: showing_main_frame(app))
+            extent = frame.queryComponent().getExtents(pyatspi.DESKTOP_COORDS)
             if extent.width <= 100 or extent.height <= 100:
                 raise RuntimeError("first-frame native geometry is unusable")
             pixels = ImageGrab.grab(bbox=(extent.x, extent.y, extent.x + extent.width, extent.y + extent.height), xdisplay=os.environ["DISPLAY"])
@@ -267,7 +275,10 @@ def main():
             fixture = str(args.fixture.resolve())
             type_text(fixture)
             wait_for("native location received the exact fixture path", lambda: text_of(location) == fixture)
-            key("Return")
+            # Single-selection xdg-desktop-portal-gtk exposes Select as its
+            # actual accept operation; typing a location alone is not acceptance.
+            accept = wait_for("native chooser Select control", lambda: named(chooser, "Select"))
+            activate(accept)
             wait_for("native chooser accepted and dismissed", lambda: not visible(cancel))
             wait_for("native chooser accepted location", lambda: named(app, "Open recipe…"))
             wait_for("opened fixture selected in production provider", lambda: named(app, "My 3 Hz pair"))
