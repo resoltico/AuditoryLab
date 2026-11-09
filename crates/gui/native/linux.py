@@ -177,13 +177,17 @@ def main():
             activate(named(app, "Workbench"))
             wait_for("Workbench New sound provider", lambda: named(app, "New sound"))
             notes = wait_for("multiline OS text provider", lambda: named(app, "Custom recipe notes", require_showing=False))
-            if not visible(notes):
-                if not notes.queryComponent().scrollTo(pyatspi.SCROLL_ANYWHERE):
-                    raise RuntimeError("native notes ScrollIntoView refused")
-                wait_for("scrolled multiline field", lambda: visible(notes))
-            if not notes.queryComponent().grabFocus():
-                raise RuntimeError("multiline OS-provider focus refused")
-            wait_for("actual multiline keyboard focus", lambda: notes.getState().contains(pyatspi.STATE_FOCUSED))
+            title = wait_for("visible title keyboard starting point", lambda: named(app, "Sound title"))
+            if not title.queryComponent().grabFocus():
+                raise RuntimeError("title OS-provider focus refused")
+            # Slint's native Tab-navigation path scrolls clipped fields into view;
+            # its AccessKit adapter does not advertise ScrollIntoView actions.
+            for _ in range(80):
+                key("Tab")
+                time.sleep(0.05)
+                if notes.getState().contains(pyatspi.STATE_FOCUSED):
+                    break
+            wait_for("actual visible multiline keyboard focus", lambda: visible(notes) and notes.getState().contains(pyatspi.STATE_FOCUSED))
             type_text("first native line\nsecond native line")
             wait_for("native multiline input", lambda: text_of(notes) == "first native line\nsecond native line")
             key("ctrl+a")

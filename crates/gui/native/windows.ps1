@@ -99,13 +99,17 @@ try {
     Wait-Native 'Workbench New sound provider' { Find-Named $window 'New sound' } | Out-Null
     $notesCondition = [System.Windows.Automation.PropertyCondition]::new($uia::NameProperty,'Custom recipe notes')
     $notes = Wait-Native 'multiline notes UIA provider' { $window.FindFirst($scope,$notesCondition) }
-    if ($notes.Current.IsOffscreen) {
-        $scroll = $notes.GetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern)
-        $scroll.ScrollIntoView()
-        Wait-Native 'scrolled multiline field' { -not $notes.Current.IsOffscreen } | Out-Null
+    $title = Wait-Native 'visible title keyboard starting point' { Find-Named $window 'Sound title' }
+    $title.SetFocus()
+    Wait-Native 'actual title keyboard focus' { $title.Current.HasKeyboardFocus } | Out-Null
+    # Use native Tab traversal, whose production focus path scrolls clipped fields.
+    # Slint does not advertise a ScrollItem UIA pattern for these fields.
+    for ($attempt=0; $attempt -lt 80; $attempt++) {
+        Native-Keys '{TAB}'
+        Start-Sleep -Milliseconds 50
+        if ($notes.Current.HasKeyboardFocus) { break }
     }
-    $notes.SetFocus()
-    Wait-Native 'actual multiline keyboard focus' { $notes.Current.HasKeyboardFocus } | Out-Null
+    Wait-Native 'actual visible multiline keyboard focus' { $notes.Current.HasKeyboardFocus -and -not $notes.Current.IsOffscreen } | Out-Null
     Native-Text "first native line`nsecond native line"
     Wait-Native 'native multiline text input' { (Read-NativeText $notes).Replace("`r",'') -eq "first native line`nsecond native line" } | Out-Null
     Native-Keys '^a'
