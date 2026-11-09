@@ -11,6 +11,7 @@ chmod 700 "$scratch/runtime"
 export XDG_RUNTIME_DIR="$scratch/runtime"
 export XDG_CONFIG_HOME="$scratch/config-home"
 export XDG_DATA_HOME="$scratch/data-home"
+export XDG_CACHE_HOME="$scratch/cache-home"
 export GSETTINGS_BACKEND=memory
 export GTK_A11Y=always
 export NO_AT_BRIDGE=0
@@ -55,7 +56,7 @@ else
   export XDG_SESSION_TYPE=x11
 fi
 # The portal and its GTK implementation must inherit this actual session.
-dbus-update-activation-environment DISPLAY XDG_RUNTIME_DIR XDG_CURRENT_DESKTOP XDG_SESSION_TYPE XDG_CONFIG_HOME XDG_DATA_HOME
+dbus-update-activation-environment DISPLAY XDG_RUNTIME_DIR XDG_CURRENT_DESKTOP XDG_SESSION_TYPE XDG_CONFIG_HOME XDG_DATA_HOME XDG_CACHE_HOME
 if [[ "$session" == wayland ]]; then dbus-update-activation-environment WAYLAND_DISPLAY; fi
 /usr/libexec/xdg-desktop-portal-gtk > "$scratch/portal-provider.log" 2>&1 &
 portal_pid=$!

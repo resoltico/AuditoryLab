@@ -105,6 +105,7 @@ def main():
                 "AUDITORYLAB_NATIVE_QA_DIRECTORY": str(scratch),
                 "XDG_CONFIG_HOME": str(scratch / "xdg-config"),
                 "XDG_DATA_HOME": str(scratch / "xdg-data"),
+                "XDG_CACHE_HOME": str(scratch / "xdg-cache"),
                 "WINIT_UNIX_BACKEND": args.session,
                 "SLINT_ACCESSIBILITY": "enable"})
     if args.session == "x11":
