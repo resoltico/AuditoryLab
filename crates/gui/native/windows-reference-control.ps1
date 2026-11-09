@@ -45,8 +45,17 @@ try {
         return $null
     }
     [ReferenceInputWindow]::SetForegroundWindow([IntPtr]$window.Current.NativeWindowHandle) | Out-Null
-    $name = [Windows.Automation.PropertyCondition]::new($uia::NameProperty,'Custom recipe notes')
-    $notes = Wait-Reference 'stock multiline provider' { $window.FindFirst($scope,$name) }
+    foreach ($child in ($window.FindAll($scope,[Windows.Automation.Condition]::TrueCondition) | Select-Object -First 32)) {
+        Write-Host "Stock reference observed provider: type=$($child.Current.ControlType.ProgrammaticName) class=$($child.Current.ClassName) name=$($child.Current.Name) offscreen=$($child.Current.IsOffscreen)"
+    }
+    # This independent host owns exactly one real WinForms/Win32 EDIT. Its
+    # AccessibleName need not be surfaced by the OS's legacy Win32 proxy.
+    $editType = [Windows.Automation.PropertyCondition]::new($uia::ControlTypeProperty,[Windows.Automation.ControlType]::Edit)
+    $notes = Wait-Reference 'single stock EDIT provider' {
+        $edits = $window.FindAll($scope,$editType)
+        if ($edits.Count -eq 1 -and -not $edits[0].Current.IsOffscreen) { return $edits[0] }
+        return $null
+    }
     Write-Host "Stock reference control class=$($notes.Current.ClassName)"
     $notes.SetFocus()
     Wait-Reference 'actual stock keyboard focus' { $notes.Current.HasKeyboardFocus } | Out-Null
