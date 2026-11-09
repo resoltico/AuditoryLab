@@ -1,5 +1,7 @@
 //! Typed machine-readable application reports.
 use crate::Explain;
+mod facts;
+mod query;
 use auditorylab_app::discovery::query::Direction;
 use auditorylab_app::discovery::query::SortBy;
 use auditorylab_app::document::origin::LibraryKey;
@@ -9,7 +11,6 @@ use auditorylab_core::{diagnostic::Code, diagnostic::Params};
 use serde::Serialize;
 use std::path::PathBuf;
 use {
-    auditorylab_app::discovery::collection::CatalogQuery,
     auditorylab_app::discovery::collection::Collection,
     auditorylab_app::discovery::collection::EntrySummary,
     auditorylab_app::discovery::collection::EvidenceFacet,
@@ -20,8 +21,7 @@ use {
     auditorylab_app::services::library::MutationStatus,
     auditorylab_app::services::library::RootInfo, auditorylab_app::services::library::RootSource,
     auditorylab_app::services::library::WriteOutcome, auditorylab_core::DocumentUuid,
-    auditorylab_core::Timestamp, auditorylab_core::VoiceFacts, auditorylab_core::VoiceId,
-    auditorylab_core::rhythm,
+    auditorylab_core::Timestamp, auditorylab_core::VoiceId, auditorylab_core::rhythm,
 };
 
 /// Version of the command-line JSON report envelope.
@@ -32,7 +32,7 @@ macro_rules! report_struct {
         #[doc = concat!("Machine-readable ", stringify!($name), " fields.")]
         #[derive(Debug, Clone, Serialize)]
         $(#[$attr])*
-        pub struct $name {
+        struct $name {
             $($(#[$field_attr])* pub $field: $ty,)*
         }
     }
@@ -74,11 +74,16 @@ report_struct!(InitializationReport {
     path: PathBuf,
     warnings: Vec<DiagnosticMessage>,
 });
-report_struct!(GroupReport {
-    key: String,
-    label: String,
-    keys: Vec<LibraryKey>,
-});
+/// Machine group membership with a separately rendered caption.
+#[derive(Debug, Clone, Serialize)]
+pub struct GroupReport {
+    /// Semantic group identifier.
+    pub key: String,
+    /// Shared human caption.
+    pub label: String,
+    /// Flat entry membership.
+    pub keys: Vec<LibraryKey>,
+}
 impl From<&ResultGroup> for GroupReport {
     fn from(group: &ResultGroup) -> Self {
         Self {
@@ -135,11 +140,11 @@ impl From<&rhythm::Analysis> for NominalReport {
 }
 report_struct!(VoiceReport {
     id: VoiceId,
-    facts: VoiceFacts,
+    facts: facts::Facts,
 });
 /// One component's own compilation result, independent of aggregate validity.
 #[derive(Debug, Clone, Serialize)]
-pub struct ComponentValidation {
+struct ComponentValidation {
     /// Authored component identity.
     pub id: auditorylab_core::ComponentId,
     /// Empty on success, otherwise this component's own failure.
@@ -148,13 +153,13 @@ pub struct ComponentValidation {
 /// A checked generator lane retained even when another component failed.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "status", rename_all = "snake_case")]
-pub enum VoiceValidation {
+enum VoiceValidation {
     /// This lane compiled successfully; this does not validate the whole mix.
     Valid {
         /// Lane identity.
         id: VoiceId,
         /// Independent resolved lane facts.
-        facts: VoiceFacts,
+        facts: facts::Facts,
     },
     /// This lane failed.
     Invalid {
@@ -167,7 +172,7 @@ pub enum VoiceValidation {
 /// Validation at the explicitly requested output rate.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "status", rename_all = "snake_case")]
-pub enum Validation {
+enum Validation {
     /// Discovery did not compile an audio target.
     NotChecked,
     /// The entire sound can be rendered at the stated rate.
@@ -242,17 +247,6 @@ report_struct!(UnavailableRoot {
     layout: Option<u32>,
     initialized: bool,
 });
-/// Root information from inspection, initialization, or an inspection failure.
-#[derive(Debug, Clone, Serialize)]
-#[serde(untagged)]
-pub enum RootReport {
-    /// Fully inspected configuration.
-    Inspected(RootInfo),
-    /// Explicit initialization result.
-    Initialized(InitializationReport),
-    /// Path configuration whose on-disk state could not be verified.
-    Unavailable(UnavailableRoot),
-}
 /// Stable failure statuses associated with process exit outcomes.
 #[derive(Debug, Clone, Copy, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -497,7 +491,7 @@ struct Entries {
 struct Listing {
     complete: bool,
     convention: &'static str,
-    query: CatalogQuery,
+    query: query::Query,
     unique_count: usize,
     entries: Vec<EntryReport>,
     groups: Vec<GroupReport>,
@@ -529,7 +523,7 @@ struct InitializationPayload {
 }
 #[derive(Debug, Clone, Serialize)]
 struct RootPayload {
-    root: RootInfo,
+    root: query::Root,
 }
 #[derive(Debug, Clone, Serialize)]
 struct RecordingPayload {
@@ -631,7 +625,7 @@ impl Report {
         let payload = Listing {
             complete: listing.complete(),
             convention: rhythm::CONVENTION,
-            query: query.clone(),
+            query: query.into(),
             unique_count: listing.entries().len(),
             entries: listing.entries().iter().map(EntryReport::from).collect(),
             groups: listing.groups().iter().map(GroupReport::from).collect(),
@@ -680,7 +674,10 @@ impl Report {
                     .signal()
                     .target()
                     .voices()
-                    .map(|(id, facts)| VoiceReport { id, facts: *facts })
+                    .map(|(id, facts)| VoiceReport {
+                        id,
+                        facts: (*facts).into(),
+                    })
                     .collect(),
             },
             Err(error) => Validation::Invalid {
@@ -707,7 +704,7 @@ impl Report {
                     .map(|(id, result)| match result {
                         Ok(facts) => VoiceValidation::Valid {
                             id: *id,
-                            facts: *facts,
+                            facts: (*facts).into(),
                         },
                         Err(error) => VoiceValidation::Invalid {
                             id: *id,
@@ -728,7 +725,7 @@ impl Report {
     /// A successful root inspection.
     #[must_use]
     pub fn path(info: RootInfo) -> Self {
-        Self::success(Success::LibraryPath(RootPayload { root: info }))
+        Self::success(Success::LibraryPath(RootPayload { root: info.into() }))
     }
     /// A root failure preserves only facts actually observed.
     #[must_use]
