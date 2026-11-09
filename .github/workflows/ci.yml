@@ -576,6 +576,9 @@ jobs:
         shell: pwsh
         run: '& crates/gui/native/prepare-windows-mesa.ps1'
       - run: cargo build -p auditorylab-gui -p auditorylab-cli --locked
+      - name: Compile independent official-SDK text-range control
+        shell: pwsh
+        run: '& crates/gui/native/prepare-windows-control.ps1'
       - name: Production UIA, native keys, and common-dialog owner qualification
         timeout-minutes: 5
         shell: pwsh
