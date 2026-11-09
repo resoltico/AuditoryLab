@@ -373,3 +373,48 @@ fn publication_confirmation_survives_aggregate_error_and_cleanup_context() {
     assert_eq!(error.outcome(), crate::outcome::Outcome::Write);
     assert_eq!(error.leftover(), Some(std::path::Path::new("stage.toml")));
 }
+
+#[test]
+fn root_inspection_keeps_readonly_failures_busy_and_publication_categories_distinct() {
+    let directory = directory();
+    let file = directory.path().join("regular-file-root");
+    std::fs::write(&file, b"preserve this ordinary file").unwrap();
+    let context = LibraryContext::resolve(Some(&file));
+    let observed = library::path(&context).unwrap();
+    assert_eq!(observed.exists, Some(true));
+    let error = observed.result.unwrap_err();
+    assert_eq!(error.outcome(), Outcome::Unreadable);
+    assert!(
+        matches!(error, LibraryError::Read { ref error } if error.action == IoOperation::OpenDirectory)
+    );
+    assert_eq!(
+        std::fs::read(&file).unwrap(),
+        b"preserve this ordinary file"
+    );
+
+    let store = Library::at_path(directory.path().join("library")).unwrap();
+    store.initialize().unwrap();
+    let lock = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(store.path().join(".library.lock"))
+        .unwrap();
+    lock.try_lock().unwrap();
+    let locked = library::path(&LibraryContext::resolve(Some(store.path()))).unwrap();
+    assert_eq!(locked.result.unwrap_err().outcome(), Outcome::Busy);
+    drop(lock);
+    assert!(store.inspect().unwrap().initialized);
+
+    let publication = LibraryError::File {
+        error: FileError::Io(IoFailure::new(
+            IoOperation::Write,
+            None,
+            std::io::Error::other("injected publication failure"),
+        )),
+    };
+    assert_eq!(publication.outcome(), Outcome::Write);
+    let conflict = LibraryError::StaleContent {
+        id: "00000000-0000-4000-8000-000000000001".parse().unwrap(),
+    };
+    assert_eq!(conflict.outcome(), Outcome::Conflict);
+}
