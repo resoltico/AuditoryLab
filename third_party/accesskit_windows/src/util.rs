@@ -279,8 +279,8 @@ impl<T: Into<Variant> + std::fmt::Debug + PartialEq> From<TextRangePropertyValue
     }
 }
 
-impl From<Vec<IUnknown>> for Variant {
-    fn from(value: Vec<IUnknown>) -> Self {
+impl From<Vec<IRawElementProviderSimple>> for Variant {
+    fn from(value: Vec<IRawElementProviderSimple>) -> Self {
         if value.is_empty() {
             Variant::empty()
         } else {
@@ -323,7 +323,17 @@ pub(crate) fn safe_array_from_f64_slice(slice: &[f64]) -> *mut SAFEARRAY {
 // UIA typed SAFEARRAY contracts require the supplied provider interface pointer,
 // not its canonical IUnknown identity (which can have a different vtable).
 pub(crate) fn safe_array_from_com_slice<T: Interface>(slice: &[T]) -> *mut SAFEARRAY {
-    let sa = unsafe { SafeArrayCreateVector(VT_UNKNOWN, 0, slice.len().try_into().unwrap()) };
+    // Preserve the typed IID as well as each raw interface pointer: a generic
+    // VT_UNKNOWN descriptor otherwise identifies members as IUnknown when the
+    // array crosses a COM/UIA boundary. SafeArrayCreateVectorEx copies the IID.
+    let sa = unsafe {
+        SafeArrayCreateVectorEx(
+            VT_UNKNOWN,
+            0,
+            slice.len().try_into().unwrap(),
+            &T::IID as *const GUID as *const _,
+        )
+    };
     if sa.is_null() {
         panic!("SAFEARRAY allocation failed");
     }

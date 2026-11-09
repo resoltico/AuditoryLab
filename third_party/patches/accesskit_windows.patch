@@ -1,7 +1,7 @@
 --- a/src/lib.rs
 +++ b/src/lib.rs
 @@ -20,3 +20,6 @@
- 
+
  #[cfg(test)]
  mod tests;
 +
@@ -9,16 +9,38 @@
 +mod selection_tests;
 --- a/src/node.rs
 +++ b/src/node.rs
-@@ -1046,7 +1046,7 @@
+@@ -1041,12 +1041,11 @@
+                         result = toolkit_description(state, &mut buffer).into()
+                     }
+                     UIA_ControllerForPropertyId => {
+-                        let controlled: Vec<IUnknown> = node
++                        let controlled: Vec<IRawElementProviderSimple> = node
+                             .controls()
                              .filter(|controlled| filter(controlled) == FilterResult::Include)
                              .map(|controlled| context.get_or_create_platform_node(controlled.id()))
                              .map(|result| result.into_interface::<IRawElementProviderSimple>())
 -                            .filter_map(|controlled| controlled.cast::<IUnknown>().ok())
-+                            .map(IUnknown::from)
                              .collect();
                          result = controlled.into();
                      }
-@@ -1422,7 +1422,6 @@
+@@ -1214,14 +1213,14 @@
+                 let mut old_controls = old.node.controls().filter(|controlled| filter(controlled) == FilterResult::Include);
+                 let mut new_controls = self.node.controls().filter(|controlled| filter(controlled) == FilterResult::Include);
+                 let mut are_equal = true;
+-                let mut controls: Vec<IUnknown> = Vec::new();
++                let mut controls: Vec<IRawElementProviderSimple> = Vec::new();
+                 loop {
+                     let old_controlled = old_controls.next();
+                     let new_controlled = new_controls.next();
+                     match (old_controlled, new_controlled) {
+                         (Some(a), Some(b)) => {
+                             are_equal = are_equal && a.id() == b.id();
+-                            controls.push(context.get_or_create_platform_node(b.id()).into_interface::<IRawElementProviderSimple>().into());
++                            controls.push(context.get_or_create_platform_node(b.id()).into_interface::<IRawElementProviderSimple>());
+                         }
+                         (None, None) => break,
+                         _ => are_equal = false,
+@@ -1422,7 +1421,6 @@
                      .items(&filter)
                      .filter(|item| item.is_selected() == Some(true))
                      .map(|item| context.get_or_create_platform_node(item.id()).into_interface::<IRawElementProviderSimple>())
@@ -26,7 +48,7 @@
                      .collect();
                  Ok(safe_array_from_com_slice(&selection))
              })
-@@ -1433,8 +1432,7 @@
+@@ -1433,8 +1431,7 @@
              self.resolve_for_text_pattern(|node| {
                  if let Some(range) = node.text_selection() {
                      let platform_range: ITextRangeProvider = PlatformTextRange::new(&self.context, range).into();
@@ -38,7 +60,7 @@
                  }
 --- /dev/null
 +++ b/src/selection_tests.rs
-@@ -0,0 +1,207 @@
+@@ -0,0 +1,223 @@
 +// Copyright 2026 The AccessKit Authors. All rights reserved.
 +// Licensed under the Apache License, Version 2.0 (found in
 +// the LICENSE-APACHE file) or the MIT license (found in
@@ -131,6 +153,10 @@
 +        "hello"
 +    );
 +    let array = unsafe { provider.GetSelection().unwrap() };
++    assert_eq!(
++        unsafe { SafeArrayGetIID(array).unwrap() },
++        ITextRangeProvider::IID
++    );
 +    let stored = element(array);
 +    // Check raw pointer *before* QueryInterface could repair a canonical identity.
 +    let identity = stored.cast::<IUnknown>().unwrap();
@@ -170,6 +196,10 @@
 +        .get_or_create_platform_node(consumer_id(&context, NodeId(1)))
 +        .into_interface::<ISelectionProvider>();
 +    let array = unsafe { provider.GetSelection().unwrap() };
++    assert_eq!(
++        unsafe { SafeArrayGetIID(array).unwrap() },
++        IRawElementProviderSimple::IID
++    );
 +    let stored = element(array);
 +    assert_eq!(
 +        stored.as_raw(),
@@ -200,6 +230,10 @@
 +        windows::Win32::System::Variant::VT_ARRAY | windows::Win32::System::Variant::VT_UNKNOWN
 +    );
 +    let array = unsafe { controls.Anonymous.Anonymous.Anonymous.parray };
++    assert_eq!(
++        unsafe { SafeArrayGetIID(array).unwrap() },
++        IRawElementProviderSimple::IID
++    );
 +    let stored = element(array);
 +    assert_eq!(stored.as_raw(), expected.as_raw());
 +    // VARIANT owns and destroys this property array.
@@ -228,6 +262,10 @@
 +    let drops = Arc::new(AtomicUsize::new(0));
 +    let provider: IValueProvider = DropProbe(drops.clone()).into();
 +    let array = safe_array_from_com_slice(std::slice::from_ref(&provider));
++    assert_eq!(
++        unsafe { SafeArrayGetIID(array).unwrap() },
++        IValueProvider::IID
++    );
 +    let stored = element(array);
 +    assert_eq!(stored.as_raw(), provider.as_raw());
 +    drop(stored);
@@ -249,25 +287,47 @@
 --- a/src/text.rs
 +++ b/src/text.rs
 @@ -638,7 +638,7 @@
- 
+
      fn GetChildren(&self) -> Result<*mut SAFEARRAY> {
          // We don't support embedded objects in text.
 -        Ok(safe_array_from_com_slice(&[]))
 +        Ok(safe_array_from_com_slice::<IRawElementProviderSimple>(&[]))
      }
  }
- 
+
 --- a/src/util.rs
 +++ b/src/util.rs
-@@ -320,14 +320,20 @@
+@@ -279,8 +279,8 @@
+     }
+ }
+
+-impl From<Vec<IUnknown>> for Variant {
+-    fn from(value: Vec<IUnknown>) -> Self {
++impl From<Vec<IRawElementProviderSimple>> for Variant {
++    fn from(value: Vec<IRawElementProviderSimple>) -> Self {
+         if value.is_empty() {
+             Variant::empty()
+         } else {
+@@ -320,14 +320,30 @@
      safe_array_from_primitive_slice(VT_R8, slice)
  }
- 
+
 -pub(crate) fn safe_array_from_com_slice(slice: &[IUnknown]) -> *mut SAFEARRAY {
+-    let sa = unsafe { SafeArrayCreateVector(VT_UNKNOWN, 0, slice.len().try_into().unwrap()) };
 +// UIA typed SAFEARRAY contracts require the supplied provider interface pointer,
 +// not its canonical IUnknown identity (which can have a different vtable).
 +pub(crate) fn safe_array_from_com_slice<T: Interface>(slice: &[T]) -> *mut SAFEARRAY {
-     let sa = unsafe { SafeArrayCreateVector(VT_UNKNOWN, 0, slice.len().try_into().unwrap()) };
++    // Preserve the typed IID as well as each raw interface pointer: a generic
++    // VT_UNKNOWN descriptor otherwise identifies members as IUnknown when the
++    // array crosses a COM/UIA boundary. SafeArrayCreateVectorEx copies the IID.
++    let sa = unsafe {
++        SafeArrayCreateVectorEx(
++            VT_UNKNOWN,
++            0,
++            slice.len().try_into().unwrap(),
++            &T::IID as *const GUID as *const _,
++        )
++    };
      if sa.is_null() {
          panic!("SAFEARRAY allocation failed");
      }

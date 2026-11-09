@@ -1041,12 +1041,11 @@ impl IRawElementProviderSimple_Impl for PlatformNode_Impl {
                         result = toolkit_description(state, &mut buffer).into()
                     }
                     UIA_ControllerForPropertyId => {
-                        let controlled: Vec<IUnknown> = node
+                        let controlled: Vec<IRawElementProviderSimple> = node
                             .controls()
                             .filter(|controlled| filter(controlled) == FilterResult::Include)
                             .map(|controlled| context.get_or_create_platform_node(controlled.id()))
                             .map(|result| result.into_interface::<IRawElementProviderSimple>())
-                            .map(IUnknown::from)
                             .collect();
                         result = controlled.into();
                     }
@@ -1214,14 +1213,14 @@ macro_rules! properties {
                 let mut old_controls = old.node.controls().filter(|controlled| filter(controlled) == FilterResult::Include);
                 let mut new_controls = self.node.controls().filter(|controlled| filter(controlled) == FilterResult::Include);
                 let mut are_equal = true;
-                let mut controls: Vec<IUnknown> = Vec::new();
+                let mut controls: Vec<IRawElementProviderSimple> = Vec::new();
                 loop {
                     let old_controlled = old_controls.next();
                     let new_controlled = new_controls.next();
                     match (old_controlled, new_controlled) {
                         (Some(a), Some(b)) => {
                             are_equal = are_equal && a.id() == b.id();
-                            controls.push(context.get_or_create_platform_node(b.id()).into_interface::<IRawElementProviderSimple>().into());
+                            controls.push(context.get_or_create_platform_node(b.id()).into_interface::<IRawElementProviderSimple>());
                         }
                         (None, None) => break,
                         _ => are_equal = false,

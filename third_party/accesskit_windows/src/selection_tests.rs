@@ -90,6 +90,10 @@ fn text_selection_array_preserves_the_text_range_interface() {
         "hello"
     );
     let array = unsafe { provider.GetSelection().unwrap() };
+    assert_eq!(
+        unsafe { SafeArrayGetIID(array).unwrap() },
+        ITextRangeProvider::IID
+    );
     let stored = element(array);
     // Check raw pointer *before* QueryInterface could repair a canonical identity.
     let identity = stored.cast::<IUnknown>().unwrap();
@@ -129,6 +133,10 @@ fn item_selection_array_preserves_the_element_provider_interface() {
         .get_or_create_platform_node(consumer_id(&context, NodeId(1)))
         .into_interface::<ISelectionProvider>();
     let array = unsafe { provider.GetSelection().unwrap() };
+    assert_eq!(
+        unsafe { SafeArrayGetIID(array).unwrap() },
+        IRawElementProviderSimple::IID
+    );
     let stored = element(array);
     assert_eq!(
         stored.as_raw(),
@@ -159,6 +167,10 @@ fn item_selection_array_preserves_the_element_provider_interface() {
         windows::Win32::System::Variant::VT_ARRAY | windows::Win32::System::Variant::VT_UNKNOWN
     );
     let array = unsafe { controls.Anonymous.Anonymous.Anonymous.parray };
+    assert_eq!(
+        unsafe { SafeArrayGetIID(array).unwrap() },
+        IRawElementProviderSimple::IID
+    );
     let stored = element(array);
     assert_eq!(stored.as_raw(), expected.as_raw());
     // VARIANT owns and destroys this property array.
@@ -187,6 +199,10 @@ fn typed_interface_array_owns_exactly_one_additional_reference() {
     let drops = Arc::new(AtomicUsize::new(0));
     let provider: IValueProvider = DropProbe(drops.clone()).into();
     let array = safe_array_from_com_slice(std::slice::from_ref(&provider));
+    assert_eq!(
+        unsafe { SafeArrayGetIID(array).unwrap() },
+        IValueProvider::IID
+    );
     let stored = element(array);
     assert_eq!(stored.as_raw(), provider.as_raw());
     drop(stored);
