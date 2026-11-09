@@ -2,7 +2,7 @@
 
 These scripts drive the production debug GUI through OS accessibility providers and native keyboard input. They do not call application callbacks or open audio. Each process uses an isolated library and `AUDITORYLAB_NATIVE_QA_DIRECTORY`; that private debug-only seam isolates onboarding configuration and is absent from distributed builds. Initialize the isolated library with the ordinary CLI before launching the harness.
 
-Linux requires a private D-Bus session, AT-SPI registry, GTK desktop portal, X11 display, `xdotool`, Openbox, `sway`, `wayland-info` and system Python with `pyatspi` and Pillow. The Wayland case additionally starts a real nested Sway compositor with its GL renderer and verified xdg-foreign v2 export/import protocols, forces the application onto its Wayland socket and checks actual Wayland surface protocol. The outer X11 display supplies compositor input and output; it is not the Wayland implementation. Run separate cases:
+Linux requires a private D-Bus session, AT-SPI registry, GTK desktop portal, X11 display, `xdotool`, Openbox, `sway`, `wayland-info` and system Python with `pyatspi` and Pillow. The Wayland case additionally starts a real nested Sway compositor with Pixman composition and verified xdg-foreign v2 export/import protocols, forces the application onto its Wayland socket and checks actual Wayland surface protocol. The outer X11 display supplies compositor input and output; it is not the Wayland implementation. Run separate cases:
 
 ```sh
 scratch="$PWD/target/native-x11"
@@ -20,3 +20,5 @@ Native waits have deadlines and CI must also bound the outer process to five min
 These scripts are prepared qualification inputs. Syntax checks do not qualify their native behavior. CI must execute them on the delivered source. macOS AppKit repeated Quit Save/Discard/Cancel requires its own observed cases in the final acceptance ledger.
 
 The compositor choice follows observed protocol requirements: Weston 13 rendered native GL successfully but advertised no `zxdg_exporter_v2`, so RFD could not supply a usable portal parent. Sway 1.9 explicitly constructs both foreign-protocol versions in its [server owner](https://github.com/swaywm/sway/blob/1.9/sway/server.c). The harness requires the actual installed compositor to advertise export/import v2 before starting the application; it never accepts an empty parent.
+
+The hosted X11 server exposes no DRI3/DRM render file descriptor, so wlroots cannot create its GLES compositor renderer. Pixman therefore composes the actual Wayland desktop. This does not change AuditoryLab's renderer: its production Winit/FemtoVG path must produce actual NativeOpenGL frames both before and after surface recreation. The rendered-frame notifier, native surface protocol, provider controls and nonempty foreign parents remain required. No compositor GL claim is made.

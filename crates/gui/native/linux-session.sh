@@ -36,7 +36,7 @@ xwayland disable
 focus_follows_mouse no
 output * mode 1600x1100
 CONFIG
-  WLR_BACKENDS=x11 WLR_RENDERER=gles2 WLR_RENDERER_ALLOW_SOFTWARE=1 \
+  WLR_BACKENDS=x11 WLR_RENDERER=pixman \
     sway --unsupported-gpu --debug --config "$scratch/sway.conf" > "$scratch/compositor.log" 2>&1 &
   compositor_pid=$!
   socket=
@@ -56,11 +56,14 @@ CONFIG
   # Native X11 input goes into the compositor's real nested output surface.
   outer=$(timeout 10s xdotool search --sync --onlyvisible --name '^wlroots - ' | head -n 1)
   xdotool windowactivate --sync "$outer"
-  if ! rg -qi 'GL renderer|GL version|EGL version|gles2' "$scratch/compositor.log"; then
+  if ! rg -qi 'Creating pixman renderer|pixman' "$scratch/compositor.log"; then
     cat "$scratch/compositor.log"
-    echo 'Wayland compositor did not establish the required GL renderer' >&2
+    echo 'Wayland compositor did not establish its requested Pixman composition backend' >&2
     exit 1
   fi
+  # Hosted Xvfb supplies no DRM render FD. Pixman composes the real native
+  # surfaces; AuditoryLab itself must still produce NativeOpenGL frames through
+  # Winit/FemtoVG, independently asserted by the application's rendering notifier.
   timeout 5s wayland-info > "$scratch/compositor-protocols.txt"
   for protocol in zxdg_exporter_v2 zxdg_importer_v2; do
     if ! rg -q "$protocol" "$scratch/compositor-protocols.txt"; then
