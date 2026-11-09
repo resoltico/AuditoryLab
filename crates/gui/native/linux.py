@@ -144,7 +144,7 @@ def main():
             for name in ["Open recipe…", "Workbench"]:
                 wait_for("operation provider name " + name, lambda name=name: named(app, name))
             # Inspect real surface geometry after first-frame provider construction.
-            frames = [node for node in nodes(app) if node.getRole() == pyatspi.ROLE_FRAME]
+            frames = [node for node in nodes(app) if node.getRole() == pyatspi.ROLE_FRAME and node.name == "Auditory Lab" and visible(node)]
             if not frames:
                 raise RuntimeError("application exported no native top-level frame")
             extent = frames[0].queryComponent().getExtents(pyatspi.DESKTOP_COORDS)
