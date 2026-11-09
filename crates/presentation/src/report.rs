@@ -198,6 +198,27 @@ enum Validation {
         voices: Vec<VoiceValidation>,
     },
 }
+#[derive(Debug, Clone, Serialize)]
+struct EvidenceReport {
+    source: String,
+    doi: Option<String>,
+    scope: auditorylab_core::provenance::EvidenceScope,
+    population: auditorylab_core::provenance::Population,
+    role: auditorylab_core::provenance::ConditionRole,
+    measures: Vec<auditorylab_core::provenance::Measure>,
+}
+impl From<&EvidenceFacet> for EvidenceReport {
+    fn from(value: &EvidenceFacet) -> Self {
+        Self {
+            source: value.source.clone(),
+            doi: value.doi.clone(),
+            scope: value.scope,
+            population: value.population,
+            role: value.role,
+            measures: value.measures.clone(),
+        }
+    }
+}
 report_struct!(EntryReport {
     key: LibraryKey,
     collection: Collection,
@@ -211,7 +232,7 @@ report_struct!(EntryReport {
     trashed: bool,
     version_token: Option<VersionToken>,
     nominal: NominalReport,
-    evidence: Vec<EvidenceFacet>,
+    evidence: Vec<EvidenceReport>,
     validation: Validation,
     #[serde(skip_serializing_if = "Option::is_none")]
     history_warnings: Option<Vec<DiagnosticMessage>>,
@@ -233,7 +254,7 @@ impl From<&EntrySummary> for EntryReport {
             trashed: e.trashed,
             version_token: e.version_token,
             nominal: (&e.nominal).into(),
-            evidence: e.evidence.clone(),
+            evidence: e.evidence.iter().map(EvidenceReport::from).collect(),
             validation: Validation::NotChecked,
             history_warnings: None,
             recipe_toml: None,
@@ -245,7 +266,7 @@ report_struct!(UnavailableRoot {
     source: RootSource,
     exists: Option<bool>,
     layout: Option<u32>,
-    initialized: bool,
+    initialized: Option<bool>,
 });
 /// Stable failure statuses associated with process exit outcomes.
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -727,7 +748,7 @@ impl Report {
                 source: root.source(),
                 exists,
                 layout: None,
-                initialized: false,
+                initialized: None,
             });
         }
         report

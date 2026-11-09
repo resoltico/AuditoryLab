@@ -17,6 +17,7 @@ fn subset(actual: &Value, expected: &Value) {
     match expected {
         Value::Object(fields) => {
             for (key, value) in fields {
+                assert!(actual.get(key).is_some(), "missing wire field {key}");
                 subset(&actual[key], value);
             }
         }
@@ -163,4 +164,51 @@ fn failed_and_unconfirmed_publication_have_distinct_wire_states() {
         assert_eq!(value["status"], expected);
         assert!(value.get("version_token").is_none());
     }
+}
+
+#[test]
+fn failed_root_inspection_does_not_invent_unobserved_initialization_state() {
+    let directory = tempfile::tempdir().unwrap();
+    let context = LibraryContext::resolve(Some(directory.path()));
+    let report = Report::unavailable_path(
+        context.location().unwrap(),
+        Some(true),
+        &services::library::LibraryError::Busy,
+    );
+    let value = serde_json::to_value(report).unwrap();
+    assert_eq!(value["root"]["exists"], true);
+    assert!(value["root"]["initialized"].is_null());
+    assert_eq!(value["status"], "busy");
+}
+
+#[test]
+fn unknown_source_duration_is_not_replaced_with_measured_window_duration() {
+    // FLAC STREAMINFO: 20 rate bits + 3 channel bits + 5 depth bits + 36 total-sample bits.
+    // A zero 36-bit total means unknown; packet audio and its independent ten-second
+    // synthetic source remain unchanged. Symphonia 0.6.1 reads this as no num_frames.
+    let mut bytes = include_bytes!("../../app/tests/fixtures/recording/tone.flac").to_vec();
+    assert_eq!(&bytes[..4], b"fLaC");
+    assert_eq!(bytes[4] & 0x7f, 0);
+    assert_eq!(&bytes[5..8], &[0, 0, 34]);
+    bytes[21] &= 0xf0;
+    bytes[22..26].fill(0);
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("unknown-total.flac");
+    std::fs::write(&path, bytes).unwrap();
+    let recording = services::analyze_recording(
+        &path,
+        auditorylab_app::recording::AnalysisOptions::default(),
+        &auditorylab_app::job::Cancel::default(),
+        &auditorylab_app::job::Progress::default(),
+    )
+    .unwrap();
+    assert_eq!(recording.analysis.duration_seconds, None);
+    let value = serde_json::to_value(Report::analyzed_recording(&recording)).unwrap();
+    let expected: Value =
+        serde_json::from_str(include_str!("fixtures/report/unknown-recording.json")).unwrap();
+    subset(&value, &expected);
+    assert_eq!(
+        value["recording"]["analysis"]["resolution_hz"],
+        8000.0 / 65_536.0
+    );
 }
