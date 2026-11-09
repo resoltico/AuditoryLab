@@ -3,6 +3,9 @@ param([Parameter(Mandatory=$true)][string]$Binary,
       [Parameter(Mandatory=$true)][string]$Fixture,
       [Parameter(Mandatory=$true)][string]$Scratch)
 $ErrorActionPreference = 'Stop'
+# Native GL driver choice belongs only to this disposable qualification process.
+$env:GALLIUM_DRIVER = 'llvmpipe'
+$env:LP_NUM_THREADS = '2'
 $qualificationDeadline = [DateTime]::UtcNow.AddSeconds(180)
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
@@ -112,6 +115,12 @@ try {
         for ($x=0; $x -lt $bitmap.Width; $x+=10) { for ($y=0; $y -lt $bitmap.Height; $y+=10) { $colors.Add($bitmap.GetPixel($x,$y).ToArgb()) | Out-Null } }
         if ($colors.Count -lt 5) { $bitmap.Save((Join-Path $Scratch 'failure-first-frame.png')); throw 'No rendered production first-frame pixels' }
     } finally { $bitmap.Dispose() }
+    $driver = @($process.Modules | Where-Object ModuleName -eq 'opengl32.dll')
+    if ($driver.Count -ne 1) { throw 'Production renderer did not load a discoverable WGL driver' }
+    if (Test-Path (Join-Path $Scratch 'driver-provenance.json')) {
+        $expectedDriver = Join-Path ([IO.Path]::GetDirectoryName($Binary)) 'opengl32.dll'
+        if ($driver[0].FileName -ne $expectedDriver) { throw 'Production renderer did not load the authenticated app-local Mesa driver' }
+    }
     Invoke-Native $browse
     foreach ($name in @('Open recipe…','Workbench')) { Wait-Native "operation provider $name" { Find-Named $window $name } | Out-Null }
     Invoke-Native (Find-Named $window 'Workbench')
@@ -156,7 +165,7 @@ try {
         } | Out-Null
     }
     if ($process.HasExited) { throw 'Production application exited during native qualification' }
-    @{session='windows'; provider='UI Automation'; production='Winit/FemtoVG'; first_frame_colors=$colors.Count;
+    @{session='windows'; provider='UI Automation'; production='Winit/FemtoVG'; first_frame_colors=$colors.Count; native_gl_driver=$driver[0].FileName;
       multiline_native_keys=$true; modifier_selection=$true; native_dialog_cancel_reopen=$true;
       native_dialog_open=$true; native_dialog_owners=$dialogOwners; audio_device_opened=$false} | ConvertTo-Json -Compress
 } catch {
