@@ -14,6 +14,7 @@
 - Recording energy bars distinguish undefined silence from zero energy; changing Device check answers reinterprets retained findings without re-analysis.
 - Catalog construction and captured WAV export preserve typed content through internal processing, with destination and publication safeguards retained.
 - Contributor checks use formatters without a physical line-width gate; CI separates state checks, native tests, mutations and source-bound packaging.
+- Native graphical qualification checks actual OS providers, input and dialogs; missing sessions or production GL capabilities fail instead of skipping.
 - Update bundled dependencies, including thread-safety fixes in triple_buffer, overflow safety in fixedbitset and native file-dialog fixes.
 - Slint build tools no longer resolve the unmaintained pin-utils crate; the patched executor uses Rust's standard pinning macro.
 
