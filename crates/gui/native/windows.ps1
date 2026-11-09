@@ -97,11 +97,11 @@ function Observe-NativeSelection($Pattern, [string]$Stage) {
     Write-Host "Native observation: $Stage start_vs_doc_start=$start start_vs_doc_end=$startAtEnd end_vs_doc_end=$end"
     return @{Count=$count;Start=$start;StartAtEnd=$startAtEnd;End=$end}
 }
-function Invoke-SdkTextRangeControl($Window, [string]$Stage) {
+function Invoke-SdkTextRangeControl($Window, [string]$Stage, [string]$ExpectedState) {
     $probe = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../../target/native-ui-control/text-range-control.exe'))
     if (-not (Test-Path $probe)) { throw 'Required official-SDK text-range reference client is unavailable' }
     Write-Host "Native independent SDK control: $Stage"
-    & $probe ([string]$Window.ToInt64())
+    & $probe ([string]$Window.ToInt64()) $ExpectedState
     if ($LASTEXITCODE -ne 0) { throw "Official-SDK text-range reference client failed at $Stage" }
 }
 function Native-Keys([string]$Keys) {
@@ -172,7 +172,11 @@ try {
         $textPattern.DocumentRange.GetText(-1).Replace("`r",'').TrimEnd("`n") -eq "first native line`nsecond native line"
     } | Out-Null
     Write-Host 'Native witness: explicit TextPattern document range verified'
-    Invoke-SdkTextRangeControl $handle 'caret-before-Ctrl+A'
+    Invoke-SdkTextRangeControl $handle 'caret-before-Ctrl+A' 'caret'
+    Native-Keys '^a'
+    Invoke-SdkTextRangeControl $handle 'full-selection-after-native-Ctrl+A' 'selection'
+    # Restore the real end-caret before the still-mandatory managed controls.
+    Native-Keys '{RIGHT}'
     Wait-Native 'actual native caret endpoints' {
         $position = Observe-NativeSelection $textPattern 'caret-before-Ctrl+A'
         $position.Count -eq 1 -and $position.StartAtEnd -eq 0 -and $position.End -eq 0
@@ -181,7 +185,6 @@ try {
     Wait-Native 'actual native caret text is empty' { $textPattern.GetSelection()[0].GetText(-1) -eq '' } | Out-Null
     Write-Host 'Native witness: actual degenerate caret GetText verified'
     Native-Keys '^a'
-    Invoke-SdkTextRangeControl $handle 'selection-after-native-Ctrl+A'
     Wait-Native 'actual native full-selection endpoints' {
         $position = Observe-NativeSelection $textPattern 'selection-after-native-Ctrl+A'
         $position.Count -eq 1 -and $position.Start -eq 0 -and $position.End -eq 0
