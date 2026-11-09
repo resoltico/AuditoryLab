@@ -585,7 +585,7 @@ fn derivatives_reopen_with_full_scoped_graph_and_bounded_flat_ancestry() {
     draft.set_summary("Rīga \"quoted\" 🎧\nsecond line".into());
     draft.set_duration_seconds(finite(2.0));
     let mut bytes = draft.to_toml().unwrap();
-    for expected in 1..=16 {
+    for expected in 1..=20 {
         let reopened =
             crate::storage::load::load_reader(bytes.as_bytes(), "reopened elsewhere").unwrap();
         assert!(
@@ -605,10 +605,6 @@ fn derivatives_reopen_with_full_scoped_graph_and_bounded_flat_ancestry() {
                 .all(|e| e.scope == auditorylab_core::provenance::EvidenceScope::Ancestor)
         );
         assert!(!bytes.contains("reopened elsewhere"));
-        if expected == 16 {
-            assert!(Draft::from_snapshot(&reopened).is_err());
-            break;
-        }
         draft = Draft::from_snapshot(&reopened).unwrap();
         draft.set_title("Derivative".into());
         bytes = draft.to_toml().unwrap();

@@ -94,99 +94,77 @@ impl ComponentForm {
         true
     }
     /// Read an applicable quantity in model units.
-    pub fn get(self, parameter: crate::ParameterId) -> Option<Finite> {
-        use crate::ParameterId as P;
-        match (parameter, self.source) {
-            (P::ToneFrequency, SoundSource::Tone { frequency_hz, .. }) => Some(frequency_hz),
-            (
-                P::PeakLevel,
-                SoundSource::Tone { peak_dbfs, .. } | SoundSource::PulseTrain { peak_dbfs, .. },
-            ) => Some(peak_dbfs),
-            (
-                P::PairFirstFrequency,
-                SoundSource::BinauralPair { first_hz, .. }
-                | SoundSource::MonauralPair { first_hz, .. },
-            ) => Some(first_hz),
-            (
-                P::PairOffset,
-                SoundSource::BinauralPair { offset_hz, .. }
-                | SoundSource::MonauralPair { offset_hz, .. },
-            ) => Some(offset_hz),
-            (
-                P::PairFirstLevel,
-                SoundSource::BinauralPair {
-                    first_peak_dbfs, ..
-                }
-                | SoundSource::MonauralPair {
-                    first_peak_dbfs, ..
-                },
-            ) => Some(first_peak_dbfs),
-            (
-                P::PairSecondLevel,
-                SoundSource::BinauralPair {
-                    second_peak_dbfs, ..
-                }
-                | SoundSource::MonauralPair {
-                    second_peak_dbfs, ..
-                },
-            ) => Some(second_peak_dbfs),
-            _ => match self.source {
-                SoundSource::PulseTrain { pulse, .. } => pulse
-                    .get(parameter, false)
-                    .or_else(|| self.modulation.and_then(|m| m.get(parameter))),
-                _ => self.modulation.and_then(|m| m.get(parameter)),
-            },
-        }
+    pub fn get(mut self, parameter: crate::ParameterId) -> Option<Finite> {
+        self.field_mut(parameter).copied()
     }
     /// Write only the addressed applicable quantity.
     pub fn set(&mut self, parameter: crate::ParameterId, value: Finite) -> bool {
-        use crate::ParameterId as P;
-        let field = match (parameter, &mut self.source) {
-            (P::ToneFrequency, SoundSource::Tone { frequency_hz, .. }) => frequency_hz,
-            (
-                P::PeakLevel,
-                SoundSource::Tone { peak_dbfs, .. } | SoundSource::PulseTrain { peak_dbfs, .. },
-            ) => peak_dbfs,
-            (
-                P::PairFirstFrequency,
-                SoundSource::BinauralPair { first_hz, .. }
-                | SoundSource::MonauralPair { first_hz, .. },
-            ) => first_hz,
-            (
-                P::PairOffset,
-                SoundSource::BinauralPair { offset_hz, .. }
-                | SoundSource::MonauralPair { offset_hz, .. },
-            ) => offset_hz,
-            (
-                P::PairFirstLevel,
-                SoundSource::BinauralPair {
-                    first_peak_dbfs, ..
-                }
-                | SoundSource::MonauralPair {
-                    first_peak_dbfs, ..
-                },
-            ) => first_peak_dbfs,
-            (
-                P::PairSecondLevel,
-                SoundSource::BinauralPair {
-                    second_peak_dbfs, ..
-                }
-                | SoundSource::MonauralPair {
-                    second_peak_dbfs, ..
-                },
-            ) => second_peak_dbfs,
-            (_, SoundSource::PulseTrain { pulse, .. }) if pulse.get(parameter, false).is_some() => {
-                return pulse.set(parameter, value, false);
-            }
-            _ => {
-                return self
-                    .modulation
-                    .as_mut()
-                    .is_some_and(|m| m.set(parameter, value));
-            }
+        let Some(field) = self.field_mut(parameter) else {
+            return false;
         };
         *field = value;
         true
+    }
+    fn field_mut(&mut self, parameter: crate::ParameterId) -> Option<&mut Finite> {
+        use crate::ParameterId as P;
+        // Exhaustive parameter dispatch makes adding a quantity require an explicit
+        // access decision. The returned field defines reading and writing together.
+        match parameter {
+            P::ToneFrequency => match &mut self.source {
+                SoundSource::Tone { frequency_hz, .. } => Some(frequency_hz),
+                _ => None,
+            },
+            P::PeakLevel => match &mut self.source {
+                SoundSource::Tone { peak_dbfs, .. } | SoundSource::PulseTrain { peak_dbfs, .. } => {
+                    Some(peak_dbfs)
+                }
+                _ => None,
+            },
+            P::PairFirstFrequency => match &mut self.source {
+                SoundSource::BinauralPair { first_hz, .. }
+                | SoundSource::MonauralPair { first_hz, .. } => Some(first_hz),
+                _ => None,
+            },
+            P::PairOffset => match &mut self.source {
+                SoundSource::BinauralPair { offset_hz, .. }
+                | SoundSource::MonauralPair { offset_hz, .. } => Some(offset_hz),
+                _ => None,
+            },
+            P::PairFirstLevel => match &mut self.source {
+                SoundSource::BinauralPair {
+                    first_peak_dbfs, ..
+                }
+                | SoundSource::MonauralPair {
+                    first_peak_dbfs, ..
+                } => Some(first_peak_dbfs),
+                _ => None,
+            },
+            P::PairSecondLevel => match &mut self.source {
+                SoundSource::BinauralPair {
+                    second_peak_dbfs, ..
+                }
+                | SoundSource::MonauralPair {
+                    second_peak_dbfs, ..
+                } => Some(second_peak_dbfs),
+                _ => None,
+            },
+            P::SourcePulseRate
+            | P::SourcePulseDuration
+            | P::SourceDuty
+            | P::SourceRise
+            | P::SourceFall => match &mut self.source {
+                SoundSource::PulseTrain { pulse, .. } => pulse.field_mut(parameter, false),
+                _ => None,
+            },
+            P::ModulationRate
+            | P::ModulationDepth
+            | P::ModulationPulseRate
+            | P::ModulationPulseDuration
+            | P::ModulationDuty
+            | P::ModulationRise
+            | P::ModulationFall => self.modulation.as_mut()?.field_mut(parameter),
+            P::Duration | P::Fade => None,
+        }
     }
 }
 /// An authored form and its positive stable owner identity.

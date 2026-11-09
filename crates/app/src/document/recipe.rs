@@ -65,6 +65,7 @@ pub struct RecipeSnapshot {
     recipe: Arc<Recipe>,
     realizations: Arc<std::sync::Mutex<Realizations>>,
     nominal: Arc<auditorylab_core::rhythm::Analysis>,
+    copy_preview: Arc<std::sync::OnceLock<Result<(), auditorylab_core::RecipeError>>>,
     canonical_text: Arc<std::sync::OnceLock<Result<Arc<str>, auditorylab_core::RecipeError>>>,
 }
 
@@ -87,6 +88,7 @@ impl RecipeSnapshot {
         let nominal = Arc::new(auditorylab_core::rhythm::nominal(recipe.sound()));
         Self {
             nominal,
+            copy_preview: Arc::new(std::sync::OnceLock::new()),
             canonical_text: Arc::new(std::sync::OnceLock::new()),
             id: SnapshotId::next(),
             origin,
@@ -120,6 +122,22 @@ impl RecipeSnapshot {
     pub(crate) fn canonical_text(&self) -> Result<Arc<str>, auditorylab_core::RecipeError> {
         self.canonical_text
             .get_or_init(|| self.recipe.to_toml().map(Arc::<str>::from))
+            .clone()
+    }
+    /// Side-effect-free cached capacity check for this immutable snapshot's full copy.
+    pub(crate) fn copy_readiness(&self) -> Result<(), auditorylab_core::RecipeError> {
+        self.copy_preview
+            .get_or_init(|| {
+                let catalog = match self.origin() {
+                    Origin::BuiltIn(id) => Some((*id).into()),
+                    _ => None,
+                };
+                self.recipe.copy_preview(
+                    catalog,
+                    crate::core::vocabulary::copy_note(self.recipe()),
+                    crate::core::vocabulary::copy_title(&self.title()),
+                )
+            })
             .clone()
     }
     /// The captured document.

@@ -616,7 +616,7 @@ fn over_budget_copy_content_is_refused_before_becoming_a_snapshot() {
 }
 
 #[test]
-fn copy_inputs_reject_nonfinite_construction_and_full_lineage() {
+fn copy_inputs_reject_nonfinite_construction_and_keep_seventeen_generations() {
     assert!(crate::core::Finite::new(f64::NAN).is_none());
     let mut source = Draft::new().unwrap().recipe().unwrap().into_builder();
     source
@@ -648,7 +648,7 @@ fn copy_inputs_reject_nonfinite_construction_and_full_lineage() {
         crate::document::recipe::Origin::Stream("full ancestry".into()),
         full.build().unwrap(),
     );
-    assert!(Workspace::copy_content_admission(&full).is_err());
+    assert!(Workspace::copy_content_admission(&full).is_ok());
 }
 
 #[test]
@@ -1746,3 +1746,66 @@ fn workbench_save_activations_capture_jobs() {
 
 mod device_check;
 mod learning;
+
+#[test]
+fn editor_rows_keep_component_local_pair_errors_between_other_failures() {
+    let mut ws = workspace();
+    let mut recipe = Draft::new().unwrap().recipe().unwrap().into_builder();
+    let tone = |frequency_hz, peak_dbfs| crate::core::ComponentForm {
+        source: crate::core::SoundSource::Tone {
+            route: crate::core::ChannelRouting::Both,
+            frequency_hz: finite(frequency_hz),
+            peak_dbfs: finite(peak_dbfs),
+        },
+        modulation: None,
+    };
+    let pair = crate::core::ComponentForm {
+        source: crate::core::SoundSource::BinauralPair {
+            first_hz: finite(200.0),
+            offset_hz: finite(-300.0),
+            first_peak_dbfs: finite(-30.0),
+            second_peak_dbfs: finite(-30.0),
+        },
+        modulation: None,
+    };
+    recipe.content.sound = crate::core::Sound::new(
+        [tone(30_000.0, -30.0), pair, tone(440.0, 1.0)]
+            .into_iter()
+            .enumerate()
+            .map(|(i, form)| crate::core::Component {
+                id: ComponentId::numbered(i).unwrap(),
+                form,
+            })
+            .collect(),
+    )
+    .unwrap();
+    ws.install_document(EditorSession::new(Draft::from_recipe(recipe.build().unwrap())).unwrap());
+    let view = ws.editor_view();
+    assert!(
+        view.components[0]
+            .parameters
+            .iter()
+            .find(|p| p.parameter == ParameterId::ToneFrequency)
+            .unwrap()
+            .diagnostic
+            .is_some()
+    );
+    assert!(matches!(
+        view.components[1]
+            .parameters
+            .iter()
+            .find(|p| p.parameter == ParameterId::PairOffset)
+            .unwrap()
+            .diagnostic,
+        Some(FieldDiagnostic::Sound(crate::core::SoundError::Pair(_)))
+    ));
+    assert!(
+        view.components[2]
+            .parameters
+            .iter()
+            .find(|p| p.parameter == ParameterId::PeakLevel)
+            .unwrap()
+            .diagnostic
+            .is_some()
+    );
+}

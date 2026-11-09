@@ -356,13 +356,13 @@ impl LibraryState {
                 Err(Refusal::LibraryUnavailable(problem.clone()))
             })
     }
-    pub(super) fn copy_recipe_admission(recipe: &Recipe) -> Result<(), Refusal> {
-        recipe.copy_readiness().map_err(|error| {
-            Refusal::Document(Box::new(crate::core::RecipeError::Contract(error).into()))
-        })
+    pub(super) fn copy_recipe_admission(snapshot: &RecipeSnapshot) -> Result<(), Refusal> {
+        snapshot
+            .copy_readiness()
+            .map_err(|error| Refusal::Document(Box::new(error.into())))
     }
     pub(super) fn copy_admission(&self) -> Result<(), Refusal> {
-        Self::copy_recipe_admission(self.selected().ok_or(Refusal::NoSelection)?.recipe())
+        Self::copy_recipe_admission(self.selected().ok_or(Refusal::NoSelection)?)
     }
     pub(super) fn prepare_audio(&self) -> Result<AudioRequest, Refusal> {
         if self.selected_unreadable() {

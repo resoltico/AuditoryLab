@@ -55,6 +55,10 @@ pub(super) struct EditorState {
     export_rate: SampleRate,
     status: EditStatus,
     location: DocumentLocation,
+    copy_preview: Option<(
+        Arc<crate::document::editing::Candidate>,
+        Result<(), Refusal>,
+    )>,
 }
 impl EditorState {
     pub(super) fn new() -> Result<Self, crate::document::error::EditorError> {
@@ -63,6 +67,7 @@ impl EditorState {
             export_rate: SampleRate::DEFAULT,
             status: EditStatus::Idle,
             location: DocumentLocation::Unsaved,
+            copy_preview: None,
         })
     }
 
@@ -158,6 +163,30 @@ impl EditorState {
             .recipe()
             .map(Arc::new)
             .map_err(|error| Refusal::Document(Box::new(error.into())))
+    }
+    pub(super) fn save_copy_readiness(&mut self) -> Result<(), Refusal> {
+        self.session.save_readiness().map_err(Self::save_refusal)?;
+        let candidate = self.session.candidate();
+        if let Some((checked, result)) = &self.copy_preview
+            && Arc::ptr_eq(checked, &candidate)
+        {
+            return result.clone();
+        }
+        let result = candidate
+            .draft()
+            .recipe()
+            .and_then(|recipe| {
+                recipe
+                    .copy_preview(
+                        None,
+                        crate::core::vocabulary::copy_note(&recipe),
+                        crate::core::vocabulary::copy_title(candidate.draft().title()),
+                    )
+                    .map_err(Into::into)
+            })
+            .map_err(|error| Refusal::Document(Box::new(error.into())));
+        self.copy_preview = Some((candidate, result.clone()));
+        result
     }
     pub(super) fn prepare_save(&mut self) -> Result<Arc<Recipe>, Refusal> {
         if let Some(key) = self.location.detached() {
@@ -512,13 +541,17 @@ impl EditorState {
             .check()
             .voice(id.with_lane(auditorylab_core::Lane::Secondary))
             .and_then(|r| r.as_ref().err());
-        let coupled = analysis.check().result().err().filter(|error| match error {
-            auditorylab_core::SoundError::Pair(auditorylab_core::PairError {
-                id: owner, ..
-            }) => *owner == id,
-            auditorylab_core::SoundError::PairCarrier { id: owner, .. } => owner.component == id,
-            _ => false,
-        });
+        let coupled = analysis
+            .check()
+            .component(id)
+            .and_then(|result| result.as_ref().err())
+            .filter(|error| {
+                matches!(
+                    error,
+                    auditorylab_core::SoundError::Pair(_)
+                        | auditorylab_core::SoundError::PairCarrier { .. }
+                )
+            });
         let parameters = ParameterId::COMPONENT
             .into_iter()
             .filter(|p| committed.get(*p).is_some())

@@ -37,7 +37,7 @@ Use New or Edit a copy in the desktop, or CLI `library add --as-copy`, to alloca
 | `[[evidence]]` | Bibliography key, scope, population, condition role, measures, methods, summary, limitations and adaptation. |
 | `[[lineage]]` | Flat ancestor title/note, optional `document_id`/`catalog_id` and referenced `source_keys`. |
 
-One authored budget permits 16 generator lanes: a tone or pulse train costs one; an explicit pair costs two. The maximum of 16 components follows from this budget. Crossfades run at most 32 lane-equivalents. Metadata allows 16 sources, 32 evidence records and 16 lineage descriptors. References must name existing bibliography keys. Copying refuses ancestry overflow.
+One authored budget permits 16 generator lanes: a tone or pulse train costs one; an explicit pair costs two. The maximum of 16 components follows from this budget. Crossfades run at most 32 lane-equivalents. Metadata allows 16 sources and 32 evidence records. Flat lineage is limited by the 65,536-byte portable document capacity, including the final copy identity, title and attribution. References must name existing bibliography keys.
 
 ### Components
 
@@ -63,6 +63,8 @@ Human references retain the authored `id`; a pair's second lane is its second to
 A component has one shared nonnegative modulation gain, including both lanes of either pair kind. A pulse source with pulsed modulation contains two separate authored repetition processes. There is no persisted isochronic kind, modulation chain or general DSP graph.
 
 Every pulse table requires `rate_hz`, a nested `width` and a nested `shape`. Width is either `{ kind = "duration", seconds = VALUE }` or `{ kind = "duty_cycle", fraction = VALUE }`; exactly one requested quantity is stored. Shape is `{ kind = "rectangular" }` or `{ kind = "raised_cosine", rise_seconds = VALUE, fall_seconds = VALUE }`. All numeric fields must be finite. Finite acoustic errors remain editable and serializable, with intrinsic/rate-specific diagnostics.
+
+HTTP(S) bibliography locators require an explicit `http://` or `https://` authority and a usable host. Whitespace and control characters are refused before URL parsing. Valid credentials, ports, IPv6 and Unicode hosts follow the `url` parser's syntax. Accepted text is stored verbatim, including case and percent escapes; validation performs no network request. DOI handling is independent.
 
 ### Dates, evidence and ancestry
 
@@ -197,7 +199,6 @@ For example, an out-of-range rate reports `sample_rate.range` with `hz`, `min_hz
 | `cli.json` |
 | `cli.output` |
 | `clock.range` |
-| `contract.copy_lineage_full` |
 | `contract.dangling_bibliography_reference` |
 | `contract.duplicate_source_key` |
 | `contract.empty_lineage_note` |
@@ -209,7 +210,6 @@ For example, an out-of-range rate reports `sample_rate.range` with `hz`, `min_hz
 | `contract.evidence_budget` |
 | `contract.invalid_doi` |
 | `contract.invalid_source_url` |
-| `contract.lineage_budget` |
 | `contract.missing_source_locator` |
 | `contract.reused_copy_identity` |
 | `contract.source_budget` |

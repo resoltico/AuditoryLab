@@ -379,6 +379,7 @@ fn resolve_pair_facts(
 pub struct TargetCheck {
     rate: SampleRate,
     voices: Vec<(VoiceId, Result<VoiceFacts, VoiceError>)>,
+    components: Vec<(crate::ComponentId, Result<(), SoundError>)>,
     result: Result<Target, SoundError>,
 }
 
@@ -386,22 +387,22 @@ impl TargetCheck {
     /// Compile each admitted authored component with its pair intent in scope.
     #[must_use]
     pub(crate) fn authored(rate: SampleRate, sound: &Sound) -> Self {
-        let refused = |error| Self {
-            rate,
-            voices: Vec::new(),
-            result: Err(error),
-        };
         let mut mix = CompiledMix::empty(rate);
         let mut first = None;
         let mut results = Vec::new();
+        let mut components = Vec::new();
         for component in sound.components() {
-            match compile_component(component, rate, &mut results) {
+            let compiled = compile_component(component, rate, &mut results);
+            components.push((
+                component.id,
+                compiled.as_ref().map(|_| ()).map_err(Clone::clone),
+            ));
+            match compiled {
                 Ok(compiled) => {
                     mix.len += compiled.lanes.iter().flatten().count();
                     mix.components[mix.component_len] = Some(compiled);
                     mix.component_len += 1;
                 }
-                Err(error @ SoundError::Pair(_)) => return refused(error),
                 Err(error) => {
                     first.get_or_insert(error);
                 }
@@ -429,6 +430,7 @@ impl TargetCheck {
         Self {
             rate,
             voices: results,
+            components,
             result,
         }
     }
@@ -452,6 +454,22 @@ impl TargetCheck {
         self.voices
             .iter()
             .find(|(other, _)| *other == id)
+            .map(|(_, result)| result)
+    }
+
+    /// Each authored component's own result in source order, including failures
+    /// before generator lanes can be lowered.
+    #[must_use]
+    pub fn components(&self) -> &[(crate::ComponentId, Result<(), SoundError>)] {
+        &self.components
+    }
+
+    /// One authored component's own result, independent of other failures.
+    #[must_use]
+    pub fn component(&self, id: crate::ComponentId) -> Option<&Result<(), SoundError>> {
+        self.components
+            .iter()
+            .find(|(owner, _)| *owner == id)
             .map(|(_, result)| result)
     }
 

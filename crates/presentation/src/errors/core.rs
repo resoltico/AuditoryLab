@@ -48,10 +48,6 @@ pub fn contract_error(error: &ContractError) -> String {
             "{count} evidence records exceed the limit of {}",
             auditorylab_core::provenance::MAX_EVIDENCE
         ),
-        ContractError::LineageBudget { count } => format!(
-            "{count} ancestors exceed the limit of {}",
-            auditorylab_core::provenance::MAX_LINEAGE
-        ),
         ContractError::EmptySourceKey { index } => {
             format!("source {} requires a nonempty key", index + 1)
         }
@@ -88,9 +84,6 @@ pub fn contract_error(error: &ContractError) -> String {
         ContractError::ReusedCopyIdentity { id } => {
             format!("copy requires a new document UUID; {id} is the original identity")
         }
-        ContractError::CopyLineageFull { count } => format!(
-            "lineage capacity reached with {count} ancestors; review metadata before making a copy"
-        ),
     }
 }
 /// Explain an authored-owner or capacity failure.

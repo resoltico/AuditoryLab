@@ -596,6 +596,7 @@ dependencies = [
  "proptest",
  "serde",
  "toml",
+ "url",
  "uuid",
 ]
 

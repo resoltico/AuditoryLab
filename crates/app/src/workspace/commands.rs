@@ -475,7 +475,7 @@ impl Workspace {
         self.library.copy_admission()
     }
     pub(super) fn copy_content_admission(snapshot: &RecipeSnapshot) -> Result<(), Refusal> {
-        library::LibraryState::copy_recipe_admission(snapshot.recipe())
+        library::LibraryState::copy_recipe_admission(snapshot)
     }
     pub(super) fn import_admission(&self) -> Result<(), Refusal> {
         self.prompts.admit_start(self.pending.is_some())?;
@@ -489,8 +489,8 @@ impl Workspace {
     pub(super) fn prepare_save_copy(&mut self) -> Result<Arc<Recipe>, Refusal> {
         self.library.record_destination_admission()?;
         self.import_admission()?;
+        self.editor.save_copy_readiness()?;
         let recipe = self.editor.prepare_recipe()?;
-        library::LibraryState::copy_recipe_admission(&recipe)?;
         Ok(recipe)
     }
 

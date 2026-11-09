@@ -76,7 +76,7 @@ impl Case {
                 Permission::AddFile,
             ]);
         match self {
-            Self::Idle => idle,
+            Self::Idle | Self::FullLineage => idle,
             Self::Prompt | Self::OpenFilePrompt => idle.without(&[
                 Permission::Play,
                 Permission::Manage,
@@ -162,7 +162,6 @@ impl Case {
                 Permission::Export,
                 Permission::Portable,
             ]),
-            Self::FullLineage => idle.without(&[Permission::SaveCopy]),
             Self::OpenFile => idle.with(&[Permission::AddFile]),
             Self::NoDevice => idle.without(&[Permission::Play]),
         }

@@ -169,11 +169,6 @@ macro_rules! define_parameters {
             $($envelope=>($envelope_key,$envelope_label,$envelope_phrase),)*
         }}
         impl ParameterId {
-            /// Rust variant identifier for generated source; use key() for wire data.
-            #[doc(hidden)]
-            pub const fn variant_name(self)->&'static str {match self {
-                $(Self::$component=>stringify!($component),
-                )*$(Self::$envelope=>stringify!($envelope),)*}}
             /// Quantities applicable to components, in display order.
             pub const COMPONENT:[Self;[$(stringify!($component)),*].len()]=[$(Self::$component),*];
             /// Whether this quantity belongs to a component.

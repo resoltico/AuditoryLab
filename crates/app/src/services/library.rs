@@ -12,9 +12,8 @@ use std::{
     sync::Arc,
 };
 use {
-    crate::core::Recipe, crate::document::editing::Draft, crate::document::recipe::RecipeSnapshot,
-    crate::services::OperationError, crate::storage::library::LibraryRoot,
-    crate::storage::library::LibraryStore,
+    crate::core::Recipe, crate::document::recipe::RecipeSnapshot, crate::services::OperationError,
+    crate::storage::library::LibraryRoot, crate::storage::library::LibraryStore,
 };
 
 /// One captured library configuration and its availability. Resolving a context
@@ -194,9 +193,17 @@ impl Library {
             return Err(LibraryError::Cancelled.into());
         }
         let mutation = if as_copy {
-            let mut copy = Draft::from_snapshot(snapshot)?;
-            copy.set_title(snapshot.title());
-            Mutation::Create(Arc::new(copy.recipe()?))
+            let catalog_id = match snapshot.origin() {
+                crate::document::recipe::Origin::BuiltIn(id) => Some((*id).into()),
+                _ => None,
+            };
+            let copy = snapshot.recipe().prepare_copy(
+                crate::identity::fresh_document()?,
+                catalog_id,
+                crate::core::vocabulary::copy_note(snapshot.recipe()),
+                snapshot.title(),
+            )?;
+            Mutation::Create(Arc::new(copy))
         } else {
             Mutation::Add(Arc::new(snapshot.recipe().clone()))
         };
