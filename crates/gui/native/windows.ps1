@@ -73,6 +73,13 @@ function Find-Named($Parent, [string]$Name) {
     }
     return $null
 }
+function Find-NativeFileNameField($Dialog) {
+    $condition = [System.Windows.Automation.PropertyCondition]::new($uia::NameProperty,'File name:')
+    foreach ($item in $Dialog.FindAll($scope,$condition)) {
+        if ($item.Current.ControlType -eq [System.Windows.Automation.ControlType]::Edit -and $item.Current.IsEnabled -and -not $item.Current.IsOffscreen) { return $item }
+    }
+    return $null
+}
 function Invoke-Native($Item) {
     $pattern = $null
     if ($Item.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern,[ref]$pattern)) { $pattern.Invoke(); return }
@@ -171,7 +178,7 @@ try {
             foreach ($native in [NativeQaWindow]::HandlesFor([uint32]$process.Id)) {
                 if (-not [NativeQaWindow]::IsWindowVisible($native)) { continue }
                 $candidate = $uia::FromHandle($native)
-                if ($candidate.Current.ClassName -eq '#32770' -and -not $candidate.Current.IsOffscreen -and $null -ne (Find-Named $candidate 'Cancel')) { return $candidate }
+                if ($candidate.Current.ClassName -eq '#32770' -and $candidate.Current.ProcessId -eq $process.Id -and -not $candidate.Current.IsOffscreen -and $null -ne (Find-Named $candidate 'Cancel') -and $null -ne (Find-Named $candidate 'Open') -and $null -ne (Find-NativeFileNameField $candidate)) { return $candidate }
             }
             return $null
         }
