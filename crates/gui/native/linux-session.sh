@@ -21,43 +21,63 @@ export LIBGL_ALWAYS_SOFTWARE=1
 : "${XAUTHORITY:?private X11 authorization required}"
 openbox --sm-disable > "$scratch/window-manager.log" 2>&1 &
 wm_pid=$!
-weston_pid=
+compositor_pid=
 portal_pid=
 cleanup() {
   if [[ -n "$portal_pid" ]]; then kill "$portal_pid" 2>/dev/null || true; wait "$portal_pid" 2>/dev/null || true; fi
-  if [[ -n "$weston_pid" ]]; then kill "$weston_pid" 2>/dev/null || true; wait "$weston_pid" 2>/dev/null || true; fi
+  if [[ -n "$compositor_pid" ]]; then kill "$compositor_pid" 2>/dev/null || true; wait "$compositor_pid" 2>/dev/null || true; fi
   kill "$wm_pid" 2>/dev/null || true
   wait "$wm_pid" 2>/dev/null || true
 }
 trap cleanup EXIT
 if [[ "$session" == wayland ]]; then
-  weston --backend=x11-backend.so --socket=auditorylab-wayland --width=1600 --height=1100 \
-    --idle-time=0 --no-config --log="$scratch/weston.log" &
-  weston_pid=$!
+  cat > "$scratch/sway.conf" <<'CONFIG'
+xwayland disable
+focus_follows_mouse no
+output * mode 1600x1100
+CONFIG
+  WLR_BACKENDS=x11 WLR_RENDERER=gles2 WLR_RENDERER_ALLOW_SOFTWARE=1 \
+    sway --unsupported-gpu --debug --config "$scratch/sway.conf" > "$scratch/compositor.log" 2>&1 &
+  compositor_pid=$!
+  socket=
   for attempt in {1..100}; do
-    if [[ -S "$XDG_RUNTIME_DIR/auditorylab-wayland" ]]; then break; fi
-    if ! kill -0 "$weston_pid" 2>/dev/null; then cat "$scratch/weston.log"; exit 1; fi
+    for candidate in "$XDG_RUNTIME_DIR"/wayland-*; do
+      if [[ -S "$candidate" ]]; then socket=${candidate##*/}; break; fi
+    done
+    if [[ -n "$socket" ]]; then break; fi
+    if ! kill -0 "$compositor_pid" 2>/dev/null; then cat "$scratch/compositor.log"; exit 1; fi
     sleep 0.1
   done
-  test -S "$XDG_RUNTIME_DIR/auditorylab-wayland"
-  export WAYLAND_DISPLAY=auditorylab-wayland
-  export XDG_CURRENT_DESKTOP=GNOME
+  test -n "$socket"
+  export WAYLAND_DISPLAY="$socket"
+  export XDG_CURRENT_DESKTOP=sway
   export XDG_SESSION_TYPE=wayland
-  # Native X11 input goes into Weston, which routes native Wayland key events.
-  outer=$(timeout 10s xdotool search --sync --onlyvisible --class weston | head -n 1)
+  export GDK_BACKEND=wayland
+  # Native X11 input goes into the compositor's real nested output surface.
+  outer=$(timeout 10s xdotool search --sync --onlyvisible --name '^wlroots - ' | head -n 1)
   xdotool windowactivate --sync "$outer"
-  if ! rg -qi 'GL renderer|GL version|EGL version|gl-renderer' "$scratch/weston.log"; then
-    cat "$scratch/weston.log"
-    echo 'Weston did not establish the required GL renderer' >&2
+  if ! rg -qi 'GL renderer|GL version|EGL version|gles2' "$scratch/compositor.log"; then
+    cat "$scratch/compositor.log"
+    echo 'Wayland compositor did not establish the required GL renderer' >&2
     exit 1
   fi
+  timeout 5s wayland-info > "$scratch/compositor-protocols.txt"
+  for protocol in zxdg_exporter_v2 zxdg_importer_v2; do
+    if ! rg -q "$protocol" "$scratch/compositor-protocols.txt"; then
+      echo "Wayland compositor lacks required native parent protocol $protocol" >&2
+      exit 1
+    fi
+  done
 else
   unset WAYLAND_DISPLAY
   export XDG_CURRENT_DESKTOP=GNOME
   export XDG_SESSION_TYPE=x11
+  export GDK_BACKEND=x11
 fi
 # The portal and its GTK implementation must inherit this actual session.
-dbus-update-activation-environment DISPLAY XAUTHORITY XDG_RUNTIME_DIR XDG_CURRENT_DESKTOP XDG_SESSION_TYPE XDG_CONFIG_HOME XDG_DATA_HOME XDG_CACHE_HOME
+mkdir -p "$XDG_CONFIG_HOME/xdg-desktop-portal"
+printf '[preferred]\ndefault=gtk\norg.freedesktop.impl.portal.FileChooser=gtk\n' > "$XDG_CONFIG_HOME/xdg-desktop-portal/portals.conf"
+dbus-update-activation-environment DISPLAY XAUTHORITY GDK_BACKEND XDG_RUNTIME_DIR XDG_CURRENT_DESKTOP XDG_SESSION_TYPE XDG_CONFIG_HOME XDG_DATA_HOME XDG_CACHE_HOME
 if [[ "$session" == wayland ]]; then dbus-update-activation-environment WAYLAND_DISPLAY; fi
 /usr/libexec/xdg-desktop-portal-gtk > "$scratch/portal-provider.log" 2>&1 &
 portal_pid=$!

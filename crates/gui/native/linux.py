@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Production desktop qualification through AT-SPI and native compositor input.
 
-Run inside a private D-Bus session with X11 or a real Weston Wayland session.
+Run inside a private D-Bus session with X11 or a real Sway Wayland session.
 No application callbacks, offscreen renderer, or audio actions are used.
 """
 import argparse
