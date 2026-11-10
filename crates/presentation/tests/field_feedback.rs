@@ -278,3 +278,32 @@ fn no_recording_guidance_uses_the_actual_open_action_without_an_analyze_prompt()
     assert!(!blocked.contains("Choose Open recording"));
     assert!(!blocked.contains("Analyze"));
 }
+
+#[test]
+fn recording_context_does_not_capture_a_stale_copy_of_the_live_progress_phase() {
+    let (_temp, mut ws) = fixture().unwrap();
+    let actions = ws.action_view();
+    let file = auditorylab_app::recording::RecordingFile {
+        path: "recording.wav".into(),
+        bytes: 44,
+        format: auditorylab_app::recording::ContainerFormat::Wav,
+    };
+    for phase in [
+        auditorylab_app::job::ProgressPhase::Preparing,
+        auditorylab_app::job::ProgressPhase::Processing,
+        auditorylab_app::job::ProgressPhase::Completing,
+    ] {
+        let hint = auditorylab_presentation::recording::measurement_guidance(
+            Some(&file),
+            None,
+            Some(phase),
+            &actions,
+        );
+        assert!(hint.starts_with("Analysis in progress."));
+        assert!(hint.contains("No completed analysis"));
+        assert!(hint.contains("Cancel analysis"));
+        assert!(!hint.contains("Opening recording"));
+        assert!(!hint.contains("Measuring selected samples"));
+        assert!(!hint.contains("Completing numerical"));
+    }
+}

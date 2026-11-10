@@ -26,16 +26,13 @@ pub fn measurement_guidance(
             .iter()
             .any(|action| action.operation == operation && action.enabled)
     };
-    if let Some(phase) = phase {
+    if phase.is_some() {
         let retained = if report.is_some() {
             "The previous completed results below are retained while this run is in progress."
         } else {
             "No completed analysis is available yet."
         };
-        return format!(
-            "{} {retained} Cancel analysis requests cancellation.",
-            progress_phase(phase)
-        );
+        return format!("Analysis in progress. {retained} Cancel analysis requests cancellation.");
     }
     if matches!(&actions.file_status, FileStatus::Running(activity) if matches!(activity.kind, FileAction::OpenRecording))
     {
