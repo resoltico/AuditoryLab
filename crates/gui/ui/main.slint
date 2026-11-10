@@ -524,6 +524,7 @@ export component MainWindow inherits Window {
 
             MenuItem {
                 title: Actions.save.label;
+                shortcut: @keys(Control + S);
                 enabled: Actions.save.enabled;
                 activated => {
                     root.save-recipe();

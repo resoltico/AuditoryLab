@@ -2011,3 +2011,5 @@ fn failed_copy_publication_keeps_editor_dates_provisional() {
     );
     assert!(ws.editor().dirty());
 }
+
+mod save_destination;

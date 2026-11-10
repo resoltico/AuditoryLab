@@ -7,7 +7,81 @@ const PULSING_ATTRIBUTION_LIMIT: &str =
 
 /// What recording analysis reports about the audio itself.
 pub const MEASUREMENTS: &str =
-    "Choose Analyze to measure this recording. No samples have been measured yet.";
+    "Choose Analyze recording to measure this file. No samples have been measured yet.";
+
+/// Current recording guidance from captured source/report/activity and actual actions.
+/// This renders existing state; it neither admits an action nor stores another state machine.
+pub fn measurement_guidance(
+    source: Option<&RecordingFile>,
+    report: Option<&auditorylab_app::recording::AnalyzedRecording>,
+    phase: Option<auditorylab_app::job::ProgressPhase>,
+    actions: &auditorylab_app::workspace::WorkspaceActions,
+) -> String {
+    use auditorylab_app::services::OperationError;
+    use auditorylab_app::vocabulary::Operation;
+    use auditorylab_app::workspace::status::{FileAction, FileStatus};
+    let enabled = |operation| {
+        actions
+            .operations
+            .iter()
+            .any(|action| action.operation == operation && action.enabled)
+    };
+    if phase.is_some() {
+        let retained = if report.is_some() {
+            "The previous completed results below are retained while this run is in progress."
+        } else {
+            "No completed analysis is available yet."
+        };
+        return format!("Analysis in progress. {retained} Cancel analysis requests cancellation.");
+    }
+    if matches!(&actions.file_status, FileStatus::Running(activity) if matches!(activity.kind, FileAction::OpenRecording))
+    {
+        return if report.is_some() {
+            "Opening a recording. The previous completed results remain until another source opens."
+                .into()
+        } else {
+            "Opening a recording. No samples have been measured yet.".into()
+        };
+    }
+    if source.is_none() {
+        return if enabled(Operation::OpenRecording) {
+            "No recording is open. Choose Open recording to select an audio file.".into()
+        } else {
+            "No recording is open. Opening is unavailable while the current dialog or operation is active.".into()
+        };
+    }
+    let failed = matches!(
+        &actions.file_status,
+        FileStatus::Failed(OperationError::Recording(_))
+            | FileStatus::WorkerFailed {
+                activity: auditorylab_app::workspace::status::FileActivity {
+                    kind: FileAction::AnalyzeRecording | FileAction::OpenRecording,
+                    ..
+                },
+                ..
+            }
+    );
+    if report.is_some() {
+        return if matches!(
+            &actions.file_status,
+            FileStatus::Failed(OperationError::Recording(
+                auditorylab_app::recording::RecordingError::Cancelled
+            ))
+        ) {
+            "Analysis cancelled. The last completed results below are retained.".into()
+        } else if failed {
+            "The last recording operation failed. The last completed results below are retained."
+                .into()
+        } else {
+            String::new()
+        };
+    }
+    if enabled(Operation::AnalyzeRecording) {
+        MEASUREMENTS.into()
+    } else {
+        "Recording identified. Analysis is unavailable while the current dialog or operation is active; no samples have been measured yet.".into()
+    }
+}
 
 /// The file name, or the whole path when it has none.
 #[must_use]
@@ -61,19 +135,51 @@ pub fn findings(
     a: &auditorylab_core::measurement::SampleAnalysis,
     lowest: Option<f64>,
 ) -> Findings {
-    let facts = format!(
-        "{} Hz · {} channel(s)\n\
-        Analyzed: {:.1}–{:.1} s · resolution {:.3} Hz · envelope {:.3} Hz\n\
-        Envelope window: {:.1}–{:.1} s",
-        a.sample_rate,
-        a.channels,
-        a.window.start_seconds,
-        a.window.end_seconds,
-        a.resolution_hz,
-        a.envelope_resolution_hz,
-        a.envelope_window.start_seconds,
-        a.envelope_window.end_seconds,
-    );
+    numerical_findings(a, lowest, measurement_facts(a, None))
+}
+
+fn measurement_facts(
+    samples: &auditorylab_core::measurement::SampleAnalysis,
+    recording: Option<&auditorylab_app::recording::Analysis>,
+) -> String {
+    let (window, envelope, source) = match recording {
+        Some(recording) => (
+            &recording.window,
+            &recording.envelope_window,
+            format!(
+                "{} · {}",
+                recording.codec,
+                recording.duration_seconds.map_or_else(
+                    || "source duration unknown".into(),
+                    |seconds| format!("source duration {seconds:.1} s"),
+                )
+            ),
+        ),
+        None => (
+            &samples.window,
+            &samples.envelope_window,
+            "Sample-relative coordinates".into(),
+        ),
+    };
+    format!(
+        "{source}\n{} Hz · {} channel(s)\nAnalyzed: {:.1}–{:.1} s\n\
+        Envelope window: {:.1}–{:.1} s\nTone resolution: {:.3} Hz · envelope resolution: {:.3} Hz",
+        samples.sample_rate,
+        samples.channels,
+        window.start_seconds,
+        window.end_seconds,
+        envelope.start_seconds,
+        envelope.end_seconds,
+        samples.resolution_hz,
+        samples.envelope_resolution_hz,
+    )
+}
+
+fn numerical_findings(
+    a: &auditorylab_core::measurement::SampleAnalysis,
+    lowest: Option<f64>,
+    facts: String,
+) -> Findings {
     let ears = ear_findings(a);
     let mut summary = Vec::new();
     if let Some(tone) = a.tones.first() {
@@ -85,7 +191,7 @@ pub fn findings(
     } else {
         summary.push("No tones met the detection thresholds.".into());
     }
-    summary.push(ears.clone());
+    summary.push(ear_overview(a));
     if a.minimum_resolved_envelope_hz > 0.5 {
         summary.push(format!(
             "Envelope rates below {:.2} Hz are unresolved in this analysis; \
@@ -154,20 +260,8 @@ pub fn recording_findings(
     a: &auditorylab_app::recording::Analysis,
     lowest: Option<f64>,
 ) -> Findings {
-    let mut rendered = findings(a.samples(), lowest);
-    rendered.facts = format!(
-        "{} · {}\nAnalyzed: {:.1}–{:.1} s\nEnvelope window: {:.1}–{:.1} s\n{}",
-        a.codec,
-        a.duration_seconds.map_or_else(
-            || "source duration unknown".into(),
-            |seconds| format!("{seconds:.1} s")
-        ),
-        a.window.start_seconds,
-        a.window.end_seconds,
-        a.envelope_window.start_seconds,
-        a.envelope_window.end_seconds,
-        rendered.facts
-    );
+    let mut rendered =
+        numerical_findings(a.samples(), lowest, measurement_facts(a.samples(), Some(a)));
     rendered.limits.push_str(if a.lossy {
         "\nLossy codec: compression can change measured details."
     } else {
@@ -192,7 +286,24 @@ pub fn contextual_findings(
         .push_str(&crate::device_check::low_tone_result(assessment.low_tones));
     rendered
 }
-fn ear_findings(a: &auditorylab_core::measurement::SampleAnalysis) -> String {
+fn ear_overview(a: &auditorylab_core::measurement::SampleFacts) -> String {
+    if a.channels == 1 || a.coincident_tones || a.ear_differences.is_empty() {
+        ear_findings(a)
+    } else {
+        let count = a.ear_differences.len();
+        let noun = if count == 1 {
+            "comparison candidate"
+        } else {
+            "comparison candidates"
+        };
+        format!(
+            "{count} left-versus-right tone {noun} met the detection thresholds. \
+            See Left versus right for the complete list."
+        )
+    }
+}
+
+fn ear_findings(a: &auditorylab_core::measurement::SampleFacts) -> String {
     if a.channels == 1 {
         "Mono recording; no left/right comparison is available.".into()
     } else if a.coincident_tones {
@@ -349,8 +460,7 @@ fn low_tone_findings(
 }
 fn analysis_limits(a: &auditorylab_core::measurement::SampleAnalysis) -> String {
     format!(
-        "Window {:.1}–{:.1} s; tone resolution {:.3} Hz; envelope resolution {:.3} Hz. \
-        Envelope rates below {minimum:.2} Hz are unresolved. Digital samples only; \
+        "Envelope rates below {minimum:.2} Hz are unresolved. Digital samples only; \
         device output and hearing are not measured. \
         Quiet pairs \
         under other sounds may be missed. {PULSING_ATTRIBUTION_LIMIT} \
@@ -360,10 +470,6 @@ fn analysis_limits(a: &auditorylab_core::measurement::SampleAnalysis) -> String 
         The analytic envelope excludes DC and FFT window edges. \
         Only the selected window is measured; later corruption may not be found. \
         This describes the sound, not measured brain activity.",
-        a.window.start_seconds,
-        a.window.end_seconds,
-        a.resolution_hz,
-        a.envelope_resolution_hz,
         minimum = a.minimum_resolved_envelope_hz,
         contrast = 10.0 * a.minimum_envelope_relative_power.log10(),
     )
@@ -450,3 +556,6 @@ pub fn progress_phase(phase: auditorylab_app::job::ProgressPhase) -> &'static st
         ProgressPhase::Completing => "Completing numerical findings…",
     }
 }
+
+#[cfg(test)]
+mod tests;

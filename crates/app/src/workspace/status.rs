@@ -81,7 +81,7 @@ impl FileActivity {
             },
             FileKind::Managed(job) => Self {
                 kind: FileAction::Library(job.operation_term()),
-                path: job.store.path().into(),
+                path: job.context().path,
                 title: None,
                 may_publish: job.may_publish(),
             },
@@ -150,6 +150,8 @@ pub enum LibraryStatus {
     Loaded,
     /// A managed publication completed with confirmed mutation truth.
     Written {
+        /// Actual operation captured by the completed worker, independent of selection.
+        kind: crate::services::library::MutationKind,
         /// Managed identity captured by the admitted operation.
         key: LibraryKey,
         /// Title of the confirmed content; absent after a purge.

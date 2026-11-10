@@ -625,7 +625,7 @@ pub fn write_outcome_description(
     text
 }
 /// What a confirmed mutation did, named for its kind.
-fn mutation_label(
+pub(crate) fn mutation_label(
     kind: auditorylab_app::services::library::MutationKind,
     status: auditorylab_app::services::library::MutationStatus,
 ) -> String {
@@ -747,4 +747,12 @@ mod mutation_label_tests {
         );
         assert_eq!(mutation_label(K::Trash, S::Unchanged), "Unchanged");
     }
+}
+
+/// Recovery for a captured managed destination requiring explicit setup.
+pub(crate) fn initialization_required(path: &str) -> String {
+    format!(
+        "Initialize the User Library at {} before saving there. Draft retained. Open Library storage and choose Initialize configured library.",
+        crate::display_scalar(path)
+    )
 }

@@ -357,3 +357,7 @@ pub fn path(context: &LibraryContext) -> Result<PathInspection, LibraryError> {
 
 /// Typed bounded inventory notices.
 pub use crate::storage::library::InventoryNotice;
+
+#[cfg(test)]
+#[path = "library_destination_tests.rs"]
+mod destination_tests;

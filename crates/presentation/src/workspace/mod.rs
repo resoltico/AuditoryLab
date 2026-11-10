@@ -16,6 +16,10 @@ pub(crate) fn refusal_text(refusal: &Refusal) -> String {
     match refusal {
         Refusal::LearningVisible => "Leave Start here before using this action.".into(),
         Refusal::LibraryUnavailable(problem) => {
+            if matches!(&problem.detail, auditorylab_app::services::library::DiagnosticDetail::Failure(error) if error.requires_initialization())
+            {
+                return crate::library::initialization_required(&problem.storage_id);
+            }
             format!(
                 "User Library unavailable: {}",
                 crate::errors::library_diagnostic_message(problem)
@@ -42,7 +46,7 @@ pub(crate) fn refusal_text(refusal: &Refusal) -> String {
             refused.test.phrase(),
             refused.answer.label()
         ),
-        Refusal::NoSelection => "No recipe matches the search; clear it or choose a recipe.".into(),
+        Refusal::NoSelection => "Choose a source for this action.".into(),
         Refusal::NoExport => "No export is running.".into(),
         Refusal::Input(problems) => input_text(problems),
         Refusal::NotFinite => "The recipe's numbers must all be finite before it can play.".into(),
@@ -770,24 +774,64 @@ pub struct ActionText {
     pub file_activity: String,
 }
 
-/// Render action availability and retained status without making admission decisions.
-#[must_use]
-pub fn action_view(view: &auditorylab_app::workspace::WorkspaceActions) -> ActionText {
-    let refusal = view.operation_refusal.as_ref().map(refusal_text);
-    let outcome_details = [
+fn action_reason(refusal: &Refusal, workspace: &auditorylab_app::workspace::Workspace) -> String {
+    if matches!(refusal, Refusal::NoSelection)
+        && workspace.view() == auditorylab_app::workspace::View::Library
+    {
+        let empty = crate::library::workspace_library_empty_message(workspace);
+        if empty.is_empty() {
+            "Choose one of the listed recipes.".to_owned()
+        } else {
+            empty.to_owned()
+        }
+    } else {
+        refusal_text(refusal)
+    }
+}
+
+fn transport_feedback(
+    view: &auditorylab_app::workspace::WorkspaceActions,
+    workspace: &auditorylab_app::workspace::Workspace,
+    play_reason: &str,
+) -> (String, String, String) {
+    let primary_reason_visible =
+        workspace.learning().is_none() && !view.transport_enabled() && !play_reason.is_empty();
+    let refusal = view
+        .operation_refusal
+        .as_ref()
+        .map(|r| action_reason(r, workspace));
+    let outcome_parts = [
         crate::workspace::status::file_status_description(&(view.file_status)),
         crate::workspace::status::edit_status_description(&(view.edit_status)),
         crate::workspace::status::audio_status_description(&(view.audio_status)),
     ]
     .into_iter()
     .filter(|text| !text.is_empty())
-    .collect::<Vec<_>>()
-    .join("\n");
-    let operation_details = refusal
+    .collect::<Vec<_>>();
+    // Keep full selectable details and per-action Help independent of transport
+    // compaction. A distinct primary reason remains available in those details.
+    let mut details = refusal
         .iter()
         .map(String::as_str)
-        .chain(std::iter::once(outcome_details.as_str()))
+        .chain(outcome_parts.iter().map(String::as_str))
+        .collect::<Vec<_>>();
+    if primary_reason_visible && !details.is_empty() && !details.contains(&play_reason) {
+        details.push(play_reason);
+    }
+    let operation_details = details
+        .into_iter()
         .filter(|text| !text.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let visible_refusal = refusal
+        .as_deref()
+        .filter(|text| !primary_reason_visible || *text != play_reason);
+    // Compare complete reasons, never their potentially identical compact prefixes.
+    let visible_outcomes = outcome_parts
+        .iter()
+        .map(String::as_str)
+        .filter(|text| !primary_reason_visible || *text != play_reason)
+        .filter(|text| visible_refusal != Some(*text))
         .collect::<Vec<_>>()
         .join("\n");
     let compact = |text: &str| {
@@ -798,12 +842,25 @@ pub fn action_view(view: &auditorylab_app::workspace::WorkspaceActions) -> Actio
         }
         short
     };
-    let operation_summary = compact(refusal.as_deref().unwrap_or(&outcome_details));
-    let operation_outcome = if refusal.is_some() {
-        compact(&outcome_details)
+    let operation_summary = compact(visible_refusal.unwrap_or(&visible_outcomes));
+    let operation_outcome = if visible_refusal.is_some() {
+        compact(&visible_outcomes)
     } else {
         String::new()
     };
+    (operation_summary, operation_outcome, operation_details)
+}
+
+/// Render action availability and retained status without making admission decisions.
+#[must_use]
+pub fn action_view(
+    view: &auditorylab_app::workspace::WorkspaceActions,
+    workspace: &auditorylab_app::workspace::Workspace,
+) -> ActionText {
+    let reason = |refusal: &Refusal| action_reason(refusal, workspace);
+    let play_reason = view.play_reason.as_ref().map(reason).unwrap_or_default();
+    let (operation_summary, operation_outcome, operation_details) =
+        transport_feedback(view, workspace, &play_reason);
     ActionText {
         library_play_label: (if view.playing {
             auditorylab_app::vocabulary::Operation::StopCurrentAndPlayRecipe
@@ -811,38 +868,22 @@ pub fn action_view(view: &auditorylab_app::workspace::WorkspaceActions) -> Actio
             auditorylab_app::vocabulary::Operation::PlaySelectedSound
         })
         .label(),
-        copy_reason: view
-            .copy_reason
-            .as_ref()
-            .map(refusal_text)
-            .unwrap_or_default(),
+        copy_reason: view.copy_reason.as_ref().map(reason).unwrap_or_default(),
         operation_summary,
         operation_outcome,
         operation_details,
-        play_reason: view
-            .play_reason
-            .as_ref()
-            .map(refusal_text)
-            .unwrap_or_default(),
-        save_reason: view
-            .save_reason
-            .as_ref()
-            .map(refusal_text)
-            .unwrap_or_default(),
-        export_reason: view
-            .export_reason
-            .as_ref()
-            .map(refusal_text)
-            .unwrap_or_default(),
+        play_reason,
+        save_reason: view.save_reason.as_ref().map(reason).unwrap_or_default(),
+        export_reason: view.export_reason.as_ref().map(reason).unwrap_or_default(),
         pair_add_reason: view
             .pair_add_reason
             .as_ref()
-            .map(refusal_text)
+            .map(reason)
             .unwrap_or_default(),
         add_component_reason: view
             .add_component_reason
             .as_ref()
-            .map(refusal_text)
+            .map(reason)
             .unwrap_or_default(),
         removed_component: view
             .removed_component

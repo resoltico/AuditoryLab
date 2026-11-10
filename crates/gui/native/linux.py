@@ -18,6 +18,7 @@ from PIL import ImageGrab
 from gi.repository import GLib
 from wayland_surface import recreated_main_surfaces
 from x11_parent import verified_portal_parents, verified_transient
+from saved_record import saved_record
 
 
 def pump_events():
@@ -301,10 +302,30 @@ def main():
             wait_for("native multiline input", lambda: text_of(notes) == "first native line\nsecond native line")
             key("ctrl+a")
             wait_for("native modifier selection", lambda: notes.queryText().getNSelections() > 0 and notes.queryText().getSelection(0) == (0, len(text_of(notes))))
+            cli = args.binary.resolve().with_name("auditorylab")
+            if not cli.is_file():
+                raise RuntimeError("required production CLI sibling is unavailable")
+            def save_enabled():
+                control = named(app, "Save sound", require_showing=False)
+                return control is not None and control.getState().contains(pyatspi.STATE_ENABLED)
+            # The Save button may be scrolled offscreen while notes owns focus;
+            # observe enabled state without moving focus or invoking the button.
+            wait_for("save enabled with literal notes", save_enabled)
+            key("ctrl+s")
+            first_save = wait_for("native Ctrl+S persisted literal notes", lambda: saved_record(
+                cli, scratch / "library", "first native line\nsecond native line"))
+            if text_of(notes) != "first native line\nsecond native line" or not notes.getState().contains(pyatspi.STATE_FOCUSED):
+                raise RuntimeError("native Ctrl+S changed notes or lost editor focus")
             # Leave no dirty-document continuation ahead of the real file chooser.
-            type_text("")
+            key("ctrl+a")
             key("BackSpace")
             wait_for("cleared multiline input", lambda: text_of(notes) == "")
+            wait_for("save enabled after clearing notes", save_enabled)
+            key("ctrl+s")
+            cleared_save = wait_for("native Ctrl+S updated same record with empty notes", lambda: saved_record(
+                cli, scratch / "library", "", first_save))
+            if text_of(notes) != "":
+                raise RuntimeError("native Ctrl+S inserted text in the cleared editor")
             activate(named(app, "Library"))
             dialogs = []
             for attempt in range(2):
@@ -359,6 +380,7 @@ def main():
             print(json.dumps({"session": args.session, "provider": "AT-SPI", "pid": process.pid,
                               "production": "Winit/FemtoVG", "first_frame_extent": [extent.width, extent.height], "first_frame_colors": colors,
                               "multiline_native_keys": True, "modifier_selection": True,
+                              "native_ctrl_s": [first_save, cleared_save],
                               "native_dialog_cancel_reopen": dialogs, "portal_protocol": prefix, "portal_parents": parents,
                               "x11_observed_main_windows": expected_x11_windows, "x11_chooser_windows": chooser_windows,
                               "native_dialog_open": "My 3 Hz pair", "recreated_wayland_surface_ids": surface_ids, "audio_device_opened": False}))

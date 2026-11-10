@@ -2,7 +2,12 @@
 //! [`SlintAdapter::install`] exactly as at startup, drive a real workspace.
 //! Dialogs are answered through a recording shell; audio is the portable
 //! workspace's typed refusal, so no device is touched.
+#[path = "recording_report_tests.rs"]
+mod recording_report_tests;
+
 use crate::adapter::{Shell, SlintAdapter, Windows};
+#[path = "field_feedback_tests.rs"]
+mod field_feedback_tests;
 use crate::generated::MainWindow;
 use crate::test_platform::{install, settle};
 use auditorylab_app::core::ParameterId;
@@ -2827,7 +2832,7 @@ fn background_refresh_does_not_hide_a_failed_captured_save() {
         "Other writer"
     );
     let details = h.adapter.inspect(|w| {
-        auditorylab_presentation::workspace::action_view(&w.action_view()).operation_details
+        auditorylab_presentation::workspace::action_view(&w.action_view(), w).operation_details
     });
     assert!(
         details.to_lowercase().contains("conflict") || details.to_lowercase().contains("changed"),
@@ -6542,3 +6547,5 @@ fn undefined_and_zero_recording_energy_reach_production_projection_and_drawing()
         "only defined energy draws the four full-width tracks; a true zero has an empty fill"
     );
 }
+
+mod save_shortcut;

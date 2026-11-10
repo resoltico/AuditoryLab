@@ -237,17 +237,26 @@ pub fn waveform_caption(visual: &auditorylab_app::learning::TeachingVisual) -> S
 /// Keep the producer's physical model meaning when selecting a plot caption.
 pub fn timing_caption(
     visual: &auditorylab_app::learning::TeachingVisual,
-    kind: auditorylab_app::core::timing::ModelKind,
+    lane: &auditorylab_app::core::timing::ModelLane,
 ) -> String {
     use auditorylab_app::core::timing::ModelKind;
+    let kind = lane.kind;
+    let both_tones = matches!(
+        lane.owner,
+        auditorylab_app::core::timing::ModelOwner::Component(_)
+    ) && lane.facts.pair.is_some();
     let meaning = match kind {
         ModelKind::Steady => "Tone level",
         ModelKind::PulseTrain => "When each source pulse is on",
+        ModelKind::Pulsed if both_tones => "How shared pulses switch both tones on and off",
         ModelKind::Pulsed => "How the pulses switch the tone on and off",
+        ModelKind::Envelope if both_tones => "How shared gain raises and lowers both tones",
         ModelKind::Envelope => "How the tone's level rises and falls",
     };
     let scale = if kind == ModelKind::PulseTrain {
         "bottom off, top on"
+    } else if both_tones {
+        "bottom silent, top both tones’ full level"
     } else {
         "bottom silent, top the tone's full level"
     };
@@ -262,7 +271,6 @@ mod tests {
     use super::*;
     #[test]
     fn primary_facts_and_timing_captions_preserve_constructor_meaning() {
-        use auditorylab_app::core::timing::ModelKind;
         let pulsed = Construction::PulsedTone.visual();
         assert!(
             example_summary(Construction::PulsedTone).contains("440 Hz tone carrier · 10 pulses/s")
@@ -270,16 +278,22 @@ mod tests {
         assert!(example_summary(Construction::PulseTrain).contains("40 source pulses/s"));
         assert!(example_summary(Construction::MonauralPair).contains("200 Hz and 206 Hz tones"));
         assert!(
-            timing_caption(pulsed, ModelKind::Pulsed)
+            timing_caption(pulsed, &pulsed.timing.lanes[0])
                 .contains("How the pulses switch the tone on and off")
         );
         assert!(
-            timing_caption(Construction::PulseTrain.visual(), ModelKind::PulseTrain)
-                .contains("When each source pulse is on")
+            timing_caption(
+                Construction::PulseTrain.visual(),
+                &Construction::PulseTrain.visual().timing.lanes[0]
+            )
+            .contains("When each source pulse is on")
         );
         assert!(
-            timing_caption(Construction::SinusoidalAm.visual(), ModelKind::Envelope)
-                .contains("How the tone's level rises and falls")
+            timing_caption(
+                Construction::SinusoidalAm.visual(),
+                &Construction::SinusoidalAm.visual().timing.lanes[0]
+            )
+            .contains("How the tone's level rises and falls")
         );
         assert!(waveform_caption(pulsed).starts_with("What you hear"));
         assert!(!construction_details(Construction::PulseTrain).contains("carrier close-up"));

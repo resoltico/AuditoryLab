@@ -57,7 +57,10 @@ fn every_column_contains_all_rational_pulses_including_single_frame_impulses() {
             let model = target.timing_model(257);
             let lane = &model.lanes[0];
             assert_eq!(lane.kind, ModelKind::PulseTrain);
-            assert_eq!(lane.id, id(7).into());
+            assert_eq!(
+                lane.owner,
+                auditorylab_core::timing::ModelOwner::Voice(id(7).into())
+            );
             let w = if width == 0.001 {
                 if fs == 44100 {
                     44

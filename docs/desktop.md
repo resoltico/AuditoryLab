@@ -46,7 +46,7 @@ Filter resets have distinct scopes:
 
 Clearing rhythm filters is available with the compact/list filter controls. Other resets are available beside the results, in the storage section or in the filter popup. Unapplied advanced input survives unrelated selection and display updates; an explicit full reset or reveal discards it.
 
-The native per-user library can be overridden with an absolute `AUDITORYLAB_LIBRARY_DIR`. Initialize an override through Library storage controls or `auditorylab --library-dir PATH library init`. Until then Save names the missing setup instead of writing. Opening Library rescans the library, so changes made by the CLI appear without Refresh. Built-ins and independent external exports remain available when persistent storage is unavailable. See [library configuration](cli.md#root-and-lifecycle) and [unsupported-file recovery](formats.md#unsupported-and-unreadable-recipes).
+The native per-user library can be overridden with an absolute `AUDITORYLAB_LIBRARY_DIR`. Initialize an override through Library storage controls or `auditorylab --library-dir PATH library init`. Until then managed Save, Save independent copy and Add name the missing setup instead of writing; Initialize remains available. Saving an edited external file uses its captured destination and does not require an unrelated User Library to be initialized. Opening Library rescans the library, so changes made by the CLI appear without Refresh. Built-ins and independent external exports remain available when persistent storage is unavailable. See [library configuration](cli.md#root-and-lifecycle) and [unsupported-file recovery](formats.md#unsupported-and-unreadable-recipes).
 
 ## Open, copy and manage sounds
 
@@ -80,7 +80,7 @@ Saved duration and endpoint fades govern finite playback and WAV export. Live Wo
 
 ## Save or export
 
-**Save sound** captures the current complete draft. New drafts go to User Library, managed edits use their captured key/token, and external edits use the observed file. Later edits remain dirty after an earlier captured save completes.
+**Save sound** captures the current complete draft. The File menu's Save shortcut is Command-S on macOS and Control-S on Windows/Linux; it uses the same availability and captured-save path, including while a text field has focus. New drafts go to User Library, managed edits use their captured key/token, and external edits use the observed file. Later edits remain dirty after an earlier captured save completes.
 
 **Save independent copy** creates a separate User identity. Portable recipe export preserves identity/history and does not mark a draft saved. In Library, the **Export** section holds the WAV, portable recipe and export-rate controls. **Export WAV…** validates at the export rate and opens the native Save dialog; stop audio first. Native Save dialogs confirm replacement.
 

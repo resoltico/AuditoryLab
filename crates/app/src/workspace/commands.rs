@@ -381,6 +381,7 @@ impl Workspace {
                         Refusal::SelectionChanged
                     });
                 }
+                self.library.record_destination_admission()?;
                 if matches!(mutation, EntryMutation::Trash) {
                     self.trash_request_admission(&key)
                 } else {
@@ -733,8 +734,15 @@ impl Workspace {
         self.prompts.admit_start(self.pending.is_some())?;
         self.files.idle_admission()
     }
+    fn save_destination_admission(&self) -> Result<(), Refusal> {
+        if self.editor.location().external().is_some() {
+            Ok(())
+        } else {
+            self.library.record_destination_admission()
+        }
+    }
     fn save_readiness(&mut self) -> Result<(), Refusal> {
-        self.library.record_destination_admission()?;
+        self.save_destination_admission()?;
         self.import_admission()?;
         self.editor.save_readiness()
     }
@@ -754,7 +762,7 @@ impl Workspace {
         }
     }
     pub(super) fn prepare_save(&mut self) -> Result<Arc<Recipe>, Refusal> {
-        self.library.record_destination_admission()?;
+        self.save_destination_admission()?;
         self.import_admission()?;
         self.editor.prepare_save()
     }
@@ -851,6 +859,7 @@ impl Workspace {
     ) -> Result<(), Refusal> {
         crate::storage::library::require_user(key)
             .map_err(|error| Refusal::Document(Box::new(error.into())))?;
+        self.library.record_destination_admission()?;
         if self.editor.dirty_managed(key) {
             self.start_allowed()
         } else {
@@ -2116,11 +2125,15 @@ impl Workspace {
             return Err(Refusal::DetachedDraft(key.clone()));
         }
         if let Some(expected) = self.editor.location().external().cloned() {
-            return self.managed_job(LibraryRequest::ExternalSave {
+            self.import_admission()?;
+            let job = LibraryJob::ExternalSave {
                 document,
                 expected,
                 recipe,
-            });
+            };
+            let id = self.start_file(FileKind::Managed(job));
+            self.changed();
+            return Ok(id);
         }
         if self.editor.location().managed().is_none()
             && p.entries()
@@ -2302,6 +2315,7 @@ impl Workspace {
         self.library.mark_saved(key.clone());
         (
             FileStatus::Library(LibraryStatus::Written {
+                kind: outcome.kind,
                 key,
                 title,
                 status: outcome.status,

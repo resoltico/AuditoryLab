@@ -188,7 +188,7 @@ fn action_budget_messages_distinguish_components_from_expanded_voices() {
             }))
             .unwrap();
         }
-        let view = crate::workspace::action_view(&ws.action_view());
+        let view = crate::workspace::action_view(&ws.action_view(), &ws);
         assert!(!ws.action_view().can_add_pair());
         assert!(view.pair_add_reason.contains(&format!(
             "uses {voices} of 16 voices in {components} components"
@@ -503,7 +503,8 @@ fn captured_error(
             cause: io_cause("read failed"),
         }
         .into(),
-        Outcome::IncompleteInventory => LibraryError::RootMissing.into(),
+        // A generic scan failure; initialization failures have distinct setup recovery.
+        Outcome::IncompleteInventory => LibraryError::ScanBudget.into(),
         Outcome::Busy => LibraryError::Busy.into(),
         Outcome::LockUnavailable => LibraryError::LockUnavailable {
             error: io_cause("locking unavailable"),
@@ -563,7 +564,7 @@ fn global_summary_preserves_full_refusal_and_outcome_independent_of_editor_scrol
     }))
     .unwrap();
     let mut typed = ws.action_view();
-    let actions = crate::workspace::action_view(&typed);
+    let actions = crate::workspace::action_view(&typed, &ws);
     assert!(!typed.can_save());
     assert!(actions.operation_summary.contains("65536"));
     typed.file_status = FileStatus::Exported {
@@ -575,7 +576,7 @@ fn global_summary_preserves_full_refusal_and_outcome_independent_of_editor_scrol
             warnings: Vec::new(),
         },
     };
-    let actions = crate::workspace::action_view(&typed);
+    let actions = crate::workspace::action_view(&typed, &ws);
     assert!(actions.operation_summary.contains("65536"));
     assert!(actions.operation_outcome.starts_with("Exported 100"));
     assert!(actions.operation_summary.chars().count() <= 181);
@@ -592,7 +593,7 @@ fn global_summary_preserves_full_refusal_and_outcome_independent_of_editor_scrol
         }
         .into(),
     );
-    let actions = crate::workspace::action_view(&typed);
+    let actions = crate::workspace::action_view(&typed, &ws);
     assert!(actions.operation_details.contains("cannot write file"));
     assert!(actions.operation_details.len() > actions.operation_summary.len());
 }
@@ -956,12 +957,15 @@ fn repeated_views_keep_all_rendered_fields_and_empty_selection_clears_text() {
     assert_eq!(initial.title, ws.selected().unwrap().title());
     assert!(initial.details.contains(&initial.title));
     let editor = crate::workspace::editor_view(&ws.editor_view());
-    let actions = crate::workspace::action_view(&ws.action_view());
+    let actions = crate::workspace::action_view(&ws.action_view(), &ws);
     for _ in 0..10 {
         ws.poll();
         assert_eq!(crate::workspace::library_view(&ws.library_view()), initial);
         assert_eq!(crate::workspace::editor_view(&ws.editor_view()), editor);
-        assert_eq!(crate::workspace::action_view(&ws.action_view()), actions);
+        assert_eq!(
+            crate::workspace::action_view(&ws.action_view(), &ws),
+            actions
+        );
     }
     ws.apply(Command::Library(LibraryCommand::Search(
         ("no matching result").to_string(),

@@ -8,6 +8,7 @@ $env:GALLIUM_DRIVER = 'llvmpipe'
 $env:LP_NUM_THREADS = '2'
 $qualificationDeadline = [DateTime]::UtcNow.AddSeconds(180)
 . (Join-Path $PSScriptRoot 'windows-uia-client.ps1')
+. (Join-Path $PSScriptRoot 'saved-record.ps1')
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 Add-Type @'
@@ -66,10 +67,10 @@ function Wait-Native([string]$Description, [scriptblock]$Probe) {
     } while ([DateTime]::UtcNow -lt $deadline)
     throw "Timed out: $Description"
 }
-function Find-Named($Parent, [string]$Name) {
+function Find-Named($Parent, [string]$Name, [bool]$RequireVisible=$true) {
     $condition = [System.Windows.Automation.PropertyCondition]::new($uia::NameProperty,$Name)
     foreach ($item in $Parent.FindAll($scope,$condition)) {
-        if ($item.Current.IsEnabled -and -not $item.Current.IsOffscreen) { return $item }
+        if ($item.Current.IsEnabled -and (-not $RequireVisible -or -not $item.Current.IsOffscreen)) { return $item }
     }
     return $null
 }
@@ -166,8 +167,23 @@ try {
     Native-Keys '^a'
     Invoke-SdkTextRangeControl $handle 'full-selection-after-native-Ctrl+A' 'selection'
     Write-Host 'Native witness: public SDK caret/endpoints/empty and full exact selection verified'
+    $cli = Join-Path ([IO.Path]::GetDirectoryName($Binary)) 'auditorylab.exe'
+    if (-not (Test-Path $cli)) { throw 'Required production CLI sibling is unavailable' }
+    Wait-Native 'save enabled with literal notes' { Find-Named $window 'Save sound' $false } | Out-Null
+    Native-Keys '^s'
+    $firstSave = Wait-Native 'native Ctrl+S persisted literal notes' {
+        Read-SavedRecord $cli $env:AUDITORYLAB_LIBRARY_DIR "first native line`nsecond native line" $null
+    }
+    if ((Read-NativeValue $notes).Replace("`r",'') -cne "first native line`nsecond native line" -or -not $notes.Current.HasKeyboardFocus) { throw 'Native Ctrl+S changed notes or lost editor focus' }
+    Native-Keys '^a'
     Native-Keys '{BACKSPACE}'
     Wait-Native 'cleared multiline field' { (Read-NativeValue $notes) -eq '' } | Out-Null
+    Wait-Native 'save enabled after clearing notes' { Find-Named $window 'Save sound' $false } | Out-Null
+    Native-Keys '^s'
+    $clearedSave = Wait-Native 'native Ctrl+S updated same record with empty notes' {
+        Read-SavedRecord $cli $env:AUDITORYLAB_LIBRARY_DIR '' $firstSave
+    }
+    if ((Read-NativeValue $notes) -cne '') { throw 'Native Ctrl+S inserted text in the cleared editor' }
     Invoke-Native (Find-Named $window 'Library')
     $dialogOwners = @()
     for ($attempt=0; $attempt -lt 3; $attempt++) {
@@ -206,7 +222,7 @@ try {
     Wait-Native 'opened fixture selected in production provider' { Find-Named $window 'My 3 Hz pair' } | Out-Null
     if ($process.HasExited) { throw 'Production application exited during native qualification' }
     @{session='windows'; provider='UI Automation'; production='Winit/FemtoVG'; first_frame_colors=$colors.Count; native_gl_driver=$driver[0].FileName;
-      multiline_native_keys=$true; modifier_selection=$true; native_dialog_cancel_reopen=$true;
+      multiline_native_keys=$true; modifier_selection=$true; native_ctrl_s=@($firstSave,$clearedSave); native_dialog_cancel_reopen=$true;
       native_dialog_open='My 3 Hz pair'; native_dialog_owners=$dialogOwners; audio_device_opened=$false} | ConvertTo-Json -Compress
 } catch {
     # Startup can fail before a production main provider exists. Retain all

@@ -158,14 +158,16 @@ pub fn file_status_description(value: &FileStatus) -> String {
 
 /// A confirmed library write, named by the sound's title when it has one.
 fn written_headline(
+    kind: auditorylab_app::services::library::MutationKind,
     key: &auditorylab_app::document::origin::LibraryKey,
     title: Option<&str>,
     status: auditorylab_app::services::library::MutationStatus,
     document: bool,
 ) -> String {
-    use auditorylab_app::services::library::MutationStatus;
+    use auditorylab_app::services::library::{MutationKind, MutationStatus};
     let name = || title.map_or_else(|| key.to_string(), crate::display_scalar);
-    match (document, title) {
+    let document_save = document && matches!(kind, MutationKind::Create | MutationKind::Update);
+    match (document_save, title) {
         (true, Some(title)) if status == MutationStatus::Published => format!(
             "Saved “{}” to the User Library. Later edits stay separate until you save \
                 again; use Show saved if filters hide it.",
@@ -177,7 +179,11 @@ fn written_headline(
             status.label(),
             name()
         ),
-        (false, _) => format!("{} · {}", status.label(), name()),
+        (false, _) => format!(
+            "{} · {}",
+            crate::library::mutation_label(kind, status),
+            name()
+        ),
     }
 }
 
@@ -190,6 +196,7 @@ pub fn library_status_description(value: &LibraryStatus) -> String {
             "Saved version loaded; open draft and playing snapshot retained.".into()
         }
         LibraryStatus::Written {
+            kind,
             key,
             title,
             status,
@@ -198,7 +205,7 @@ pub fn library_status_description(value: &LibraryStatus) -> String {
             feedback,
         } => format!(
             "{}{}",
-            written_headline(key, title.as_deref(), *status, *document),
+            written_headline(*kind, key, title.as_deref(), *status, *document),
             diagnostics
                 .iter()
                 .map(crate::errors::publication::warning)
@@ -229,53 +236,65 @@ pub fn library_status_description(value: &LibraryStatus) -> String {
             error,
             publishing,
             context,
-        } => {
-            let recovery = "Draft retained. Refresh and reload the saved version, keep the draft, \
-                or save an independent copy.";
-            let heading = match error.outcome() {
-                Outcome::Conflict if *publishing => {
-                    "Saved version or identity conflicts with the captured operation"
-                }
-                Outcome::HistoryConflict if *publishing => {
-                    "Saved identity or creation history conflicts with the captured operation"
-                }
-                Outcome::Conflict | Outcome::HistoryConflict => "Library read conflict",
-                Outcome::Write | Outcome::Unreadable | Outcome::IncompleteInventory
-                    if *publishing =>
-                {
-                    "Library operation failed; inspect this location before retrying"
-                }
-                Outcome::Busy => "Library is busy; retry after the current operation",
-                Outcome::LockUnavailable => "Library locking is unavailable",
-                Outcome::Cancelled => "Library operation cancelled",
-                Outcome::ReadOnlyBuiltIn => "Built-in recipes are read-only",
-                _ if *publishing => "Library operation refused",
-                _ => "Library read failed",
-            };
-            let heading = context
-                .selector
-                .as_ref()
-                .map_or_else(|| heading.to_owned(), |key| format!("{heading} · {key}"));
-            let publication = if *publishing
-                && matches!(
-                    error.outcome(),
-                    Outcome::Conflict | Outcome::HistoryConflict
-                ) {
-                "\nThe conflicting operation did not publish a replacement."
-            } else {
-                ""
-            };
-            format!(
-                "{heading}\n{}\n{error}{publication}\n{recovery}",
-                crate::workspace::status::library_context_description(context),
-                error = error.explain()
-            )
-        }
+        } => library_failure_description(error, *publishing, context),
         LibraryStatus::InvalidOwner => {
             "Saved content belongs to another sound; this sound’s saved state was not changed."
                 .into()
         }
     }
+}
+
+fn library_failure_description(
+    error: &auditorylab_app::services::OperationError,
+    publishing: bool,
+    context: &LibraryContext,
+) -> String {
+    if matches!(error, auditorylab_app::services::OperationError::Library(cause) if cause.requires_initialization())
+    {
+        return format!(
+            "{}\n{}",
+            crate::library::initialization_required(&context.path.display().to_string()),
+            error.explain()
+        );
+    }
+    let recovery = "Draft retained. Refresh and reload the saved version, keep the draft, \
+                or save an independent copy.";
+    let heading = match error.outcome() {
+        Outcome::Conflict if publishing => {
+            "Saved version or identity conflicts with the captured operation"
+        }
+        Outcome::HistoryConflict if publishing => {
+            "Saved identity or creation history conflicts with the captured operation"
+        }
+        Outcome::Conflict | Outcome::HistoryConflict => "Library read conflict",
+        Outcome::Write | Outcome::Unreadable | Outcome::IncompleteInventory if publishing => {
+            "Library operation failed; inspect this location before retrying"
+        }
+        Outcome::Busy => "Library is busy; retry after the current operation",
+        Outcome::LockUnavailable => "Library locking is unavailable",
+        Outcome::Cancelled => "Library operation cancelled",
+        Outcome::ReadOnlyBuiltIn => "Built-in recipes are read-only",
+        _ if publishing => "Library operation refused",
+        _ => "Library read failed",
+    };
+    let heading = context
+        .selector
+        .as_ref()
+        .map_or_else(|| heading.to_owned(), |key| format!("{heading} · {key}"));
+    let publication = if publishing
+        && matches!(
+            error.outcome(),
+            Outcome::Conflict | Outcome::HistoryConflict
+        ) {
+        "\nThe conflicting operation did not publish a replacement."
+    } else {
+        ""
+    };
+    format!(
+        "{heading}\n{}\n{error}{publication}\n{recovery}",
+        crate::workspace::status::library_context_description(context),
+        error = error.explain()
+    )
 }
 
 pub fn library_context_description(value: &LibraryContext) -> String {

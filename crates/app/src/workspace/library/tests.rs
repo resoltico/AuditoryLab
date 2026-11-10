@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use super::*;
+
+#[path = "field_status_tests.rs"]
+mod field_status_tests;
 use crate::discovery::query::{Direction, GroupBy, SortBy};
 use crate::document::editing::{Draft, EditingField, EditorSession};
 use crate::services::library::Library;

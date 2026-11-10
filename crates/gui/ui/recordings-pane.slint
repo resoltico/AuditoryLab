@@ -189,7 +189,7 @@ export component RecordingsPane inherits Rectangle {
                     indeterminate: root.progress-indeterminate;
                 }
             }
-            if !root.has-analysis: Text {
+            if root.measurements != "": Text {
                 text: root.measurements;
                 wrap: word-wrap;
                 min-width: 0px;
