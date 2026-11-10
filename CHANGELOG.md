@@ -6,6 +6,11 @@
 - Recording analysis starts at zero by default; `--start` and the desktop start field select an absolute offset. Explicit lengths are 2–3600 s, with bounded cooperative work.
 - Recording analysis streams one admitted file without a full-file counting pass, reports unknown source duration honestly and retains actual window resolution at early EOF.
 - Invalid CLI inspections emit a complete report on stdout and retain a failing exit status, including every component diagnostic and available lane fact.
+- Save checks its captured destination: external-file edits work without User Library setup, while managed writes explain missing explicit-root setup.
+- Save sound supports Command-S on macOS and Ctrl-S on Windows/Linux through the existing validation and native menu action.
+- Pair pattern diagrams label shared modulation once for both tones, retaining carrier facts without a false steady-secondary row.
+- Human recording reports use one absolute interval block and a bounded candidate overview; complete comparisons and machine results remain available.
+- Transport feedback removes identical visible blockers and names completed library mutations; empty Library and Recordings views give context-specific guidance.
 - Windows accessibility selection arrays and related properties preserve their declared native provider interfaces and COM reference ownership.
 - Component diagnostics retain every independent failure and valid lane fact, including pair arithmetic failures; invalid mixes remain unplayable.
 - Copies retain full ancestry up to the existing 65,536-byte portable limit, including the final title, identity and attribution; the 16-generation ceiling is removed.
