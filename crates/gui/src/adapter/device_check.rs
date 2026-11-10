@@ -7,7 +7,11 @@ use slint::{Model, ModelRc, VecModel};
 use std::{fmt::Write, rc::Rc};
 
 impl SlintAdapter {
-    pub(super) fn project_device_check(&self, ui: &MainWindow) {
+    pub(super) fn project_device_check(
+        &self,
+        ui: &MainWindow,
+        actions: &auditorylab_app::workspace::WorkspaceActions,
+    ) {
         let workspace = self.workspace.borrow();
         let Some(workspace) = workspace.as_ref() else {
             return;
@@ -47,7 +51,12 @@ impl SlintAdapter {
         ui.set_device_low_tone_result(read_only(&check_text::low_tone_result(
             view.assessment.low_tones,
         )));
-        ui.set_recording_measurements(recording_text::MEASUREMENTS.into());
+        ui.set_recording_measurements(read_only(&recording_text::measurement_guidance(
+            workspace.recording(),
+            workspace.recording_analysis(),
+            workspace.recording_phase(),
+            actions,
+        )));
         ui.set_analyzing_recording(workspace.analyzing_recording());
         ui.set_recording_progress(f32_value(workspace.recording_progress()));
         ui.set_recording_progress_phase(

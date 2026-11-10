@@ -2302,6 +2302,7 @@ impl Workspace {
         self.library.mark_saved(key.clone());
         (
             FileStatus::Library(LibraryStatus::Written {
+                kind: outcome.kind,
                 key,
                 title,
                 status: outcome.status,

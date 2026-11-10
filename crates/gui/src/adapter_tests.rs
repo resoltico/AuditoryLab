@@ -3,6 +3,8 @@
 //! Dialogs are answered through a recording shell; audio is the portable
 //! workspace's typed refusal, so no device is touched.
 use crate::adapter::{Shell, SlintAdapter, Windows};
+#[path = "field_feedback_tests.rs"]
+mod field_feedback_tests;
 use crate::generated::MainWindow;
 use crate::test_platform::{install, settle};
 use auditorylab_app::core::ParameterId;
@@ -2827,7 +2829,7 @@ fn background_refresh_does_not_hide_a_failed_captured_save() {
         "Other writer"
     );
     let details = h.adapter.inspect(|w| {
-        auditorylab_presentation::workspace::action_view(&w.action_view()).operation_details
+        auditorylab_presentation::workspace::action_view(&w.action_view(), w).operation_details
     });
     assert!(
         details.to_lowercase().contains("conflict") || details.to_lowercase().contains("changed"),

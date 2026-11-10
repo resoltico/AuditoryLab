@@ -150,6 +150,8 @@ pub enum LibraryStatus {
     Loaded,
     /// A managed publication completed with confirmed mutation truth.
     Written {
+        /// Actual operation captured by the completed worker, independent of selection.
+        kind: crate::services::library::MutationKind,
         /// Managed identity captured by the admitted operation.
         key: LibraryKey,
         /// Title of the confirmed content; absent after a purge.

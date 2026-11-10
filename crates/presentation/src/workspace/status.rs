@@ -158,14 +158,16 @@ pub fn file_status_description(value: &FileStatus) -> String {
 
 /// A confirmed library write, named by the sound's title when it has one.
 fn written_headline(
+    kind: auditorylab_app::services::library::MutationKind,
     key: &auditorylab_app::document::origin::LibraryKey,
     title: Option<&str>,
     status: auditorylab_app::services::library::MutationStatus,
     document: bool,
 ) -> String {
-    use auditorylab_app::services::library::MutationStatus;
+    use auditorylab_app::services::library::{MutationKind, MutationStatus};
     let name = || title.map_or_else(|| key.to_string(), crate::display_scalar);
-    match (document, title) {
+    let document_save = document && matches!(kind, MutationKind::Create | MutationKind::Update);
+    match (document_save, title) {
         (true, Some(title)) if status == MutationStatus::Published => format!(
             "Saved “{}” to the User Library. Later edits stay separate until you save \
                 again; use Show saved if filters hide it.",
@@ -177,7 +179,11 @@ fn written_headline(
             status.label(),
             name()
         ),
-        (false, _) => format!("{} · {}", status.label(), name()),
+        (false, _) => format!(
+            "{} · {}",
+            crate::library::mutation_label(kind, status),
+            name()
+        ),
     }
 }
 
@@ -190,6 +196,7 @@ pub fn library_status_description(value: &LibraryStatus) -> String {
             "Saved version loaded; open draft and playing snapshot retained.".into()
         }
         LibraryStatus::Written {
+            kind,
             key,
             title,
             status,
@@ -198,7 +205,7 @@ pub fn library_status_description(value: &LibraryStatus) -> String {
             feedback,
         } => format!(
             "{}{}",
-            written_headline(key, title.as_deref(), *status, *document),
+            written_headline(*kind, key, title.as_deref(), *status, *document),
             diagnostics
                 .iter()
                 .map(crate::errors::publication::warning)

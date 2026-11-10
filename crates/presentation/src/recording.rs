@@ -7,7 +7,84 @@ const PULSING_ATTRIBUTION_LIMIT: &str =
 
 /// What recording analysis reports about the audio itself.
 pub const MEASUREMENTS: &str =
-    "Choose Analyze to measure this recording. No samples have been measured yet.";
+    "Choose Analyze recording to measure this file. No samples have been measured yet.";
+
+/// Current recording guidance from captured source/report/activity and actual actions.
+/// This renders existing state; it neither admits an action nor stores another state machine.
+pub fn measurement_guidance(
+    source: Option<&RecordingFile>,
+    report: Option<&auditorylab_app::recording::AnalyzedRecording>,
+    phase: Option<auditorylab_app::job::ProgressPhase>,
+    actions: &auditorylab_app::workspace::WorkspaceActions,
+) -> String {
+    use auditorylab_app::services::OperationError;
+    use auditorylab_app::vocabulary::Operation;
+    use auditorylab_app::workspace::status::{FileAction, FileStatus};
+    let enabled = |operation| {
+        actions
+            .operations
+            .iter()
+            .any(|action| action.operation == operation && action.enabled)
+    };
+    if let Some(phase) = phase {
+        let retained = if report.is_some() {
+            "The previous completed results below are retained while this run is in progress."
+        } else {
+            "No completed analysis is available yet."
+        };
+        return format!(
+            "{} {retained} Cancel analysis requests cancellation.",
+            progress_phase(phase)
+        );
+    }
+    if matches!(&actions.file_status, FileStatus::Running(activity) if matches!(activity.kind, FileAction::OpenRecording))
+    {
+        return if report.is_some() {
+            "Opening a recording. The previous completed results remain until another source opens."
+                .into()
+        } else {
+            "Opening a recording. No samples have been measured yet.".into()
+        };
+    }
+    if source.is_none() {
+        return if enabled(Operation::OpenRecording) {
+            "No recording is open. Choose Open recording to select an audio file.".into()
+        } else {
+            "No recording is open. Opening is unavailable while the current dialog or operation is active.".into()
+        };
+    }
+    let failed = matches!(
+        &actions.file_status,
+        FileStatus::Failed(OperationError::Recording(_))
+            | FileStatus::WorkerFailed {
+                activity: auditorylab_app::workspace::status::FileActivity {
+                    kind: FileAction::AnalyzeRecording | FileAction::OpenRecording,
+                    ..
+                },
+                ..
+            }
+    );
+    if report.is_some() {
+        return if matches!(
+            &actions.file_status,
+            FileStatus::Failed(OperationError::Recording(
+                auditorylab_app::recording::RecordingError::Cancelled
+            ))
+        ) {
+            "Analysis cancelled. The last completed results below are retained.".into()
+        } else if failed {
+            "The last recording operation failed. The last completed results below are retained."
+                .into()
+        } else {
+            String::new()
+        };
+    }
+    if enabled(Operation::AnalyzeRecording) {
+        MEASUREMENTS.into()
+    } else {
+        "Recording identified. Analysis is unavailable while the current dialog or operation is active; no samples have been measured yet.".into()
+    }
+}
 
 /// The file name, or the whole path when it has none.
 #[must_use]

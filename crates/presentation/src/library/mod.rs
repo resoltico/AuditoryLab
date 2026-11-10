@@ -625,7 +625,7 @@ pub fn write_outcome_description(
     text
 }
 /// What a confirmed mutation did, named for its kind.
-fn mutation_label(
+pub(crate) fn mutation_label(
     kind: auditorylab_app::services::library::MutationKind,
     status: auditorylab_app::services::library::MutationStatus,
 ) -> String {

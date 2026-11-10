@@ -41,20 +41,23 @@ impl SlintAdapter {
             .document_projections
             .set(self.counts.document_projections.get() + 1);
         let views = self.workspace.borrow_mut().as_mut().map(|w| {
+            let actions = w.action_view();
+            let action_text = auditorylab_presentation::workspace::action_view(&actions, w);
             (
                 w.editor_view(),
                 w.library_view(),
-                w.action_view(),
+                actions,
+                action_text,
                 w.control_choices(),
             )
         });
-        let Some((editor, library, actions, controls)) = views else {
+        let Some((editor, library, actions, action_text, controls)) = views else {
             return;
         };
         *self.control_choices.borrow_mut() = controls;
         self.project_control_choices(ui);
         self.project_learning(ui);
-        self.project_device_check(ui);
+        self.project_device_check(ui, &actions);
         self.project_view_captions(ui, &editor);
         self.reconcile_document(ui, &editor);
         if let Some(workspace) = self.workspace.borrow().as_ref() {
@@ -81,7 +84,6 @@ impl SlintAdapter {
         }
 
         self.project_actions(&actions);
-        let action_text = auditorylab_presentation::workspace::action_view(&actions);
         ui.set_can_play(actions.can_play());
         ui.set_library_play_action(action_text.library_play_label.into());
         ui.set_can_import(actions.can_import());
