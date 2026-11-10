@@ -46,6 +46,9 @@ jobs:
       - name: Verify editable onboarding artwork and sine examples
         if: github.event_name != 'schedule'
         run: python3 artwork/onboarding/verify_art.py --scratch target/onboarding-art-qa
+      - name: Verify native portal-parent controls
+        if: github.event_name != 'schedule'
+        run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s crates/gui/native -p '*_test.py'
       - run: rustup toolchain install
       - name: Install Linux build prerequisites
         if: github.event_name != 'schedule'

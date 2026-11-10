@@ -12,6 +12,7 @@ export XDG_RUNTIME_DIR="$scratch/runtime"
 export XDG_CONFIG_HOME="$scratch/config-home"
 export XDG_DATA_HOME="$scratch/data-home"
 export XDG_CACHE_HOME="$scratch/cache-home"
+export PYTHONPYCACHEPREFIX="$scratch/python-cache"
 export GSETTINGS_BACKEND=memory
 export GTK_A11Y=always
 export NO_AT_BRIDGE=0
