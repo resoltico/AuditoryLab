@@ -89,3 +89,41 @@ Isolated outputs use a temporary target directory, removed after required output
 ## Packaging
 
 Use the [release guide](docs/releasing.md) for native toolchains, icon resources, identity, archives and extracted-package checks. Execute checks on the matching OS/CPU; cross-compilation alone does not exercise native rendering/devices. Use silent recipes for hardware checks. Versioning, tagging, publication and upstream submission require the owner’s authorization. [LICENSE](LICENSE) and the [artwork guide](artwork/README.md) define distribution terms.
+
+## CLI installer verification
+
+The self-contained scripts in [install/](install/) share the reviewed
+[PDFConcat](https://github.com/resoltico/pdfconcat/tree/main/install) engine with
+EML Attachment Remover. Only the bounded literal product settings differ.
+`install/engine-source.txt` pins the canonical PDFConcat commit; end users do not
+fetch code from either other repository at runtime. When changing behavior,
+review and commit it in PDFConcat, synchronize both consumer engines while
+preserving product settings, update both full commit pins, and qualify all three.
+Keep archive layouts, architecture names and legal-material lists product-specific.
+
+```sh
+python3 install/check-sync.py /absolute/path/to/PDFConcat
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s install -p '*_test.py'
+shellcheck install/*.sh
+```
+
+Omit the checkout argument to verify against the pinned HTTPS source. After
+building a fresh native distribution with the [release instructions](docs/releasing.md),
+stage checksum-bound installer copies beside its archives and exercise them:
+
+```sh
+python3 install/prepare-test-release.py target/dist
+bash install/install_test.sh "$PWD/target/dist"
+```
+
+On Windows use `python install/prepare-test-release.py target/dist`, followed by
+`./install/install_test.ps1 -Dist "$PWD/target/dist"` in PowerShell. Start with a
+fresh output directory: staging refuses to overwrite installers or hashes.
+The harnesses use isolated homes/directories and registry fixtures, qualify the
+staged installer bytes against the manifest before execution, and test actual
+CLI publication without opening an audio device. macOS/Linux exercise shell
+startup ownership; Windows exercises PowerShell 5.1 and 7. Native packaging CI
+runs the matching suite, with a translated-shell run on Apple Silicon. The
+release workflow additionally qualifies the exact prepared asset set before
+publication. Local PowerShell helper tests on Unix do not qualify Windows PATH
+or native executable behavior.

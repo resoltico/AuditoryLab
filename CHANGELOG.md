@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-10
+
 - CLI JSON now uses schema 4 with operation-specific fields; consumers must update. Inspection validity, partial inventories and publication states remain distinct.
 - Recording analysis starts at zero by default; `--start` and the desktop start field select an absolute offset. Explicit lengths are 2–3600 s, with bounded cooperative work.
 - Recording analysis streams one admitted file without a full-file counting pass, reports unknown source duration honestly and retains actual window resolution at early EOF.
@@ -20,6 +22,8 @@
 - Confirmed publications survive terminal reporting failures; library initialization reports recovery and durability notices.
 - Recording energy bars distinguish undefined silence from zero energy; changing Device check answers reinterprets retained findings without re-analysis.
 - Catalog construction and captured WAV export preserve typed content through internal processing, with destination and publication safeguards retained.
+- Add user-local CLI installers for macOS, Linux and Windows, with verified downloads, native checks, retained legal material and ownership-aware update/uninstall.
+- CLI installers share the pinned PDFConcat/EML engine, support custom directories and PATH control, and leave recipes, recordings and the desktop app untouched.
 - Contributor checks use formatters without a physical line-width gate; CI separates state checks, native tests, mutations and source-bound packaging.
 - Native graphical qualification checks actual OS providers, input and dialogs; missing sessions or production GL capabilities fail instead of skipping.
 - Update bundled dependencies, including thread-safety fixes in triple_buffer, overflow safety in fixedbitset and native file-dialog fixes.

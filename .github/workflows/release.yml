@@ -23,6 +23,8 @@ jobs:
   check:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    outputs:
+      installers: ${{ steps.installer-matrix.outputs.installers }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -31,6 +33,16 @@ jobs:
       - run: |
           mkdir -p target/tmp
           echo "TMPDIR=${GITHUB_WORKSPACE}/target/tmp" >> "$GITHUB_ENV"
+      - id: installer-matrix
+        run: |
+          python3 - <<'PYTHON' >> "$GITHUB_OUTPUT"
+          import json
+          data = json.load(open('.github/native-targets.json'))['include']
+          matrix = [{**x, 'translated': False} for x in data]
+          arm_mac = next(x for x in data if x['platform'] == 'macos-aarch64')
+          matrix.append({**arm_mac, 'translated': True})
+          print('installers=' + json.dumps({'include': matrix}))
+          PYTHON
       - run: rustup toolchain install
       - name: Check ref, version, notes and absent tag
         env:
@@ -77,7 +89,7 @@ jobs:
       - name: Write checksums and release notes
         run: |
           cargo xtask collect-assets "$RELEASE_VERSION" target/distributions target/assets
-          (cd target/assets && sha256sum -- * > SHA256SUMS)
+          python3 install/prepare-test-release.py target/assets
           cargo xtask notes "$RELEASE_VERSION" > target/notes.md
       - id: provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
@@ -99,8 +111,48 @@ jobs:
             target/provenance.jsonl
           if-no-files-found: error
           compression-level: 0
+  installers:
+    name: Installer (${{ matrix.platform }}, translated=${{ matrix.translated }})
+    needs: [check, prepare]
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.check.outputs.installers) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-verification
+          path: target
+          digest-mismatch: error
+      - name: Shells and Linux runtime for the actual CLI
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes zsh fish libasound2
+      - name: Qualify exact Unix release installers
+        if: runner.os != 'Windows'
+        run: |
+          if [[ '${{ matrix.translated }}' == true ]]; then
+            arch -x86_64 /bin/bash install/install_test.sh "$PWD/target/assets"
+          else
+            bash install/install_test.sh "$PWD/target/assets"
+          fi
+      - name: Qualify exact Windows release installers
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          ./install/install_test.ps1 -Dist "$PWD/target/assets"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
   verify:
-    needs: prepare
+    needs: [prepare, installers]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:

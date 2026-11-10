@@ -14,6 +14,23 @@ Set the device volume low before pressing Play, then raise it gradually. Digital
 
 ## Download
 
+Install the CLI for your user account on macOS or Linux:
+
+```sh
+curl -fsSL https://github.com/resoltico/AuditoryLab/releases/latest/download/install.sh | sh
+```
+
+On Windows, use PowerShell:
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://github.com/resoltico/AuditoryLab/releases/latest/download/install.ps1 | iex"
+```
+
+The installers verify the native CLI, support updates and offline uninstall,
+and leave the desktop app and your recipes/recordings alone. See the
+[installation guide](docs/INSTALL.md) for PATH, ownership, version pins, custom
+folders and running a reviewed local copy.
+
 Choose a CLI or desktop archive for your OS and processor from [Releases](https://github.com/resoltico/AuditoryLab/releases/latest). macOS packages require macOS 15 or later and contain either Apple silicon or Intel code. Windows requires Windows 10 on x86_64 or Windows 11 on ARM64. See the [desktop platform requirements](docs/desktop.md#platforms) for graphics and Linux dependencies.
 
 Compare the archive with its entry in `SHA256SUMS` before extracting: use `shasum -a 256 ARCHIVE` on macOS, `sha256sum ARCHIVE` on Linux, or `Get-FileHash ARCHIVE -Algorithm SHA256` in PowerShell. Follow the included `README.txt` to launch it. The macOS app contains its legal resources and can be moved to Applications.

@@ -151,7 +151,7 @@ fn readme(version: &str, gui: bool, target: &str) -> String {
         }
         (false, "macos") => {
             "macOS 15 or later. If macOS blocks the first run, use System Settings > \
-            Privacy & Security > Allow Anyway after trying to run auditorylab, then run \
+            Privacy & Security > Open Anyway after trying to run auditorylab, then run \
             it again. Apple instructions: https://support.apple.com/en-us/102445"
         }
         (true, "windows") => {
@@ -168,7 +168,13 @@ fn readme(version: &str, gui: bool, target: &str) -> String {
         (false, _) => "Linux with glibc 2.35 or later and ALSA.",
     };
     let notes = match (gui, os) {
-        (false, _) => "",
+        (false, _) => {
+            "\nFor an installer-managed copy, run the full executable path printed by \
+            the installer. Documentation and legal material are kept separately in \
+            .auditorylab-install/legal; archive layout instructions apply to manual \
+            extraction. Install/update/uninstall guide: \
+            https://github.com/resoltico/AuditoryLab/blob/main/docs/INSTALL.md\n"
+        }
         (true, "macos") => {
             "\nAll legal materials are also inside the app at Contents/Resources.\n\
             The About window provides Licenses and component notices.\n"
@@ -724,6 +730,36 @@ fn run_dist(args: &[String]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn cli_installers_retain_the_archive_legal_materials() {
+        let shell = include_str!("../../install/install.sh");
+        let shell_files = shell
+            .lines()
+            .find_map(|line| {
+                line.strip_prefix("legal_files='")
+                    .and_then(|s| s.strip_suffix('\''))
+            })
+            .expect("literal installer legal files");
+        assert_eq!(
+            shell_files.split_whitespace().collect::<Vec<_>>(),
+            LEGAL_FILES
+        );
+        let powershell = include_str!("../../install/install.ps1");
+        let ps_files = powershell
+            .lines()
+            .find_map(|line| {
+                line.trim()
+                    .strip_prefix("LegalFiles = @(")
+                    .and_then(|s| s.strip_suffix(')'))
+            })
+            .expect("literal installer legal files");
+        let ps_files = ps_files
+            .split(',')
+            .map(|s| s.trim().trim_matches('\''))
+            .collect::<Vec<_>>();
+        assert_eq!(ps_files, LEGAL_FILES);
+    }
+
     #[test]
     fn native_bundle_identity_is_derived_and_rejects_unsupported_versions() {
         for (version, expected) in [

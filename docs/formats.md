@@ -160,7 +160,7 @@ These are the vocabulary keys used by queries, portable choices and JSON values.
 
 ## CLI JSON output
 
-Every schema-4 envelope contains `output_schema_version` and `operation`. Private operation-specific wire payloads define the remaining fields; internal model serialization does not define this protocol. There is no global success/validity flag. `complete` describes discovery/inspection/recording work only; publication uses `status`, while failed operations have a typed failure status. Inapplicable fields are absent. Schema 3 is no longer emitted; consumers must adopt schema 4.
+Every schema-4 envelope contains `output_schema_version` and `operation`. Private operation-specific wire payloads define the remaining fields; internal model serialization does not define this protocol. There is no global success/validity flag. `complete` describes discovery/inspection/recording work only; publication uses `status`, while failed operations have a typed failure status. Inapplicable fields are absent. Only schema 4 is emitted.
 
 | Operation | Data |
 | --- | --- |
