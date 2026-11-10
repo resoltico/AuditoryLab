@@ -1,6 +1,6 @@
 //! Bounded origin-zero timing and envelope projections, independent of live phase history.
 use crate::{
-    Extent, SampleRate, VoiceFacts, VoiceId,
+    ComponentId, Extent, SampleRate, VoiceFacts, VoiceId,
     compiled::CompiledMix,
     synthesis::{Carrier, Modulator, sine},
 };
@@ -17,14 +17,31 @@ pub enum ModelKind {
     /// Sinusoidal amplitude envelope bounds, not carrier waveform samples.
     Envelope,
 }
+/// Authored scope of one explanatory process, distinct from an output channel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModelOwner {
+    /// A source process belonging to one carrier generator.
+    Voice(VoiceId),
+    /// One gain process applied to every source lane of the component.
+    Component(ComponentId),
+}
+impl ModelOwner {
+    /// Authored component containing the process.
+    pub const fn component(self) -> ComponentId {
+        match self {
+            Self::Voice(id) => id.component,
+            Self::Component(id) => id,
+        }
+    }
+}
 /// One independently attributed process. Dense periods aggregate into bounded columns.
 #[derive(Debug, Clone)]
 pub struct ModelLane {
-    /// Authored owner and generator lane.
-    pub id: VoiceId,
+    /// Authored source or shared-component scope.
+    pub owner: ModelOwner,
     /// Process type.
     pub kind: ModelKind,
-    /// Validated physical quantities.
+    /// Validated reference quantities; component-owned modulation is shared.
     pub facts: VoiceFacts,
     /// Per-column envelope bounds/occupancy over every frame, not point subsampling.
     pub columns: Vec<Extent>,
@@ -61,22 +78,16 @@ pub(crate) fn project(mix: &CompiledMix, bins: usize) -> TimingModel {
         insufficient_cycle: slowest.is_finite() && seconds * slowest < 1.0,
         lanes: Vec::new(),
     };
-    for entry in mix.entries() {
-        let (id, voice, facts) = (entry.id, &entry.voice, &entry.facts);
-        if !mix
-            .components()
-            .find(|component| component.id == id.component)
-            .is_some_and(|component| {
-                component
-                    .lanes
-                    .iter()
-                    .flatten()
-                    .any(|lane| lane.voice.amplitude > 0.0)
-            })
+    for component in mix.components() {
+        if !component
+            .lanes
+            .iter()
+            .flatten()
+            .any(|lane| lane.voice.amplitude > 0.0)
         {
             continue;
         }
-        let mut lane = |kind, envelope: &dyn Fn(u64, u64) -> Extent| {
+        let mut lane = |owner, kind, facts, envelope: &dyn Fn(u64, u64) -> Extent| {
             let columns = (0..count)
                 .map(|i| {
                     // Same frame-to-column partition as the all-sample extrema reducer.
@@ -86,29 +97,50 @@ pub(crate) fn project(mix: &CompiledMix, bins: usize) -> TimingModel {
                 })
                 .collect();
             model.lanes.push(ModelLane {
-                id,
+                owner,
                 kind,
-                facts: *facts,
+                facts,
                 columns,
             });
         };
-        if let Carrier::Pulse(pulse) = voice.carrier {
-            lane(ModelKind::PulseTrain, &|s, e| pulse.extent(s, e));
-        }
-        let modulation = if id.lane == crate::Lane::Primary {
-            mix.components()
-                .find(|component| component.id == id.component)
-                .and_then(|component| component.modulation)
-        } else {
-            None
-        };
-        match modulation {
-            Some(Modulator::Pulsed(pulse)) => lane(ModelKind::Pulsed, &|s, e| pulse.extent(s, e)),
-            Some(Modulator::Sinusoidal { step, depth }) if depth > 0.0 => {
-                lane(ModelKind::Envelope, &|s, e| envelope(step, depth, s, e));
+        let modulation = component.modulation.filter(|gain| match gain {
+            Modulator::Pulsed(_) => true,
+            Modulator::Sinusoidal { depth, .. } => *depth > 0.0,
+        });
+        for entry in component.lanes.iter().flatten() {
+            match entry.voice.carrier {
+                Carrier::Pulse(pulse) => lane(
+                    ModelOwner::Voice(entry.id),
+                    ModelKind::PulseTrain,
+                    entry.facts,
+                    &|s, e| pulse.extent(s, e),
+                ),
+                Carrier::Tone { .. } if modulation.is_none() => lane(
+                    ModelOwner::Voice(entry.id),
+                    ModelKind::Steady,
+                    entry.facts,
+                    &|_, _| Extent { min: 1.0, max: 1.0 },
+                ),
+                Carrier::Tone { .. } => {}
             }
-            _ if matches!(voice.carrier, Carrier::Tone { .. }) => {
-                lane(ModelKind::Steady, &|_, _| Extent { min: 1.0, max: 1.0 });
+        }
+        let reference = component
+            .lanes
+            .iter()
+            .flatten()
+            .next()
+            .unwrap_or_else(|| unreachable!("audible compiled component has a source"));
+        let owner = ModelOwner::Component(component.id);
+        match modulation {
+            Some(Modulator::Pulsed(pulse)) => {
+                lane(owner, ModelKind::Pulsed, reference.facts, &|s, e| {
+                    pulse.extent(s, e)
+                });
+            }
+            Some(Modulator::Sinusoidal { step, depth }) => {
+                lane(owner, ModelKind::Envelope, reference.facts, &|s, e| {
+                    envelope(step, depth, s, e)
+                });
             }
             _ => {}
         }

@@ -112,10 +112,22 @@ pub fn model_view_lane_label(lane: &auditorylab_core::timing::ModelLane) -> Stri
             _ => unreachable!("envelope lane modulation"),
         },
     };
-    format!(
-        "{} · {quantity}",
-        crate::errors::acoustic::voice_reference(lane.id)
-    )
+    let owner = match lane.owner {
+        auditorylab_core::timing::ModelOwner::Voice(id) => {
+            crate::errors::acoustic::voice_reference(id)
+        }
+        auditorylab_core::timing::ModelOwner::Component(id) => format!("Component {id}"),
+    };
+    let scope = if matches!(
+        lane.owner,
+        auditorylab_core::timing::ModelOwner::Component(_)
+    ) && lane.facts.pair.is_some()
+    {
+        " · applies to both tones"
+    } else {
+        ""
+    };
+    format!("{owner} · {quantity}{scope}")
 }
 /// Relate a model's accepted revision to actual generation without replaying live phases.
 pub fn model_view_generation_note(

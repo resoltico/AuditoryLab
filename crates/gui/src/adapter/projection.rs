@@ -516,7 +516,7 @@ impl SlintAdapter {
                             let stereo: Vec<_> = lane.columns.iter().map(|e| [*e; 2]).collect();
                             let [trace, _] = scope::paths(&stereo, 1.0);
                             ModelLane {
-                                component: lane.id.get().to_string().into(),
+                                component: lane.owner.component().get().to_string().into(),
                                 label:
 
                                 auditorylab_presentation::workspace::monitor::model_view_lane_label(
@@ -989,7 +989,7 @@ impl SlintAdapter {
                 .collect();
             let [trace, _] = scope::paths(&columns, 1.0);
             envelopes.push(crate::generated::LearningTrace {
-                label: text::timing_caption(visual, lane.kind).into(),
+                label: text::timing_caption(visual, lane).into(),
                 trace: trace.into(),
                 unipolar: true,
                 overlay: "".into(),

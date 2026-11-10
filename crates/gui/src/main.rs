@@ -159,6 +159,9 @@ mod labels;
 mod adapter_tests;
 
 #[cfg(test)]
+mod timing_projection_tests;
+
+#[cfg(test)]
 mod focus_reflow_tests;
 
 #[cfg(test)]
