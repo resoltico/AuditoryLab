@@ -80,7 +80,7 @@ Saved duration and endpoint fades govern finite playback and WAV export. Live Wo
 
 ## Save or export
 
-**Save sound** captures the current complete draft. New drafts go to User Library, managed edits use their captured key/token, and external edits use the observed file. Later edits remain dirty after an earlier captured save completes.
+**Save sound** captures the current complete draft. The File menu's Save shortcut is Command-S on macOS and Control-S on Windows/Linux; it uses the same availability and captured-save path, including while a text field has focus. New drafts go to User Library, managed edits use their captured key/token, and external edits use the observed file. Later edits remain dirty after an earlier captured save completes.
 
 **Save independent copy** creates a separate User identity. Portable recipe export preserves identity/history and does not mark a draft saved. In Library, the **Export** section holds the WAV, portable recipe and export-rate controls. **Export WAV…** validates at the export rate and opens the native Save dialog; stop audio first. Native Save dialogs confirm replacement.
 

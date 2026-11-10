@@ -6547,3 +6547,5 @@ fn undefined_and_zero_recording_energy_reach_production_projection_and_drawing()
         "only defined energy draws the four full-width tracks; a true zero has an empty fill"
     );
 }
+
+mod save_shortcut;
