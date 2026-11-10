@@ -35,7 +35,8 @@ class X11ParentTests(unittest.TestCase):
 
     def test_wrong_service_or_method_decoy_does_not_qualify(self):
         for decoy in [CALLS.replace("destination=org.freedesktop.portal.Desktop", "destination=com.example.Decoy"),
-                      CALLS.replace("member=OpenFile", "member=SaveFile")]:
+                      CALLS.replace("member=OpenFile", "member=SaveFile"),
+                      CALLS.replace("destination=org.freedesktop.portal.Desktop", "destination=org.freedesktop.portal.Desktop.Decoy")]:
             with self.assertRaises(RuntimeError):
                 verified_portal_parents(decoy, [0x420101] * 3)
 

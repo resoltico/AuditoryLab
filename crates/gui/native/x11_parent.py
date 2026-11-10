@@ -3,7 +3,7 @@ import json
 import re
 
 
-_CALL = re.compile(r'^method call\b[^\n]*-> destination=org\.freedesktop\.portal\.Desktop\b[^\n]*interface=org\.freedesktop\.portal\.FileChooser;\s*member=OpenFile\s*$', re.MULTILINE)
+_CALL = re.compile(r'^method call\b[^\n]*-> destination=org\.freedesktop\.portal\.Desktop\s[^\n]*interface=org\.freedesktop\.portal\.FileChooser;\s*member=OpenFile\s*$', re.MULTILINE)
 _ARGUMENT = re.compile(r'^[ \t]+string ("(?:[^"\\]|\\.)*")[ \t]*$', re.MULTILINE)
 _XID = re.compile(r'x11:(?:0x)?([0-9a-fA-F]+)')
 _TRANSIENT = re.compile(r'WM_TRANSIENT_FOR\(WINDOW\): window id # (0x[0-9a-fA-F]+)\s*')
