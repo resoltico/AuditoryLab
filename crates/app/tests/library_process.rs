@@ -31,7 +31,12 @@ fn fixture() -> (
     draft.set_title("Initial".into());
     let record = store
         .apply(
-            Mutation::Create(Arc::new(draft.recipe().unwrap())),
+            Mutation::Create(
+                auditorylab_app::services::library::Creation::prepare(Arc::new(
+                    draft.recipe().unwrap(),
+                ))
+                .unwrap(),
+            ),
             &Cancel::default(),
         )
         .unwrap()

@@ -259,7 +259,10 @@ fn process_child() {
         recipe.document.id = id;
         let _published = store
             .apply(
-                Mutation::Create(Arc::new(recipe.build().unwrap())),
+                Mutation::Create(
+                    crate::services::library::Creation::prepare(Arc::new(recipe.build().unwrap()))
+                        .unwrap(),
+                ),
                 &Cancel::default(),
             )
             .unwrap();
@@ -347,12 +350,15 @@ fn store_fixture() -> (
     assert_eq!(store.root().initialize().unwrap().warnings, []);
     let record = store
         .apply(
-            crate::storage::library::Mutation::Create(Arc::new(
-                crate::document::editing::Draft::new()
-                    .unwrap()
-                    .recipe()
-                    .unwrap(),
-            )),
+            crate::storage::library::Mutation::Create(
+                crate::services::library::Creation::prepare(Arc::new(
+                    crate::document::editing::Draft::new()
+                        .unwrap()
+                        .recipe()
+                        .unwrap(),
+                ))
+                .unwrap(),
+            ),
             &Cancel::default(),
         )
         .unwrap()
@@ -582,12 +588,15 @@ fn failed_membership_write_is_saved_with_unknown_new_dates() {
     AFTER_PUBLISH.with(|slot| *slot.borrow_mut() = Some(Box::new(|| inject(&[FaultPoint::Write]))));
     let result = store
         .apply(
-            Mutation::Create(Arc::new(
-                crate::document::editing::Draft::new()
-                    .unwrap()
-                    .recipe()
-                    .unwrap(),
-            )),
+            Mutation::Create(
+                crate::services::library::Creation::prepare(Arc::new(
+                    crate::document::editing::Draft::new()
+                        .unwrap()
+                        .recipe()
+                        .unwrap(),
+                ))
+                .unwrap(),
+            ),
             &Cancel::default(),
         )
         .unwrap();

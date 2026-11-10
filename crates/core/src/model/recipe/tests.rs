@@ -693,7 +693,53 @@ fn copy_capacity_checks_final_title_note_escaping_and_supplied_dates() {
     assert!(short.to_toml().unwrap().len() < base_size);
     assert!(
         original
-            .copy_preview(None, "x".repeat(65_536), "title".into())
+            .copy_preview(None, None, None, "x".repeat(65_536), "title".into())
             .is_err()
     );
+}
+
+#[test]
+fn timestamp_profile_has_independently_pinned_fixed_canonical_copy_fields() {
+    for (input, canonical) in [
+        ("0001-01-01T00:00:00Z", "0001-01-01T00:00:00.000000000Z"),
+        (
+            "9999-12-31T23:59:59.999999999Z",
+            "9999-12-31T23:59:59.999999999Z",
+        ),
+        (
+            "1970-01-01T01:00:00.1+01:00",
+            "1970-01-01T00:00:00.100000000Z",
+        ),
+    ] {
+        let stamp: crate::Timestamp = input.parse().unwrap();
+        assert_eq!(stamp.to_string(), canonical);
+        assert_eq!(canonical.len(), 30);
+        let source = Recipe::parse(PAIR).unwrap();
+        let mut identity = source.document().clone();
+        identity.id = crate::DocumentUuid::from_random_bytes([42; 16]);
+        identity.created_at = Some(stamp);
+        identity.modified_at = Some(stamp);
+        let copy = source
+            .prepare_copy(
+                identity,
+                None,
+                "Independent note".into(),
+                "Final title".into(),
+            )
+            .unwrap();
+        let text = copy.to_toml().unwrap();
+        assert!(text.contains(&format!("created_at = \"{canonical}\"")));
+        assert!(text.contains(&format!("modified_at = \"{canonical}\"")));
+        assert!(
+            source
+                .copy_preview(
+                    Some(stamp),
+                    Some(stamp),
+                    None,
+                    "Independent note".into(),
+                    "Final title".into()
+                )
+                .is_ok()
+        );
+    }
 }

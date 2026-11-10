@@ -222,7 +222,12 @@ fn library_context_keeps_its_captured_root_and_revalidates_action_state() {
         draft.set_title(title.into());
         let _published = library
             .apply(
-                library::Mutation::Create(std::sync::Arc::new(draft.recipe().unwrap())),
+                library::Mutation::Create(
+                    crate::services::library::Creation::prepare(std::sync::Arc::new(
+                        draft.recipe().unwrap(),
+                    ))
+                    .unwrap(),
+                ),
                 &Cancel::default(),
             )
             .unwrap();
@@ -586,5 +591,60 @@ mod root_io {
         write_failure(&error, IoOperation::Remove);
         assert_eq!(fs::read_to_string(active).unwrap(), bytes);
         assert_eq!(fs::read_to_string(trash).unwrap(), bytes);
+    }
+}
+
+use crate::copy_boundary;
+
+#[test]
+fn managed_copy_capacity_includes_final_creation_dates_and_all_ancestry() {
+    for bytes in [65_536, 65_537] {
+        let directory = directory();
+        let library = Library::at_path(directory.path().join("library")).unwrap();
+        assert_eq!(library.initialize().unwrap().warnings, []);
+        let source = copy_boundary::source_for_final_size(copy_boundary::SOURCE_TITLE, bytes);
+        let snapshot = crate::document::recipe::RecipeSnapshot::new(
+            crate::document::recipe::Origin::Stream("exact boundary".into()),
+            source.clone(),
+        );
+        let result = library.add_snapshot(&snapshot, true, &Cancel::default());
+        if bytes == 65_536 {
+            let outcome = result.unwrap();
+            let record = outcome.record.unwrap();
+            copy_boundary::assert_final_copy(
+                &source,
+                record.snapshot.recipe(),
+                copy_boundary::SOURCE_TITLE,
+            );
+            assert_eq!(
+                record.added_at,
+                record.snapshot.recipe().document().created_at
+            );
+            assert_eq!(
+                std::fs::metadata(
+                    library
+                        .path()
+                        .join("recipes")
+                        .join(format!("{}.toml", record.snapshot.recipe().document().id))
+                )
+                .unwrap()
+                .len(),
+                65_536
+            );
+        } else {
+            assert!(matches!(
+                result,
+                Err(OperationError::Library(LibraryError::Recipe {
+                    error: crate::core::RecipeError::TooLarge
+                }))
+            ));
+            assert_eq!(library.scan(&Cancel::default()).entries.len(), 0);
+            assert_eq!(
+                std::fs::read_dir(library.path().join("recipes"))
+                    .unwrap()
+                    .count(),
+                0
+            );
+        }
     }
 }

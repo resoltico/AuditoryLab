@@ -2,6 +2,8 @@
 //!
 //! Portable recipe ownership, declared history and nominal classification remain
 //! separate from local membership. No library operation belongs on an audio callback.
+mod creation;
+pub use creation::Creation;
 mod error;
 pub use self::error::LibraryError;
 pub(crate) use error::CODES as ERROR_CODES;

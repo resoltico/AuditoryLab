@@ -1884,10 +1884,23 @@ impl Workspace {
         let draft =
             Draft::from_snapshot(&snapshot).map_err(|e| Refusal::Document(Box::new(e.into())))?;
 
+        let creation = crate::services::library::Creation::prepare(Arc::new(
+            draft
+                .recipe()
+                .map_err(|error| Refusal::Document(Box::new(error.into())))?,
+        ))
+        .map_err(|error| Refusal::Document(Box::new(error.into())))?;
         let editor =
             EditorSession::new(draft).map_err(|error| Refusal::Document(Box::new(error.into())))?;
+        self.library_job_admission()?;
+        let job = self.library.job(LibraryRequest::Write {
+            document: Some(editor.document()),
+            mutation: Mutation::Create(creation),
+        })?;
         self.install_document(editor);
-        self.save()
+        self.start_file(FileKind::Managed(job));
+        self.changed();
+        Ok(())
     }
     /// Add only the temporary snapshot named by the activated control.
     ///
@@ -2116,14 +2129,18 @@ impl Workspace {
         {
             return Err(Refusal::ExistingSavedIdentity(recipe.document().id));
         }
-        let mutation = self.editor.location().managed().map_or_else(
-            || Mutation::Create(recipe.clone()),
-            |(key, expect)| Mutation::Update {
+        let mutation = if let Some((key, expect)) = self.editor.location().managed() {
+            Mutation::Update {
                 key: key.clone(),
                 expect: Some(expect),
-                recipe: recipe.clone(),
-            },
-        );
+                recipe,
+            }
+        } else {
+            Mutation::Create(
+                crate::services::library::Creation::prepare(recipe)
+                    .map_err(|error| Refusal::Document(Box::new(error.into())))?,
+            )
+        };
         self.managed_job(LibraryRequest::Write {
             document: Some(document),
             mutation,

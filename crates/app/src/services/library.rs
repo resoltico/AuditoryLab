@@ -4,8 +4,8 @@ use crate::document::origin::{LibraryKey, VersionToken};
 pub use crate::storage::library::BUSY_WAIT;
 pub use crate::storage::library::LibraryError;
 pub use crate::storage::library::{
-    DiagnosticDetail, Initialization, Inventory, LIBRARY_LAYOUT, LibraryDiagnostic, LoadedRecord,
-    Mutation, MutationKind, MutationStatus, RootInfo, RootSource, WriteOutcome,
+    Creation, DiagnosticDetail, Initialization, Inventory, LIBRARY_LAYOUT, LibraryDiagnostic,
+    LoadedRecord, Mutation, MutationKind, MutationStatus, RootInfo, RootSource, WriteOutcome,
 };
 use std::{
     path::{Path, PathBuf},
@@ -203,7 +203,7 @@ impl Library {
                 crate::core::vocabulary::copy_note(snapshot.recipe()),
                 snapshot.title(),
             )?;
-            Mutation::Create(Arc::new(copy))
+            Mutation::Create(Creation::prepare(Arc::new(copy))?)
         } else {
             Mutation::Add(Arc::new(snapshot.recipe().clone()))
         };

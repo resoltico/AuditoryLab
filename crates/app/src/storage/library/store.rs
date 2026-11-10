@@ -201,8 +201,8 @@ impl LoadedRecord {
 /// Captured mutation intent. Expected bytes are optional for CLI optimistic checks.
 #[derive(Debug, Clone)]
 pub enum Mutation {
-    /// Create a new authored identity and its initial dates.
-    Create(Arc<Recipe>),
+    /// Publish a prepared new authored identity with its captured initial dates.
+    Create(super::Creation),
     /// Add portable content without changing declared history.
     Add(Arc<Recipe>),
     /// Replace the editable content of an existing active entry.
@@ -505,7 +505,10 @@ impl LibraryStore {
             }
             return Err(Error::IdentityExists { id });
         }
-        let now = observed_now()?;
+        let now = match &mutation {
+            Mutation::Create(creation) => creation.observed(),
+            _ => observed_now()?,
+        };
         if matches!(kind, MutationKind::Purge) {
             return purge_record(&lease, id, old, &mut memberships, cancel, diagnostics);
         }
@@ -577,8 +580,8 @@ impl LibraryStore {
 
 fn mutation_address(mutation: &Mutation) -> (LibraryKey, MutationKind, Option<VersionToken>) {
     match mutation {
-        Mutation::Create(recipe) => (
-            LibraryKey::User(recipe.document().id),
+        Mutation::Create(creation) => (
+            LibraryKey::User(creation.recipe().document().id),
             MutationKind::Create,
             None,
         ),
@@ -673,9 +676,8 @@ fn requested_recipe(
     id: DocumentUuid,
 ) -> Result<Recipe, Error> {
     Ok(match mutation {
-        Mutation::Create(recipe) | Mutation::Add(recipe) | Mutation::Update { recipe, .. } => {
-            (*recipe).clone()
-        }
+        Mutation::Create(creation) => (**creation.recipe()).clone(),
+        Mutation::Add(recipe) | Mutation::Update { recipe, .. } => (*recipe).clone(),
         Mutation::Rename { title, .. } => {
             let recipe = old
                 .ok_or(Error::EntryDisappeared { id })?
@@ -708,10 +710,7 @@ fn prepare_proposal(
             evidence.scope = crate::core::provenance::EvidenceScope::Ancestor;
         }
     }
-    if kind == MutationKind::Create {
-        proposal.document.created_at = Some(now);
-        proposal.document.modified_at = Some(now);
-    } else if !creating {
+    if !creating {
         proposal.document.modified_at = Some(now);
     }
     let recipe = proposal.build().map_err(|e| Error::Recipe { error: e })?;
@@ -1285,8 +1284,12 @@ fn publish_record(
 }
 
 fn validate_mutation_intent(mutation: &Mutation, id: DocumentUuid) -> Result<(), Error> {
-    if let Mutation::Create(recipe) | Mutation::Add(recipe) | Mutation::Update { recipe, .. } =
-        mutation
+    let recipe = match mutation {
+        Mutation::Create(creation) => Some(creation.recipe()),
+        Mutation::Add(recipe) | Mutation::Update { recipe, .. } => Some(recipe),
+        _ => None,
+    };
+    if let Some(recipe) = recipe
         && recipe.document().id != id
     {
         return Err(Error::ProposedIdentity {

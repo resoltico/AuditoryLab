@@ -1903,3 +1903,111 @@ fn recording_input_failures_keep_their_context_through_worker_completion() {
         if error.outcome() == crate::outcome::Outcome::Unreadable)
     );
 }
+
+use crate::copy_boundary;
+
+#[test]
+fn managed_save_copy_checks_final_dates_before_replacing_editor_or_publishing() {
+    for bytes in [65_536, 65_537] {
+        let mut ws = workspace();
+        let source = copy_boundary::source_for_final_size(copy_boundary::EDITED_TITLE, bytes);
+        ws.install_document(EditorSession::new(Draft::from_recipe(source.clone())).unwrap());
+        ws.take_effects();
+        let document = ws.editor().document();
+        let snapshot = ws.editor().draft().recipe().unwrap();
+        let next = ws.next_id;
+        let allowed = ws.action_view().can_save_copy();
+        assert_eq!(allowed, bytes == 65_536);
+        for _ in 0..3 {
+            assert_eq!(ws.action_view().can_save_copy(), allowed);
+        }
+        assert_eq!(ws.next_id, next);
+        assert_eq!(ws.editor().document(), document);
+        let result = ws.apply(Command::File(FileCommand::SaveCopy));
+        if bytes == 65_536 {
+            result.unwrap();
+            assert_ne!(ws.editor().document(), document);
+            let provisional = ws.editor().draft().recipe().unwrap();
+            assert_eq!(provisional.document().created_at, None);
+            assert_eq!(provisional.document().modified_at, None);
+            drain_files(&mut ws);
+            let captured = ws.editor().draft().recipe().unwrap();
+            copy_boundary::assert_final_copy(&source, &captured, copy_boundary::EDITED_TITLE);
+            assert_eq!(captured.document().id, provisional.document().id);
+            assert_eq!(captured.content(), provisional.content());
+            let key = crate::document::origin::LibraryKey::User(captured.document().id);
+            let record = ws.store.load(&key).unwrap();
+            assert_eq!(record.snapshot.recipe(), &captured);
+            assert_eq!(record.added_at, captured.document().created_at);
+        } else {
+            assert!(result.is_err());
+            assert_eq!(ws.editor().document(), document);
+            assert_eq!(ws.editor().draft().recipe().unwrap(), snapshot);
+            assert!(!ws.file_busy());
+            assert!(
+                ws.take_effects()
+                    .iter()
+                    .all(|effect| !matches!(effect, Effect::Run(_)))
+            );
+            assert_eq!(ws.store.scan(&Cancel::default()).entries.len(), 0);
+            assert_eq!(
+                std::fs::read_dir(ws.store.path().join("recipes"))
+                    .unwrap()
+                    .count(),
+                0
+            );
+        }
+    }
+}
+
+#[test]
+fn first_managed_save_of_plain_copy_counts_final_creation_dates() {
+    let mut ws = workspace();
+    let source = copy_boundary::source_for_final_size(copy_boundary::EDITED_TITLE, 65_537);
+    let snapshot = RecipeSnapshot::new(
+        crate::document::recipe::Origin::Stream("plain copy".into()),
+        source,
+    );
+    let draft = Draft::from_snapshot(&snapshot).unwrap();
+    let original = draft.recipe().unwrap();
+    assert!(original.to_toml().unwrap().len() < 65_536);
+    ws.install_document(EditorSession::new(draft).unwrap());
+    ws.take_effects();
+    let document = ws.editor().document();
+    assert!(!ws.action_view().can_save());
+    assert!(ws.apply(Command::File(FileCommand::Save)).is_err());
+    assert_eq!(ws.editor().document(), document);
+    assert_eq!(ws.editor().draft().recipe().unwrap(), original);
+    assert_eq!(original.document().created_at, None);
+    assert!(!ws.file_busy());
+    assert_eq!(ws.store.scan(&Cancel::default()).entries.len(), 0);
+}
+
+#[test]
+fn failed_copy_publication_keeps_editor_dates_provisional() {
+    let mut ws = workspace();
+    let source = copy_boundary::source_for_final_size(copy_boundary::EDITED_TITLE, 65_536);
+    ws.install_document(EditorSession::new(Draft::from_recipe(source)).unwrap());
+    ws.take_effects();
+    ws.apply(Command::File(FileCommand::SaveCopy)).unwrap();
+    let provisional = ws.editor().draft().recipe().unwrap();
+    assert_eq!(provisional.document().created_at, None);
+    let job = take_file_job(&mut ws);
+    let mut foreign = provisional.clone().into_builder();
+    foreign.content.description.as_mut().unwrap().title = "Concurrent destination".into();
+    let bytes = foreign.build().unwrap().to_toml().unwrap();
+    let path = ws
+        .store
+        .path()
+        .join("recipes")
+        .join(format!("{}.toml", provisional.document().id));
+    std::fs::write(&path, &bytes).unwrap();
+    ws.respond(execute_file(job));
+    assert_eq!(std::fs::read_to_string(path).unwrap(), bytes);
+    assert_eq!(ws.editor().draft().recipe().unwrap(), provisional);
+    assert_eq!(
+        ws.editor().draft().recipe().unwrap().document().created_at,
+        None
+    );
+    assert!(ws.editor().dirty());
+}
