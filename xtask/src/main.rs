@@ -169,11 +169,11 @@ fn readme(version: &str, gui: bool, target: &str) -> String {
     };
     let notes = match (gui, os) {
         (false, _) => {
-            "\nFor an installer-managed copy, run the full executable path printed by \
-            the installer. Documentation and legal material are kept separately in \
-            .auditorylab-install/legal; archive layout instructions apply to manual \
-            extraction. Install/update/uninstall guide: \
-            https://github.com/resoltico/AuditoryLab/blob/main/docs/INSTALL.md\n"
+            "\nInstaller-managed documentation and legal material are kept in \
+            .auditorylab-install/legal. Install/update/uninstall guide:\n\
+            https://github.com/resoltico/AuditoryLab/blob/main/docs/INSTALL.md\n\
+            Use the executable path printed by the installer; archive layout \
+            instructions apply to manual extraction.\n"
         }
         (true, "macos") => {
             "\nAll legal materials are also inside the app at Contents/Resources.\n\
