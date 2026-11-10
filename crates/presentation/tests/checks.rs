@@ -57,7 +57,7 @@ fn recordings_render_identity_and_json_without_claiming_measurements() {
     assert_eq!(
         recording::recording_description(&file),
         "Recording: take.flac\nFile: /music/take.flac\nSize: 999 bytes\nFormat: FLAC\n\
-        Measurements: Choose Analyze to measure this recording. No samples have been measured yet."
+        Measurements: Choose Analyze recording to measure this file. No samples have been measured yet."
     );
     let json = serde_json::to_value(Report::recording(&file)).unwrap();
     assert_eq!(json["operation"], "analyze_recording");
