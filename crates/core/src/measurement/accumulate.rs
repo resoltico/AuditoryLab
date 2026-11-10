@@ -29,6 +29,14 @@ pub struct Measurement {
     side: f64,
 }
 impl Measurement {
+    /// Number of source frames needed to initialize the bounded FFT plan.
+    /// Returns the largest fitting power of two, capped at 2^20, or `None`
+    /// for an empty extent. This sizing query does not admit a rate, layout
+    /// or total work budget; construction checks those independently.
+    pub fn prefix_frames(frames: u64) -> Option<usize> {
+        (frames > 0).then(|| window_size(frames, 1 << 20))
+    }
+
     /// Prepare bounded overlapping windows. At least two seconds are required.
     pub fn new(rate: u32, channels: usize, frames: u64) -> Result<Self, MeasurementError> {
         if !(1..=2).contains(&channels) {
@@ -40,7 +48,7 @@ impl Measurement {
         if frames > (1_u64 << 32) {
             return Err(MeasurementError::BudgetExceeded);
         }
-        let n = window_size(frames, 1 << 20);
+        let n = Self::prefix_frames(frames).ok_or(MeasurementError::TooShort)?;
         let envelope_frames = (n * 3 / 4) as u64 * 1000 / u64::from(rate);
         let envelope_n = window_size(envelope_frames.max(2), 1 << 18);
         Ok(Self {

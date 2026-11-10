@@ -1,4 +1,31 @@
 use super::*;
+
+#[test]
+fn fft_prefix_query_has_literal_power_edges_and_cap() {
+    assert_eq!(Measurement::prefix_frames(0), None);
+    for (frames, expected) in [
+        (1, 1),
+        (1023, 512),
+        (1024, 1024),
+        (1999, 1024),
+        (2000, 1024),
+        (2047, 1024),
+        (2048, 2048),
+        (2049, 2048),
+        (96_000, 65_536),
+        (1_048_575, 524_288),
+        (1_048_576, 1_048_576),
+        (1_048_577, 1_048_576),
+        (1_536_000, 1_048_576),
+        (u64::MAX, 1_048_576),
+    ] {
+        assert_eq!(
+            Measurement::prefix_frames(frames),
+            Some(expected),
+            "{frames}"
+        );
+    }
+}
 #[expect(
     clippy::cast_possible_truncation,
     reason = "test signals intentionally quantized to decoder f32 samples"

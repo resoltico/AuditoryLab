@@ -11,7 +11,8 @@
 - Copies retain full ancestry up to the existing 65,536-byte portable limit, including the final title, identity and attribution; the 16-generation ceiling is removed.
 - Source HTTP(S) URLs require a valid authority and reject whitespace or controls while preserving valid authored text.
 - Workspace action availability follows current admission policy; poisoned audio preparation retains its task slot until the worker joins.
-- Input failures retain read context. Confirmed publications survive terminal reporting failures; library initialization reports recovery and durability notices.
+- Input failures retain read context; library root creation, staging and cleanup I/O failures retain write context and their actual operation details.
+- Confirmed publications survive terminal reporting failures; library initialization reports recovery and durability notices.
 - Recording energy bars distinguish undefined silence from zero energy; changing Device check answers reinterprets retained findings without re-analysis.
 - Catalog construction and captured WAV export preserve typed content through internal processing, with destination and publication safeguards retained.
 - Contributor checks use formatters without a physical line-width gate; CI separates state checks, native tests, mutations and source-bound packaging.

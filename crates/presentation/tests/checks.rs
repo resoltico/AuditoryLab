@@ -254,6 +254,58 @@ fn undefined_energy_and_zero_have_distinct_shared_text() {
     assert_eq!(recording::energy_row(&share, 2), "Left · below 50 Hz: 0.0%");
 }
 #[test]
+fn common_energy_rows_own_selection_and_channel_threshold_order() {
+    use auditorylab_core::measurement::{EnergyShare, Measurement, test_support};
+    let mut measurement = Measurement::new(1000, 2, 2000).unwrap();
+    for _ in 0..2000 {
+        measurement.push(&[0.0, 0.0]).unwrap();
+    }
+    let samples = test_support::with_energy_shares(
+        measurement.finish(&|| false).unwrap(),
+        [
+            (1, 300.0, Some(0.5)),
+            (0, 40.0, Some(0.9)),
+            (0, 100.0, Some(0.25)),
+            (1, 50.0, Some(0.0)),
+            (0, 300.0, Some(1.0)),
+            (1, 100.0, None),
+            (0, 60.0, Some(0.0)),
+            (1, 40.0, Some(0.8)),
+            (1, 60.0, Some(0.125)),
+            (0, 50.0, None),
+        ]
+        .into_iter()
+        .map(|(channel, below_hz, fraction)| EnergyShare {
+            channel,
+            below_hz,
+            fraction,
+        })
+        .collect(),
+    );
+    let expected = [
+        "Left · below 50 Hz: undefined (digital silence)",
+        "Left · below 60 Hz: 0.0%",
+        "Left · below 100 Hz: 25.0%",
+        "Left · below 300 Hz: 100.0%",
+        "Right · below 50 Hz: 0.0%",
+        "Right · below 60 Hz: 12.5%",
+        "Right · below 100 Hz: undefined (digital silence)",
+        "Right · below 300 Hz: 50.0%",
+    ];
+    let rows = recording::energy_rows(&samples)
+        .map(|share| recording::energy_row(share, 2))
+        .collect::<Vec<_>>();
+    assert_eq!(rows, expected);
+    assert_eq!(
+        recording::findings(&samples, None)
+            .low_tones
+            .lines()
+            .collect::<Vec<_>>(),
+        expected
+    );
+}
+
+#[test]
 fn current_device_context_reinterprets_retained_samples_without_mutation() {
     use auditorylab_app::device_check::{Assessment, LowToneResult};
     use auditorylab_app::recording::{Analysis, InterpretationContext};

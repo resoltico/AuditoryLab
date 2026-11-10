@@ -64,31 +64,7 @@ impl SlintAdapter {
         ui.set_has_recording_analysis(workspace.recording_analysis().is_some());
         if let Some(recording) = workspace.recording_analysis() {
             let context = auditorylab_app::recording::InterpretationContext::from(view.assessment);
-            let f = recording_text::contextual_findings(&recording.analysis, context);
-            ui.set_recording_findings(crate::generated::RecordingFindings {
-                facts: read_only(&f.facts),
-                summary: read_only(&f.summary),
-                tones: read_only(&f.tones),
-                ears: read_only(&f.ears),
-                pulsing: read_only(&f.pulsing),
-                low_tones: read_only(&f.low_tones),
-                stereo: read_only(&f.stereo),
-                limits: read_only(&f.limits),
-                left_trace: spectrum_path(recording.analysis.spectrum.first()).into(),
-                right_trace: spectrum_path(recording.analysis.spectrum.get(1)).into(),
-            });
-            let bars = recording
-                .analysis
-                .low_energy
-                .iter()
-                .filter(|share| [50.0, 60.0, 100.0, 300.0].contains(&share.below_hz))
-                .map(|share| crate::generated::RecordingEnergy {
-                    label: recording_text::energy_row(share, recording.analysis.channels).into(),
-                    defined: share.fraction.is_some(),
-                    fraction: f32_value(share.fraction.unwrap_or(0.0)),
-                })
-                .collect::<Vec<_>>();
-            ui.set_recording_energy(ModelRc::new(VecModel::from(bars)));
+            Self::project_recording_analysis(ui, &recording.analysis, context);
         }
         let recording = workspace.recording();
         ui.set_has_recording(recording.is_some());
@@ -100,6 +76,34 @@ impl SlintAdapter {
                 format: recording.format.label().into(),
             });
         }
+    }
+
+    pub(super) fn project_recording_analysis(
+        ui: &MainWindow,
+        analysis: &auditorylab_app::recording::Analysis,
+        context: auditorylab_app::recording::InterpretationContext,
+    ) {
+        let f = recording_text::contextual_findings(analysis, context);
+        ui.set_recording_findings(crate::generated::RecordingFindings {
+            facts: read_only(&f.facts),
+            summary: read_only(&f.summary),
+            tones: read_only(&f.tones),
+            ears: read_only(&f.ears),
+            pulsing: read_only(&f.pulsing),
+            low_tones: read_only(&f.low_tones),
+            stereo: read_only(&f.stereo),
+            limits: read_only(&f.limits),
+            left_trace: spectrum_path(analysis.spectrum.first()).into(),
+            right_trace: spectrum_path(analysis.spectrum.get(1)).into(),
+        });
+        let bars = recording_text::energy_rows(analysis.samples())
+            .map(|share| crate::generated::RecordingEnergy {
+                label: recording_text::energy_row(share, analysis.channels).into(),
+                defined: share.fraction.is_some(),
+                fraction: f32_value(share.fraction.unwrap_or(0.0)),
+            })
+            .collect::<Vec<_>>();
+        ui.set_recording_energy(ModelRc::new(VecModel::from(bars)));
     }
 }
 

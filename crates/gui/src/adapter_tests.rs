@@ -6419,8 +6419,29 @@ fn recording_analysis_review_screenshots() {
     }
 }
 
+// Identify the existing track rectangles, excluding other backgrounds that move
+// or resize as the findings and scroll position change. Zero-width fills do not count.
+fn energy_track_count(ui: &MainWindow) -> usize {
+    let mut count = 0;
+    let window = WindowInner::from_pub(ui.window());
+    let _ = window.window_item_rc().unwrap().visit_descendants(|item| {
+        let geometry = item.geometry();
+        if item.is_visible()
+            && item
+                .downcast::<slint::private_unstable_api::re_exports::Rectangle>()
+                .is_some()
+            && (geometry.size.height - 8.0).abs() < 0.01
+            && geometry.size.width > 100.0
+        {
+            count += 1;
+        }
+        ControlFlow::<()>::Continue(())
+    });
+    count
+}
+
 #[test]
-fn silent_recording_energy_is_undefined_in_native_models_and_accessible_text() {
+fn undefined_and_zero_recording_energy_reach_production_projection_and_drawing() {
     use std::io::Write;
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("silence.wav");
@@ -6457,4 +6478,67 @@ fn silent_recording_energy_is_undefined_in_native_models_and_accessible_text() {
         let item = reveal_scrolled_control(&h, share.label.as_str(), "Recording content");
         assert!(item.geometry().size.height > 0.0);
     }
+
+    let undefined_tracks = energy_track_count(ui);
+    let samples = h.adapter.inspect(|workspace| {
+        workspace
+            .recording_analysis()
+            .unwrap()
+            .analysis
+            .samples()
+            .clone()
+    });
+    // Exact Some(0.0), not a tiny FFT leakage value that merely formats as zero.
+    // Deliberately unordered shares also control the common selection/order owner.
+    let samples = auditorylab_app::core::measurement::test_support::with_energy_shares(
+        samples,
+        [300.0, 40.0, 100.0, 50.0, 60.0]
+            .into_iter()
+            .map(|below_hz| auditorylab_app::core::measurement::EnergyShare {
+                channel: 0,
+                below_hz,
+                fraction: Some(if below_hz == 40.0 { 0.75 } else { 0.0 }),
+            })
+            .collect(),
+    );
+    let analysis =
+        auditorylab_app::recording::Analysis::complete("PCM".into(), false, None, 0, samples)
+            .unwrap();
+    // The same production projector used after workspace completion; no hand-built
+    // Slint rows or direct manipulation of the defined/fraction bridge properties.
+    h.adapter.project_analysis_findings(&analysis);
+    h.settle();
+    let expected = [
+        "Mono · below 50 Hz: 0.0%",
+        "Mono · below 60 Hz: 0.0%",
+        "Mono · below 100 Hz: 0.0%",
+        "Mono · below 300 Hz: 0.0%",
+    ];
+    let shares = ui.get_recording_energy();
+    assert_eq!(shares.row_count(), 4);
+    for (share, expected) in shares.iter().zip(expected) {
+        assert!(share.defined, "literal zero must remain defined");
+        assert_eq!(share.fraction, 0.0);
+        assert_eq!(share.label, expected);
+        let item = reveal_scrolled_control(&h, expected, "Recording content");
+        assert_eq!(
+            item.accessible_string_property(AccessibleStringProperty::Label)
+                .as_deref(),
+            Some(expected)
+        );
+        assert!(item.geometry().size.height > 0.0);
+    }
+    assert_eq!(
+        ui.get_recording_findings()
+            .low_tones
+            .lines()
+            .take(4)
+            .collect::<Vec<_>>(),
+        expected
+    );
+    assert_eq!(
+        energy_track_count(ui),
+        undefined_tracks + 4,
+        "only defined energy draws the four full-width tracks; a true zero has an empty fill"
+    );
 }

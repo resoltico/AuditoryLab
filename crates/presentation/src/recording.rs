@@ -332,18 +332,8 @@ fn low_tone_findings(
     a: &auditorylab_core::measurement::SampleAnalysis,
     lowest: Option<f64>,
 ) -> String {
-    let mut lines = a
-        .low_energy
-        .iter()
-        .filter(|share| [50.0, 60.0, 100.0, 300.0].contains(&share.below_hz))
-        .map(|e| {
-            format!(
-                "{} · below {:.0} Hz: {}",
-                channel_label(e.channel, a.channels),
-                e.below_hz,
-                percentage(e.fraction)
-            )
-        })
+    let mut lines = energy_rows(a)
+        .map(|share| energy_row(share, a.channels))
         .collect::<Vec<_>>();
     if let Some(hz) = lowest {
         for share in a.low_energy.iter().filter(|share| share.below_hz == hz) {
@@ -420,7 +410,24 @@ pub fn analysis_description(recording: &auditorylab_app::recording::AnalyzedReco
     )
 }
 
-/// Shared channel/threshold label and truthful energy state for native rows.
+/// Common energy rows, in channel order and then ascending display threshold.
+/// Device-specific hearing thresholds remain contextual findings, not extra bars.
+pub fn energy_rows(
+    samples: &auditorylab_core::measurement::SampleAnalysis,
+) -> impl Iterator<Item = &auditorylab_core::measurement::EnergyShare> {
+    (0..samples.channels).flat_map(move |channel| {
+        [50.0, 60.0, 100.0, 300.0]
+            .into_iter()
+            .filter_map(move |below_hz| {
+                samples
+                    .low_energy
+                    .iter()
+                    .find(|share| share.channel == channel && share.below_hz == below_hz)
+            })
+    })
+}
+
+/// Shared channel/threshold label and truthful energy state for prose and native rows.
 pub fn energy_row(share: &auditorylab_core::measurement::EnergyShare, channels: usize) -> String {
     let label = format!(
         "{} · below {:.0} Hz",

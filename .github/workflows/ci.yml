@@ -516,7 +516,8 @@ jobs:
           if [[ "$MUTATION_SOURCE" == measurement/accumulate ]]; then
             # Locally qualified push/finish guards cover malformed frames and extent;
             # pair/silence controls also protect channel-coincidence predicates.
-            args+=(--re '(replace (\|\||!=|>=|<)|delete !) .*Measurement::(push|finish)$')
+            # Literal prefix/cap controls cover the shared FFT sizing owner.
+            args+=(--re '(replace (\|\||!=|>=|<)|delete !) .*Measurement::(push|finish)$| in (Measurement::prefix_frames|window_size)$')
           fi
           cargo mutants "${args[@]}"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

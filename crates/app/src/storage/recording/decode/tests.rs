@@ -578,7 +578,7 @@ fn silent_decoder(rate: u32, frames: u32) -> Decoder {
 }
 #[test]
 fn actual_two_second_minimum_applies_after_prefix_at_all_rates() {
-    for rate in [1000, 48_000, 768_000] {
+    for (rate, fft_frames) in [(1000, 1024), (48_000, 65_536), (768_000, 1_048_576)] {
         for delta in [-1_i64, 0, 1] {
             let frames = u32::try_from(i64::from(rate) * 2 + delta).unwrap();
             let mut decoder = silent_decoder(rate, frames);
@@ -599,8 +599,7 @@ fn actual_two_second_minimum_applies_after_prefix_at_all_rates() {
                 assert_eq!(a.duration_seconds, None);
                 assert_eq!(a.window.end_seconds, f64::from(frames) / f64::from(rate));
                 assert_eq!(a.stereo.rms_dbfs, vec![None]);
-                let n = 1_u32 << frames.min(1 << 20).ilog2();
-                assert_eq!(a.resolution_hz, f64::from(rate) / f64::from(n));
+                assert_eq!(a.resolution_hz, f64::from(rate) / f64::from(fft_frames));
             }
         }
     }
@@ -632,7 +631,14 @@ fn trustworthy_selected_endpoint_clips_normally_and_truncation_fails() {
 }
 #[test]
 fn unknown_clean_eof_selects_fitting_fft_and_exact_limit_ignores_later_packets() {
-    for frames in [2047_u32, 2048, 2049, 4095, 4096, 4097] {
+    for (frames, fft_frames) in [
+        (2047_u32, 1024),
+        (2048, 2048),
+        (2049, 2048),
+        (4095, 2048),
+        (4096, 4096),
+        (4097, 4096),
+    ] {
         let mut decoder = silent_decoder(1000, frames);
         decoder.frames = None;
         let a = measure_decoder(
@@ -642,7 +648,7 @@ fn unknown_clean_eof_selects_fitting_fft_and_exact_limit_ignores_later_packets()
             &Progress::default(),
         )
         .unwrap();
-        assert_eq!(a.resolution_hz, 1000.0 / f64::from(1_u32 << frames.ilog2()));
+        assert_eq!(a.resolution_hz, 1000.0 / f64::from(fft_frames));
         assert_eq!(a.window.end_seconds, f64::from(frames) / 1000.0);
     }
     let mut decoder = silent_decoder(1000, 6000);
