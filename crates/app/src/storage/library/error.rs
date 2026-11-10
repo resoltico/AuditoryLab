@@ -127,6 +127,15 @@ pub enum LibraryError {
     StalePlayback,
 }
 impl LibraryError {
+    /// The managed destination needs explicit initialization before records can be written.
+    /// Corrupt markers, permissions, busy locks and existing-record conflicts are distinct.
+    #[must_use]
+    pub const fn requires_initialization(&self) -> bool {
+        matches!(
+            self,
+            Self::RootMissing | Self::NotInitialized | Self::MissingMarkerOnCreate
+        )
+    }
     /// Failure category.
     #[must_use]
     pub fn outcome(&self) -> Outcome {

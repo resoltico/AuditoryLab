@@ -81,7 +81,7 @@ impl FileActivity {
             },
             FileKind::Managed(job) => Self {
                 kind: FileAction::Library(job.operation_term()),
-                path: job.store.path().into(),
+                path: job.context().path,
                 title: None,
                 may_publish: job.may_publish(),
             },

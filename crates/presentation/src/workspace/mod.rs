@@ -16,6 +16,10 @@ pub(crate) fn refusal_text(refusal: &Refusal) -> String {
     match refusal {
         Refusal::LearningVisible => "Leave Start here before using this action.".into(),
         Refusal::LibraryUnavailable(problem) => {
+            if matches!(&problem.detail, auditorylab_app::services::library::DiagnosticDetail::Failure(error) if error.requires_initialization())
+            {
+                return crate::library::initialization_required(&problem.storage_id);
+            }
             format!(
                 "User Library unavailable: {}",
                 crate::errors::library_diagnostic_message(problem)

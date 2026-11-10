@@ -503,7 +503,8 @@ fn captured_error(
             cause: io_cause("read failed"),
         }
         .into(),
-        Outcome::IncompleteInventory => LibraryError::RootMissing.into(),
+        // A generic scan failure; initialization failures have distinct setup recovery.
+        Outcome::IncompleteInventory => LibraryError::ScanBudget.into(),
         Outcome::Busy => LibraryError::Busy.into(),
         Outcome::LockUnavailable => LibraryError::LockUnavailable {
             error: io_cause("locking unavailable"),

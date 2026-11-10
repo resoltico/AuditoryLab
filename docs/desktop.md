@@ -46,7 +46,7 @@ Filter resets have distinct scopes:
 
 Clearing rhythm filters is available with the compact/list filter controls. Other resets are available beside the results, in the storage section or in the filter popup. Unapplied advanced input survives unrelated selection and display updates; an explicit full reset or reveal discards it.
 
-The native per-user library can be overridden with an absolute `AUDITORYLAB_LIBRARY_DIR`. Initialize an override through Library storage controls or `auditorylab --library-dir PATH library init`. Until then Save names the missing setup instead of writing. Opening Library rescans the library, so changes made by the CLI appear without Refresh. Built-ins and independent external exports remain available when persistent storage is unavailable. See [library configuration](cli.md#root-and-lifecycle) and [unsupported-file recovery](formats.md#unsupported-and-unreadable-recipes).
+The native per-user library can be overridden with an absolute `AUDITORYLAB_LIBRARY_DIR`. Initialize an override through Library storage controls or `auditorylab --library-dir PATH library init`. Until then managed Save, Save independent copy and Add name the missing setup instead of writing; Initialize remains available. Saving an edited external file uses its captured destination and does not require an unrelated User Library to be initialized. Opening Library rescans the library, so changes made by the CLI appear without Refresh. Built-ins and independent external exports remain available when persistent storage is unavailable. See [library configuration](cli.md#root-and-lifecycle) and [unsupported-file recovery](formats.md#unsupported-and-unreadable-recipes).
 
 ## Open, copy and manage sounds
 
