@@ -222,7 +222,12 @@ fn library_context_keeps_its_captured_root_and_revalidates_action_state() {
         draft.set_title(title.into());
         let _published = library
             .apply(
-                library::Mutation::Create(std::sync::Arc::new(draft.recipe().unwrap())),
+                library::Mutation::Create(
+                    crate::services::library::Creation::prepare(std::sync::Arc::new(
+                        draft.recipe().unwrap(),
+                    ))
+                    .unwrap(),
+                ),
                 &Cancel::default(),
             )
             .unwrap();
@@ -417,4 +422,229 @@ fn root_inspection_keeps_readonly_failures_busy_and_publication_categories_disti
         id: "00000000-0000-4000-8000-000000000001".parse().unwrap(),
     };
     assert_eq!(conflict.outcome(), Outcome::Conflict);
+}
+
+#[test]
+fn builtin_source_is_a_fallible_portable_output_boundary() {
+    for entry in crate::core::catalog::ENTRIES {
+        let expected = entry.recipe().unwrap();
+        let text = builtin_source(entry.id).unwrap();
+        let reparsed = crate::core::Recipe::parse(&text).unwrap();
+        assert_eq!(reparsed.document().id, expected.document().id);
+        assert_eq!(reparsed.to_toml().unwrap(), expected.to_toml().unwrap());
+    }
+    assert!(matches!(
+        builtin_source("missing-catalog-entry"),
+        Err(LoadError::UnknownBuiltin { .. })
+    ));
+    let directory = directory();
+    let path = directory.path().join("export.toml");
+    let entry = &crate::core::catalog::ENTRIES[0];
+    let published = save_builtin(entry.id, &path, Replace::Never).unwrap();
+    assert_eq!(published.warnings, []);
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert_eq!(text, builtin_source(entry.id).unwrap());
+    assert!(save_builtin(entry.id, &path, Replace::Never).is_err());
+    assert_eq!(std::fs::read_to_string(path).unwrap(), text);
+    let refused = directory.path().join("invalid.toml");
+    let malformed = format!("unexpected_authoring_key = true\n{text}");
+    let error = save_recipe_text(&malformed, &refused, Replace::Never).unwrap_err();
+    assert!(matches!(error, SaveError::Recipe { .. }));
+    assert_eq!(error.outcome(), Outcome::InvalidRecipe);
+    assert!(
+        !refused.exists(),
+        "raw portable input remains validated before publication"
+    );
+}
+
+#[cfg(unix)]
+mod root_io {
+    use super::*;
+    use crate::storage::error::IoOperation;
+    use std::{
+        fs,
+        os::unix::fs::PermissionsExt,
+        path::{Path, PathBuf},
+    };
+
+    struct Mode {
+        path: PathBuf,
+        previous: fs::Permissions,
+    }
+    impl Mode {
+        fn set(path: &Path, mode: u32) -> Self {
+            let previous = fs::metadata(path).unwrap().permissions();
+            fs::set_permissions(path, fs::Permissions::from_mode(mode)).unwrap();
+            Self {
+                path: path.into(),
+                previous,
+            }
+        }
+    }
+    impl Drop for Mode {
+        fn drop(&mut self) {
+            fs::set_permissions(&self.path, self.previous.clone()).unwrap();
+        }
+    }
+    fn write_failure(error: &LibraryError, action: IoOperation) {
+        assert_eq!(error.outcome(), Outcome::Write, "{error:?}");
+        let LibraryError::File {
+            error: FileError::Io(cause),
+        } = error
+        else {
+            panic!("expected original mutation I/O cause: {error:?}");
+        };
+        assert_eq!(cause.action, action);
+        assert_eq!(
+            cause.cause.error().kind(),
+            std::io::ErrorKind::PermissionDenied
+        );
+    }
+    #[test]
+    fn initialization_mutations_are_write_failures_without_a_published_marker() {
+        for case in ["parent", "children", "stage", "removal"] {
+            let directory = directory();
+            let parent = directory.path().join("parent");
+            fs::create_dir(&parent).unwrap();
+            let root = parent.join("library");
+            let stage = root.join(".auditorylab-00000000-0000-4000-8000-000000000099.partial");
+            if case != "parent" {
+                fs::create_dir(&root).unwrap();
+            }
+            if matches!(case, "children" | "removal") {
+                fs::write(root.join(".library.lock"), b"").unwrap();
+            }
+            if case == "removal" {
+                for name in ["recipes", "trash", ".stage"] {
+                    fs::create_dir(root.join(name)).unwrap();
+                }
+                fs::write(root.join("membership.toml"), b"[entries]\n").unwrap();
+                fs::write(&stage, b"owned interrupted bytes").unwrap();
+            }
+            let library = Library::at_path(root.clone()).unwrap();
+            let _mode = Mode::set(if case == "parent" { &parent } else { &root }, 0o500);
+            let error = library.initialize().unwrap_err();
+            let action = match case {
+                "stage" => IoOperation::CreateStage,
+                "removal" => IoOperation::Remove,
+                _ => IoOperation::CreateDirectory,
+            };
+            write_failure(&error, action);
+            assert!(!root.join("library.toml").exists());
+            if case == "removal" {
+                assert_eq!(fs::read(&stage).unwrap(), b"owned interrupted bytes");
+            }
+        }
+    }
+    #[test]
+    fn unreadable_marker_is_an_input_failure_even_during_initialization() {
+        let directory = directory();
+        let root = directory.path().join("library");
+        let library = Library::at_path(root.clone()).unwrap();
+        assert_eq!(library.initialize().unwrap().warnings, []);
+        let _mode = Mode::set(&root.join("library.toml"), 0o000);
+        for error in [
+            library.inspect().unwrap_err(),
+            library.initialize().unwrap_err(),
+        ] {
+            assert_eq!(error.outcome(), Outcome::Unreadable);
+            let LibraryError::Read { error } = error else {
+                panic!("{error:?}");
+            };
+            assert_eq!(error.action, IoOperation::Open);
+            assert_eq!(
+                error.cause.error().kind(),
+                std::io::ErrorKind::PermissionDenied
+            );
+        }
+    }
+    #[test]
+    fn lock_open_failure_uses_actual_writable_access_context() {
+        let directory = directory();
+        let root = directory.path().join("library");
+        let library = Library::at_path(root.clone()).unwrap();
+        assert_eq!(library.initialize().unwrap().warnings, []);
+        let _mode = Mode::set(&root.join(".library.lock"), 0o400);
+        assert!(library.inspect().unwrap().initialized);
+        write_failure(&library.initialize().unwrap_err(), IoOperation::Open);
+    }
+    #[test]
+    fn failed_reconciliation_removal_preserves_both_existing_names() {
+        let directory = directory();
+        let root = directory.path().join("library");
+        let library = Library::at_path(root.clone()).unwrap();
+        assert_eq!(library.initialize().unwrap().warnings, []);
+        let recipe = crate::test_recipes::silent(1.0, 0.0);
+        let name = format!("{}.toml", recipe.document().id);
+        let active = root.join("recipes").join(&name);
+        let trash = root.join("trash").join(&name);
+        let bytes = recipe.to_toml().unwrap();
+        fs::write(&active, &bytes).unwrap();
+        fs::hard_link(&active, &trash).unwrap();
+        let _mode = Mode::set(&root.join("recipes"), 0o500);
+        let error = library
+            .apply(
+                library::Mutation::Add(std::sync::Arc::new(recipe)),
+                &Cancel::default(),
+            )
+            .unwrap_err();
+        write_failure(&error, IoOperation::Remove);
+        assert_eq!(fs::read_to_string(active).unwrap(), bytes);
+        assert_eq!(fs::read_to_string(trash).unwrap(), bytes);
+    }
+}
+
+use crate::copy_boundary;
+
+#[test]
+fn managed_copy_capacity_includes_final_creation_dates_and_all_ancestry() {
+    for bytes in [65_536, 65_537] {
+        let directory = directory();
+        let library = Library::at_path(directory.path().join("library")).unwrap();
+        assert_eq!(library.initialize().unwrap().warnings, []);
+        let source = copy_boundary::source_for_final_size(copy_boundary::SOURCE_TITLE, bytes);
+        let snapshot = crate::document::recipe::RecipeSnapshot::new(
+            crate::document::recipe::Origin::Stream("exact boundary".into()),
+            source.clone(),
+        );
+        let result = library.add_snapshot(&snapshot, true, &Cancel::default());
+        if bytes == 65_536 {
+            let outcome = result.unwrap();
+            let record = outcome.record.unwrap();
+            copy_boundary::assert_final_copy(
+                &source,
+                record.snapshot.recipe(),
+                copy_boundary::SOURCE_TITLE,
+            );
+            assert_eq!(
+                record.added_at,
+                record.snapshot.recipe().document().created_at
+            );
+            assert_eq!(
+                std::fs::metadata(
+                    library
+                        .path()
+                        .join("recipes")
+                        .join(format!("{}.toml", record.snapshot.recipe().document().id))
+                )
+                .unwrap()
+                .len(),
+                65_536
+            );
+        } else {
+            assert!(matches!(
+                result,
+                Err(OperationError::Library(LibraryError::Recipe {
+                    error: crate::core::RecipeError::TooLarge
+                }))
+            ));
+            assert_eq!(library.scan(&Cancel::default()).entries.len(), 0);
+            assert_eq!(
+                std::fs::read_dir(library.path().join("recipes"))
+                    .unwrap()
+                    .count(),
+                0
+            );
+        }
+    }
 }

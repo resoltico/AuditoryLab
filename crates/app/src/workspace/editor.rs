@@ -55,6 +55,10 @@ pub(super) struct EditorState {
     export_rate: SampleRate,
     status: EditStatus,
     location: DocumentLocation,
+    creation_preview: Option<(
+        Arc<crate::document::editing::Candidate>,
+        Result<(), Refusal>,
+    )>,
     copy_preview: Option<(
         Arc<crate::document::editing::Candidate>,
         Result<(), Refusal>,
@@ -67,6 +71,7 @@ impl EditorState {
             export_rate: SampleRate::DEFAULT,
             status: EditStatus::Idle,
             location: DocumentLocation::Unsaved,
+            creation_preview: None,
             copy_preview: None,
         })
     }
@@ -162,7 +167,29 @@ impl EditorState {
         if let Some(key) = self.location.detached() {
             return Err(Refusal::DetachedDraft(key.clone()));
         }
-        self.recipe_readiness()
+        self.recipe_readiness()?;
+        if matches!(self.location, DocumentLocation::Unsaved) {
+            self.creation_readiness()
+        } else {
+            Ok(())
+        }
+    }
+    fn creation_readiness(&mut self) -> Result<(), Refusal> {
+        let candidate = self.session.candidate();
+        if let Some((checked, result)) = &self.creation_preview
+            && Arc::ptr_eq(checked, &candidate)
+        {
+            return result.clone();
+        }
+        let result = candidate
+            .draft()
+            .recipe()
+            .and_then(|recipe| {
+                crate::services::library::Creation::readiness(&recipe).map_err(Into::into)
+            })
+            .map_err(|error| Refusal::Document(Box::new(error.into())));
+        self.creation_preview = Some((candidate, result.clone()));
+        result
     }
     pub(super) fn live_readiness(&mut self) -> Result<(), Refusal> {
         let candidate = self.session.candidate();
@@ -206,22 +233,20 @@ impl EditorState {
             .draft()
             .recipe()
             .and_then(|recipe| {
-                recipe
-                    .copy_preview(
-                        None,
-                        crate::core::vocabulary::copy_note(&recipe),
-                        crate::core::vocabulary::copy_title(candidate.draft().title()),
-                    )
-                    .map_err(Into::into)
+                crate::services::library::Creation::copy_preview(
+                    &recipe,
+                    None,
+                    crate::core::vocabulary::copy_note(&recipe),
+                    crate::core::vocabulary::copy_title(candidate.draft().title()),
+                )
+                .map_err(Into::into)
             })
             .map_err(|error| Refusal::Document(Box::new(error.into())));
         self.copy_preview = Some((candidate, result.clone()));
         result
     }
     pub(super) fn prepare_save(&mut self) -> Result<Arc<Recipe>, Refusal> {
-        if let Some(key) = self.location.detached() {
-            return Err(Refusal::DetachedDraft(key.clone()));
-        }
+        self.save_readiness()?;
         self.prepare_recipe()
     }
     pub(super) fn prepare_recipe_text(&mut self) -> Result<(Arc<str>, String), Refusal> {

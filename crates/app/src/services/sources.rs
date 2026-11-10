@@ -124,7 +124,14 @@ pub fn builtin(id: &str) -> Result<RecipeSnapshot, LoadError> {
 /// Return the generated standalone portable text of a built-in.
 ///
 /// # Errors
-/// Returns an unknown-selector failure.
+/// Returns an unknown-selector or portable-contract/serialization failure.
 pub fn builtin_source(id: &str) -> Result<String, LoadError> {
-    Ok(entry(id)?.text())
+    let snapshot = builtin(id)?;
+    snapshot
+        .canonical_text()
+        .map(|text| text.to_string())
+        .map_err(|error| LoadError::Recipe {
+            origin: snapshot.origin().clone(),
+            error: Box::new(error),
+        })
 }

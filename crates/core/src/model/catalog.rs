@@ -3,8 +3,10 @@
 
 //! The built-in recipes: stimuli adapted from published auditory studies.
 //!
-//! Each entry merges a condition and its study bibliography into generated TOML
-//! without comments. Parse it with [`Recipe::parse`](crate::Recipe::parse).
+//! Each entry merges strict typed condition and study records into a fallible
+//! [`Entry::recipe`]. Internal consumers retain that recipe; serialize portable
+//! TOML only at output boundaries. Raw external text still uses
+//! [`Recipe::parse`](crate::Recipe::parse).
 //! Explanations and adaptations are documented in `docs/catalog.md`.
 
 /// A canonical catalog name. Existence is checked separately during resolution.

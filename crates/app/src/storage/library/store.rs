@@ -201,8 +201,8 @@ impl LoadedRecord {
 /// Captured mutation intent. Expected bytes are optional for CLI optimistic checks.
 #[derive(Debug, Clone)]
 pub enum Mutation {
-    /// Create a new authored identity and its initial dates.
-    Create(Arc<Recipe>),
+    /// Publish a prepared new authored identity with its captured initial dates.
+    Create(super::Creation),
     /// Add portable content without changing declared history.
     Add(Arc<Recipe>),
     /// Replace the editable content of an existing active entry.
@@ -347,8 +347,9 @@ impl LibraryStore {
     pub(crate) fn new(root: LibraryRoot) -> Result<Self, Error> {
         let mut reserved = BTreeSet::new();
         for entry in crate::core::catalog::ENTRIES {
-            let recipe =
-                Recipe::parse(&entry.text()).map_err(|e| Error::InvalidBuiltin { error: e })?;
+            let recipe = entry
+                .recipe()
+                .map_err(|e| Error::InvalidBuiltin { error: e })?;
             if !reserved.insert(recipe.document().id) {
                 return Err(Error::DuplicateBuiltin {
                     id: recipe.document().id,
@@ -504,7 +505,10 @@ impl LibraryStore {
             }
             return Err(Error::IdentityExists { id });
         }
-        let now = observed_now()?;
+        let now = match &mutation {
+            Mutation::Create(creation) => creation.observed(),
+            _ => observed_now()?,
+        };
         if matches!(kind, MutationKind::Purge) {
             return purge_record(&lease, id, old, &mut memberships, cancel, diagnostics);
         }
@@ -576,8 +580,8 @@ impl LibraryStore {
 
 fn mutation_address(mutation: &Mutation) -> (LibraryKey, MutationKind, Option<VersionToken>) {
     match mutation {
-        Mutation::Create(recipe) => (
-            LibraryKey::User(recipe.document().id),
+        Mutation::Create(creation) => (
+            LibraryKey::User(creation.recipe().document().id),
             MutationKind::Create,
             None,
         ),
@@ -672,9 +676,8 @@ fn requested_recipe(
     id: DocumentUuid,
 ) -> Result<Recipe, Error> {
     Ok(match mutation {
-        Mutation::Create(recipe) | Mutation::Add(recipe) | Mutation::Update { recipe, .. } => {
-            (*recipe).clone()
-        }
+        Mutation::Create(creation) => (**creation.recipe()).clone(),
+        Mutation::Add(recipe) | Mutation::Update { recipe, .. } => (*recipe).clone(),
         Mutation::Rename { title, .. } => {
             let recipe = old
                 .ok_or(Error::EntryDisappeared { id })?
@@ -707,10 +710,7 @@ fn prepare_proposal(
             evidence.scope = crate::core::provenance::EvidenceScope::Ancestor;
         }
     }
-    if kind == MutationKind::Create {
-        proposal.document.created_at = Some(now);
-        proposal.document.modified_at = Some(now);
-    } else if !creating {
+    if !creating {
         proposal.document.modified_at = Some(now);
     }
     let recipe = proposal.build().map_err(|e| Error::Recipe { error: e })?;
@@ -847,7 +847,7 @@ fn exists(dir: &Dir, name: &str) -> Result<bool, Error> {
     match dir.symlink_metadata(name) {
         Ok(_) => Ok(true),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
-        Err(e) => Err(root::io(IoOperation::Inspect, e)),
+        Err(e) => Err(root::read_io(IoOperation::Inspect, e)),
     }
 }
 fn prune_memberships(lease: &root::Lease, memberships: &mut Memberships) -> Result<usize, Error> {
@@ -872,9 +872,9 @@ fn reconcile_moves(
     let trash = lease.directory("trash")?;
     for entry in trash
         .entries()
-        .map_err(|e| root::io(IoOperation::Read, e))?
+        .map_err(|e| root::read_io(IoOperation::Read, e))?
     {
-        let entry = entry.map_err(|e| root::io(IoOperation::Inspect, e))?;
+        let entry = entry.map_err(|e| root::read_io(IoOperation::Inspect, e))?;
         let name = entry.file_name();
         if name
             .to_str()
@@ -888,7 +888,7 @@ fn reconcile_moves(
         {
             recipes
                 .remove_file(&name)
-                .map_err(|e| root::io(IoOperation::Remove, e))?;
+                .map_err(|e| root::write_io(IoOperation::Remove, e))?;
             warnings.push(crate::storage::warning::StorageWarning::RecoveredMove {
                 name: (name).clone(),
             });
@@ -1066,12 +1066,12 @@ impl LibraryScan<'_> {
             .lease
             .dir
             .entries()
-            .map_err(|e| root::io(IoOperation::Read, e))?
+            .map_err(|e| root::read_io(IoOperation::Read, e))?
         {
             if self.cancel.is_requested() {
                 return Err(cancelled());
             }
-            let entry = entry.map_err(|e| root::io(IoOperation::Inspect, e))?;
+            let entry = entry.map_err(|e| root::read_io(IoOperation::Inspect, e))?;
             let name = entry.file_name();
             if matches!(
                 name.to_str(),
@@ -1102,11 +1102,14 @@ impl LibraryScan<'_> {
     fn records(&mut self) -> Result<(), Error> {
         for (directory, trashed) in [("recipes", false), ("trash", true)] {
             let dir = self.lease.directory(directory)?;
-            for entry in dir.entries().map_err(|e| root::io(IoOperation::Read, e))? {
+            for entry in dir
+                .entries()
+                .map_err(|e| root::read_io(IoOperation::Read, e))?
+            {
                 if self.cancel.is_requested() {
                     return Err(cancelled());
                 }
-                let entry = entry.map_err(|e| root::io(IoOperation::Inspect, e))?;
+                let entry = entry.map_err(|e| root::read_io(IoOperation::Inspect, e))?;
                 self.count += 1;
                 if self.count > self.limits.entries {
                     return Err(budget());
@@ -1204,7 +1207,7 @@ impl LibraryScan<'_> {
         let stages = self.lease.directory(".stage")?;
         for entry in stages
             .entries()
-            .map_err(|e| root::io(IoOperation::Read, e))?
+            .map_err(|e| root::read_io(IoOperation::Read, e))?
         {
             if self.cancel.is_requested() {
                 return Err(cancelled());
@@ -1213,7 +1216,7 @@ impl LibraryScan<'_> {
             if self.count > self.limits.entries {
                 return Err(budget());
             }
-            let entry = entry.map_err(|e| root::io(IoOperation::Inspect, e))?;
+            let entry = entry.map_err(|e| root::read_io(IoOperation::Inspect, e))?;
             self.result
                 .stages
                 .push(std::path::Path::new(".stage").join(entry.file_name()));
@@ -1281,8 +1284,12 @@ fn publish_record(
 }
 
 fn validate_mutation_intent(mutation: &Mutation, id: DocumentUuid) -> Result<(), Error> {
-    if let Mutation::Create(recipe) | Mutation::Add(recipe) | Mutation::Update { recipe, .. } =
-        mutation
+    let recipe = match mutation {
+        Mutation::Create(creation) => Some(creation.recipe()),
+        Mutation::Add(recipe) | Mutation::Update { recipe, .. } => Some(recipe),
+        _ => None,
+    };
+    if let Some(recipe) = recipe
         && recipe.document().id != id
     {
         return Err(Error::ProposedIdentity {

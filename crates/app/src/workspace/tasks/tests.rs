@@ -665,7 +665,12 @@ fn wrong_library_identity_or_kind_cannot_mark_a_clean_draft_saved_or_close_it() 
             0 => {
                 let other = Draft::new().unwrap().recipe().unwrap();
                 **outcome = store
-                    .apply(Mutation::Create(Arc::new(other)), &Cancel::default())
+                    .apply(
+                        Mutation::Create(
+                            crate::services::library::Creation::prepare(Arc::new(other)).unwrap(),
+                        ),
+                        &Cancel::default(),
+                    )
                     .unwrap();
             }
             1 => outcome.kind = crate::storage::library::MutationKind::Rename,
@@ -759,7 +764,12 @@ fn wrong_loaded_identity_cannot_replace_the_selected_record() {
     );
     let other = store
         .apply(
-            Mutation::Create(Arc::new(Draft::new().unwrap().recipe().unwrap())),
+            Mutation::Create(
+                crate::services::library::Creation::prepare(Arc::new(
+                    Draft::new().unwrap().recipe().unwrap(),
+                ))
+                .unwrap(),
+            ),
             &Cancel::default(),
         )
         .unwrap()

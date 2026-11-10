@@ -65,7 +65,10 @@ fn readonly_discovery_and_builtin_refusals_never_initialize_a_root() {
     assert!(
         store
             .apply(
-                Mutation::Create(Arc::new(recipe("new"))),
+                Mutation::Create(
+                    auditorylab_app::services::library::Creation::prepare(Arc::new(recipe("new")))
+                        .unwrap()
+                ),
                 &Cancel::default()
             )
             .is_err()
@@ -172,7 +175,12 @@ fn new_creation_dates_are_assigned_only_to_the_confirmed_snapshot_and_noops_keep
     assert_eq!(provisional.document().created_at, None);
     let result = store
         .apply(
-            Mutation::Create(Arc::new(provisional.clone())),
+            Mutation::Create(
+                auditorylab_app::services::library::Creation::prepare(Arc::new(
+                    provisional.clone(),
+                ))
+                .unwrap(),
+            ),
             &Cancel::default(),
         )
         .unwrap();

@@ -1011,9 +1011,8 @@ impl LibraryJob {
                 Some(key.clone())
             }
             LibraryRequest::Write { mutation, .. } => Some(match mutation {
-                Mutation::Create(recipe) | Mutation::Add(recipe) => {
-                    LibraryKey::User(recipe.document().id)
-                }
+                Mutation::Create(creation) => LibraryKey::User(creation.recipe().document().id),
+                Mutation::Add(recipe) => LibraryKey::User(recipe.document().id),
                 Mutation::Update { key, .. }
                 | Mutation::Rename { key, .. }
                 | Mutation::Trash { key, .. }
@@ -1080,9 +1079,10 @@ impl LibraryJob {
             }
             (LibraryRequest::Write { mutation, .. }, LibraryOutcome::Written(outcome)) => {
                 let (key, kind) = match mutation {
-                    Mutation::Create(recipe) => {
-                        (LibraryKey::User(recipe.document().id), MutationKind::Create)
-                    }
+                    Mutation::Create(recipe) => (
+                        LibraryKey::User(recipe.recipe().document().id),
+                        MutationKind::Create,
+                    ),
                     Mutation::Add(recipe) => {
                         (LibraryKey::User(recipe.document().id), MutationKind::Add)
                     }

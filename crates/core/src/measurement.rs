@@ -169,6 +169,30 @@ pub struct SampleFacts {
 /// Immutable completed sample findings, constructed only by measurement completion.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SampleAnalysis(SampleFacts);
+
+/// Controlled completed findings for consumer integration tests only.
+#[cfg(feature = "test-support")]
+pub mod test_support {
+    use super::{EnergyShare, SampleAnalysis};
+
+    /// Replace energy shares to exercise exact zero and undefined consumer states
+    /// without relying on numerical FFT leakage to manufacture a literal zero.
+    pub fn with_energy_shares(
+        mut samples: SampleAnalysis,
+        shares: Vec<EnergyShare>,
+    ) -> SampleAnalysis {
+        assert!(shares.iter().all(|share| {
+            share.channel < samples.channels
+                && share.below_hz.is_finite()
+                && share.below_hz > 0.0
+                && share
+                    .fraction
+                    .is_none_or(|value| value.is_finite() && (0.0..=1.0).contains(&value))
+        }));
+        samples.0.low_energy = shares;
+        samples
+    }
+}
 impl std::ops::Deref for SampleAnalysis {
     type Target = SampleFacts;
     fn deref(&self) -> &Self::Target {

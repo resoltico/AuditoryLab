@@ -680,7 +680,10 @@ fn selected_users() -> (
         draft.set_title(name.into());
         let result = store
             .apply(
-                Mutation::Create(Arc::new(draft.recipe().unwrap())),
+                Mutation::Create(
+                    crate::services::library::Creation::prepare(Arc::new(draft.recipe().unwrap()))
+                        .unwrap(),
+                ),
                 &Cancel::default(),
             )
             .unwrap();

@@ -17,8 +17,8 @@ use serde::{Deserialize, Serialize};
 ///
 /// Recipe content is immutable outside core; edits must pass a checked builder.
 /// ```compile_fail
-/// use auditorylab_core::{Recipe, catalog};
-/// let recipe = Recipe::parse(&catalog::ENTRIES[0].text()).unwrap();
+/// use auditorylab_core::catalog;
+/// let recipe = catalog::ENTRIES[0].recipe().unwrap();
 /// let _ = recipe.content;
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -302,11 +302,13 @@ impl Recipe {
         &self.content
     }
 
-    /// Preview the complete app copy without allocating an identity. Canonical UUID
-    /// widths are fixed; this preview uses no timestamps, like app-created identities.
-    /// The actual supplied identity is independently checked by `prepare_copy`.
+    /// Preview a complete copy with the supplied date fields, without allocating an identity.
+    /// The caller owns the intended creation/history policy. Canonical UUID widths are fixed;
+    /// the actual supplied identity is independently checked by `prepare_copy`.
     pub fn copy_preview(
         &self,
+        created_at: Option<crate::Timestamp>,
+        modified_at: Option<crate::Timestamp>,
         catalog_id: Option<String>,
         note: String,
         title: String,
@@ -320,8 +322,8 @@ impl Recipe {
         self.prepare_copy(
             DocumentIdentity {
                 id,
-                created_at: None,
-                modified_at: None,
+                created_at,
+                modified_at,
             },
             catalog_id,
             note,

@@ -70,6 +70,18 @@ impl SlintAdapter {
         self.updating.set(updating);
     }
 
+    pub(crate) fn project_analysis_findings(
+        &self,
+        analysis: &auditorylab_app::recording::Analysis,
+    ) {
+        let context = self.inspect(|workspace| {
+            auditorylab_app::recording::InterpretationContext::from(
+                workspace.device_check_view().assessment,
+            )
+        });
+        Self::project_recording_analysis(&self.main.upgrade().unwrap(), analysis, context);
+    }
+
     pub(crate) fn timer_running(&self) -> bool {
         self.timer.running()
     }

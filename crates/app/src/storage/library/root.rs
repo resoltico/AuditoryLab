@@ -67,7 +67,7 @@ impl LibraryRoot {
         let path = match std::fs::canonicalize(&path) {
             Ok(canonical) => canonical,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => path,
-            Err(e) => return Err(io(IoOperation::ResolvePath, e)),
+            Err(e) => return Err(read_io(IoOperation::ResolvePath, e)),
         };
         Ok(Self { path, source })
     }
@@ -145,9 +145,9 @@ impl LibraryRoot {
                     lease
                         .dir
                         .create_dir_with(name, &builder)
-                        .map_err(|e| io(IoOperation::CreateDirectory, e))?;
+                        .map_err(|e| write_io(IoOperation::CreateDirectory, e))?;
                 }
-                Err(e) => return Err(io(IoOperation::Inspect, e)),
+                Err(e) => return Err(read_io(IoOperation::Inspect, e)),
             }
         }
         let bytes = format!("layout = {LIBRARY_LAYOUT}\n");
@@ -228,14 +228,15 @@ impl LibraryRoot {
                 }
                 builder
                     .create(&self.path)
-                    .map_err(|e| io(IoOperation::CreateDirectory, e))?;
-                std::fs::canonicalize(&self.path).map_err(|e| io(IoOperation::ResolvePath, e))?
+                    .map_err(|e| write_io(IoOperation::CreateDirectory, e))?;
+                std::fs::canonicalize(&self.path)
+                    .map_err(|e| read_io(IoOperation::ResolvePath, e))?
             }
-            Err(e) => return Err(io(IoOperation::Inspect, e)),
+            Err(e) => return Err(read_io(IoOperation::Inspect, e)),
         };
         let admission = Admission::acquire(canonical.clone())?;
         let dir = Dir::open_ambient_dir(&canonical, cap_std::ambient_authority())
-            .map_err(|e| io(IoOperation::OpenDirectory, e))?;
+            .map_err(|e| read_io(IoOperation::OpenDirectory, e))?;
         if initialize && dir.symlink_metadata(LOCK).is_err() {
             validate_unmarked(&dir)?;
             match create_lock(&dir, LOCK) {
@@ -252,11 +253,17 @@ impl LibraryRoot {
             Ok(file) => file.into_std(),
             // An existing folder without a lock was never initialized.
             Err(e) if e.kind() == std::io::ErrorKind::NotFound && !initialize => return Ok(None),
-            Err(e) => return Err(io(IoOperation::Open, e)),
+            Err(e) => {
+                return Err(if exclusive {
+                    write_io(IoOperation::Open, e)
+                } else {
+                    read_io(IoOperation::Open, e)
+                });
+            }
         };
         if !file
             .metadata()
-            .map_err(|e| io(IoOperation::Inspect, e))?
+            .map_err(|e| read_io(IoOperation::Inspect, e))?
             .is_file()
         {
             return Err(Error::LockNotRegular);
@@ -323,8 +330,8 @@ pub(super) fn validate_marker(dir: &Dir) -> Result<(), Error> {
     Ok(())
 }
 fn validate_unmarked(dir: &Dir) -> Result<(), Error> {
-    for entry in dir.entries().map_err(|e| io(IoOperation::Read, e))? {
-        let entry = entry.map_err(|e| io(IoOperation::Inspect, e))?;
+    for entry in dir.entries().map_err(|e| read_io(IoOperation::Read, e))? {
+        let entry = entry.map_err(|e| read_io(IoOperation::Inspect, e))?;
         let name = entry.file_name();
         if name == LOCK {
             continue;
@@ -343,9 +350,9 @@ fn validate_unmarked(dir: &Dir) -> Result<(), Error> {
         if matches!(name.to_str(), Some("recipes" | "trash" | ".stage")) {
             let child = dir
                 .open_dir_nofollow(&name)
-                .map_err(|e| io(IoOperation::OpenDirectory, e))?;
-            for entry in child.entries().map_err(|e| io(IoOperation::Read, e))? {
-                let entry = entry.map_err(|e| io(IoOperation::Inspect, e))?;
+                .map_err(|e| read_io(IoOperation::OpenDirectory, e))?;
+            for entry in child.entries().map_err(|e| read_io(IoOperation::Read, e))? {
+                let entry = entry.map_err(|e| read_io(IoOperation::Inspect, e))?;
                 if !owned_stage(&entry.file_name()) {
                     return Err(Error::RecipesWithoutMarker);
                 }
@@ -378,14 +385,17 @@ fn create_lock(dir: &Dir, name: &str) -> Result<cap_std::fs::File, Error> {
         options.mode(0o600);
     }
     dir.open_with(name, &options)
-        .map_err(|e| io(IoOperation::CreateStage, e))
+        .map_err(|e| write_io(IoOperation::CreateStage, e))
 }
 pub(super) fn read_bounded(
     dir: &Dir,
     name: impl AsRef<Path>,
     limit: usize,
 ) -> Result<Vec<u8>, Error> {
-    publish::read_bounded(dir, name.as_ref(), limit).map_err(Error::from)
+    publish::read_bounded(dir, name.as_ref(), limit).map_err(|error| match error {
+        FileError::Io(error) => Error::Read { error },
+        other => Error::from(other),
+    })
 }
 pub(super) fn owned_stage(name: &std::ffi::OsStr) -> bool {
     name.to_str()
@@ -398,17 +408,17 @@ pub(super) fn cleanup_stages(
     path: &Path,
     warnings: &mut Vec<crate::storage::warning::StorageWarning>,
 ) -> Result<(), Error> {
-    for entry in dir.entries().map_err(|e| io(IoOperation::Read, e))? {
-        let entry = entry.map_err(|e| io(IoOperation::Inspect, e))?;
+    for entry in dir.entries().map_err(|e| read_io(IoOperation::Read, e))? {
+        let entry = entry.map_err(|e| read_io(IoOperation::Inspect, e))?;
         let name = entry.file_name();
         if owned_stage(&name)
             && entry
                 .file_type()
-                .map_err(|e| io(IoOperation::Inspect, e))?
+                .map_err(|e| read_io(IoOperation::Inspect, e))?
                 .is_file()
         {
             dir.remove_file(&name)
-                .map_err(|e| io(IoOperation::Remove, e))?;
+                .map_err(|e| write_io(IoOperation::Remove, e))?;
             warnings.push(crate::storage::warning::StorageWarning::RemovedStage {
                 path: (path.join(name)).clone(),
             });
@@ -426,7 +436,7 @@ impl Lease {
     pub(super) fn directory(&self, name: &str) -> Result<Dir, Error> {
         self.dir
             .open_dir_nofollow(name)
-            .map_err(|e| io(IoOperation::OpenDirectory, e))
+            .map_err(|e| read_io(IoOperation::OpenDirectory, e))
     }
 }
 impl Drop for Lease {
@@ -471,8 +481,12 @@ impl Drop for Admission {
         self.release();
     }
 }
-pub(super) fn io(context: IoOperation, error: std::io::Error) -> Error {
+pub(super) fn read_io(context: IoOperation, error: std::io::Error) -> Error {
     Error::Read {
         error: IoFailure::new(context, None, error),
     }
+}
+
+pub(super) fn write_io(context: IoOperation, error: std::io::Error) -> Error {
+    Error::from(FileError::Io(IoFailure::new(context, None, error)))
 }

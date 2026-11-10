@@ -289,9 +289,8 @@ impl Selection {
             .filter(|n| *n >= rate * 2)
             .ok_or(RecordingError::TooShort)?;
         // Prefix is bounded by the desired FFT plan, not the whole selected window.
-        let prefix_frames = (1_u64 << selected.min(1 << 20).ilog2()).min(1 << 20);
-        let prefix_capacity = usize::try_from(prefix_frames)
-            .map_err(|_| RecordingError::BudgetExceeded { resource: "prefix" })?
+        let prefix_capacity = Measurement::prefix_frames(selected)
+            .ok_or(RecordingError::TooShort)?
             .checked_mul(channels)
             .ok_or(RecordingError::BudgetExceeded { resource: "prefix" })?;
         Ok(Self {

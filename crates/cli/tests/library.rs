@@ -889,3 +889,145 @@ fn initialization_reports_recovered_stage_notice_without_losing_publication_succ
         }
     }
 }
+
+#[cfg(unix)]
+mod root_io {
+    use super::*;
+    use std::{os::unix::fs::PermissionsExt, path::PathBuf};
+
+    struct Mode {
+        path: PathBuf,
+        previous: fs::Permissions,
+    }
+    impl Mode {
+        #[expect(
+            clippy::unwrap_used,
+            reason = "Permission fixture setup must fail the calling integration test"
+        )]
+        fn set(path: &Path, mode: u32) -> Self {
+            let previous = fs::metadata(path).unwrap().permissions();
+            fs::set_permissions(path, fs::Permissions::from_mode(mode)).unwrap();
+            Self {
+                path: path.into(),
+                previous,
+            }
+        }
+    }
+    impl Drop for Mode {
+        #[expect(
+            clippy::unwrap_used,
+            reason = "Permission fixture restoration must fail the calling integration test"
+        )]
+        fn drop(&mut self) {
+            fs::set_permissions(&self.path, self.previous.clone()).unwrap();
+        }
+    }
+    fn failure(output: &std::process::Output, status: &str, action: &str) {
+        assert!(!output.status.success(), "{output:?}");
+        let report = json(output);
+        assert_eq!(report["status"], status, "{report}");
+        assert_eq!(report["diagnostics"][0]["code"], "io.failure");
+        assert_eq!(report["diagnostics"][0]["params"]["action"], action);
+        assert!(report.get("publication").is_none());
+    }
+    #[test]
+    fn native_initialization_mutation_failures_report_publication_failed() {
+        for case in ["parent", "children", "stage", "removal"] {
+            let temp = dir();
+            let parent = temp.path().join("parent");
+            fs::create_dir(&parent).unwrap();
+            let root = parent.join("library");
+            let stage = root.join(".auditorylab-00000000-0000-4000-8000-000000000099.partial");
+            if case != "parent" {
+                fs::create_dir(&root).unwrap();
+            }
+            if matches!(case, "children" | "removal") {
+                fs::write(root.join(".library.lock"), b"").unwrap();
+            }
+            if case == "removal" {
+                for name in ["recipes", "trash", ".stage"] {
+                    fs::create_dir(root.join(name)).unwrap();
+                }
+                fs::write(root.join("membership.toml"), b"[entries]\n").unwrap();
+                fs::write(&stage, b"interrupted owned bytes").unwrap();
+            }
+            let _mode = Mode::set(if case == "parent" { &parent } else { &root }, 0o500);
+            let result = cli(&root, &["library", "init", "--format", "json"]);
+            assert_eq!(result.status.code(), Some(1), "{result:?}");
+            failure(
+                &result,
+                "publication_failed",
+                match case {
+                    "stage" => "create_stage",
+                    "removal" => "remove",
+                    _ => "create_directory",
+                },
+            );
+            assert!(!root.join("library.toml").exists());
+            if case == "removal" {
+                assert_eq!(fs::read(&stage).unwrap(), b"interrupted owned bytes");
+            }
+        }
+    }
+    #[test]
+    fn native_marker_input_failures_remain_unreadable_for_inspect_and_init() {
+        let temp = dir();
+        let root = temp.path().join("library");
+        assert!(cli(&root, &["library", "init"]).status.success());
+        let _mode = Mode::set(&root.join("library.toml"), 0o000);
+        for command in ["path", "init"] {
+            failure(
+                &cli(&root, &["library", command, "--format", "json"]),
+                "unreadable",
+                "open",
+            );
+        }
+    }
+    #[test]
+    fn native_lock_open_distinguishes_readable_inspection_from_writable_initialization() {
+        let temp = dir();
+        let root = temp.path().join("library");
+        assert!(cli(&root, &["library", "init"]).status.success());
+        let _mode = Mode::set(&root.join(".library.lock"), 0o400);
+        let inspection = cli(&root, &["library", "path", "--format", "json"]);
+        assert!(inspection.status.success(), "{inspection:?}");
+        assert_eq!(json(&inspection)["root"]["initialized"], true);
+        failure(
+            &cli(&root, &["library", "init", "--format", "json"]),
+            "publication_failed",
+            "open",
+        );
+    }
+    #[test]
+    fn native_reconciliation_removal_is_a_write_failure_without_changing_records() {
+        let temp = dir();
+        let root = temp.path().join("library");
+        let file = temp.path().join("input.toml");
+        let recipe = input(&file, "Unchanged after removal refusal");
+        assert!(cli(&root, &["library", "init"]).status.success());
+        let name = format!("{}.toml", recipe.document().id);
+        let active = root.join("recipes").join(&name);
+        let trash = root.join("trash").join(&name);
+        let bytes = fs::read(&file).unwrap();
+        fs::write(&active, &bytes).unwrap();
+        fs::hard_link(&active, &trash).unwrap();
+        let _mode = Mode::set(&root.join("recipes"), 0o500);
+        failure(
+            &cli(
+                &root,
+                &[
+                    "library",
+                    "add",
+                    "--file",
+                    file.to_str().unwrap(),
+                    "--format",
+                    "json",
+                ],
+            ),
+            "publication_failed",
+            "remove",
+        );
+        assert_eq!(fs::read(active).unwrap(), bytes);
+        assert_eq!(fs::read(trash).unwrap(), bytes);
+    }
+}

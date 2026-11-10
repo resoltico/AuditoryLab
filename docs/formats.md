@@ -37,7 +37,7 @@ Use New or Edit a copy in the desktop, or CLI `library add --as-copy`, to alloca
 | `[[evidence]]` | Bibliography key, scope, population, condition role, measures, methods, summary, limitations and adaptation. |
 | `[[lineage]]` | Flat ancestor title/note, optional `document_id`/`catalog_id` and referenced `source_keys`. |
 
-One authored budget permits 16 generator lanes: a tone or pulse train costs one; an explicit pair costs two. The maximum of 16 components follows from this budget. Crossfades run at most 32 lane-equivalents. Metadata allows 16 sources and 32 evidence records. Flat lineage is limited by the 65,536-byte portable document capacity, including the final copy identity, title and attribution. References must name existing bibliography keys.
+One authored budget permits 16 generator lanes: a tone or pulse train costs one; an explicit pair costs two. The maximum of 16 components follows from this budget. Crossfades run at most 32 lane-equivalents. Metadata allows 16 sources and 32 evidence records. Flat lineage is limited by the 65,536-byte portable document capacity, including the final copy identity, creation dates, title and attribution. References must name existing bibliography keys.
 
 ### Components
 
@@ -77,7 +77,7 @@ Evidence requires `source`, `scope`, `population`, `condition_role`, `measures`,
 - Condition role: `test`, `comparison`, `mixed`, `unspecified`.
 - Measures: any list of `eeg`, `behavior`, `subjective`, `sleep`, `hearing`, `other`.
 
-An independent copy starts with a new UUID and unknown declared dates, and appends an ancestor descriptor. Its first User Library save stamps Created and Modified; importing a file preserves its declared dates. Reference-condition evidence becomes ancestor evidence. Sound or finite-timing changes also demote applicable current evidence; title/notes changes alone do not. A reopened lineage record retains attribution rather than an ancestor waveform.
+An independent editable copy starts with a new UUID and unknown declared dates, and appends an ancestor descriptor. Managed creation captures Created, Modified and Added here from one observation at actual save admission; importing a file preserves its declared dates. Managed-copy availability includes both final date fields without observing a clock or allocating an identity, and execution validates the final captured candidate before replacing the editor. The worker publishes that candidate without redating it; the editable draft keeps dates provisional until confirmed publication. Reference-condition evidence becomes ancestor evidence. Sound or finite-timing changes also demote applicable current evidence; title/notes changes alone do not. A reopened lineage record retains attribution rather than an ancestor waveform.
 
 ### Validation at a sample rate
 

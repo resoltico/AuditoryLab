@@ -17,6 +17,7 @@ import pyatspi
 from PIL import ImageGrab
 from gi.repository import GLib
 from wayland_surface import recreated_main_surfaces
+from x11_parent import verified_portal_parents, verified_transient
 
 
 def pump_events():
@@ -155,6 +156,47 @@ def text_of(node):
     return text.getText(0, text.characterCount)
 
 
+def visible_x11_windows(pid, title=None):
+    args = ["xdotool", "search", "--all", "--onlyvisible", "--pid", str(pid)]
+    if title is not None:
+        args.extend(["--name", "^" + re.escape(title) + "$"])
+    found = subprocess.run(args, capture_output=True, text=True, timeout=5)
+    if found.returncode == 1:
+        return []
+    found.check_returncode()
+    windows = [int(value) for value in found.stdout.split()]
+    if any(not 0 < window <= 0xffffffff for window in windows):
+        raise RuntimeError("native server returned an invalid X11 window identifier")
+    return windows
+
+
+def actual_x11_main(pid):
+    # PID comes from our real child process and title/visibility from the native
+    # X server. No portal string contributes to the expected identifier.
+    windows = visible_x11_windows(pid, "Auditory Lab")
+    if not windows:
+        return None
+    if len(windows) != 1:
+        raise RuntimeError("native application main X11 window is ambiguous")
+    return windows[0]
+
+
+def actual_x11_chooser(chooser, expected_parent):
+    pid = chooser.get_process_id()
+    dialogs = []
+    for window in visible_x11_windows(pid):
+        properties = subprocess.run(["xprop", "-id", str(window), "_NET_WM_WINDOW_TYPE", "WM_TRANSIENT_FOR"],
+                                    check=True, capture_output=True, text=True, timeout=5).stdout
+        if "_NET_WM_WINDOW_TYPE_DIALOG" in properties:
+            transient = "\n".join(line for line in properties.splitlines() if line.startswith("WM_TRANSIENT_FOR"))
+            parent = verified_transient(transient, expected_parent)
+            dialogs.append({"xid": window, "pid": pid, "transient_for": parent,
+                            "transient_property_available": parent is not None})
+    if len(dialogs) != 1:
+        raise RuntimeError("actual native X11 file chooser window is absent or ambiguous")
+    return dialogs[0]
+
+
 def main():
     def timed_out(_signal, _frame):
         raise TimeoutError("native qualification exceeded 180 seconds")
@@ -208,8 +250,20 @@ def main():
                 raise RuntimeError("no rendered production first-frame pixels")
             before_parent = None
             surface_ids = None
+            expected_x11_windows = []
+            chooser_windows = []
+
+            def open_recipe():
+                if args.session == "x11":
+                    expected_x11_windows.append(wait_for("actual native X11 application window",
+                                                        lambda: actual_x11_main(process.pid)))
+                activate(wait_for("enabled Open recipe", lambda: named(app, "Open recipe…")))
+
+            def observe_chooser(chooser):
+                if args.session == "x11":
+                    chooser_windows.append(actual_x11_chooser(chooser, expected_x11_windows[-1]))
             if args.session == "wayland":
-                activate(named(app, "Open recipe…"))
+                open_recipe()
                 cancel, _ = wait_for("focused native dialog before surface recreation", current_chooser)
                 activate(cancel)
                 wait_for("native dialog dismissed before surface recreation", lambda: not visible(cancel))
@@ -254,15 +308,17 @@ def main():
             activate(named(app, "Library"))
             dialogs = []
             for attempt in range(2):
-                activate(wait_for("enabled Open recipe", lambda: named(app, "Open recipe…")))
+                open_recipe()
                 cancel, parent = wait_for("current focused native file chooser", current_chooser)
+                observe_chooser(parent)
                 dialogs.append(parent.name)
                 activate(cancel)
                 wait_for("native dialog actually dismissed", lambda: not visible(cancel))
                 wait_for("native dialog cancelled and app recovered", lambda: named(app, "Open recipe…"))
             # Reopen and use the real location control to open an isolated recipe.
-            activate(named(app, "Open recipe…"))
+            open_recipe()
             cancel, chooser = wait_for("current focused native chooser reopened", current_chooser)
+            observe_chooser(chooser)
             # GTK binds Ctrl+L on its chooser content widget; the Cancel action
             # area is a sibling and intentionally does not own that shortcut.
             files = wait_for("native chooser Files table", lambda: named(chooser, "Files"))
@@ -287,7 +343,9 @@ def main():
             portal.flush()
             calls = portal_path.read_text()
             prefix = "wayland:" if args.session == "wayland" else "x11:"
-            if calls.count(prefix) < 3:
+            if args.session == "x11":
+                parents = verified_portal_parents(calls, expected_x11_windows)
+            elif calls.count(prefix) < 3:
                 raise RuntimeError("native portal did not receive a usable " + prefix + " parent on every opening")
             if process.poll() is not None:
                 raise RuntimeError("production application exited during native qualification")
@@ -301,7 +359,8 @@ def main():
             print(json.dumps({"session": args.session, "provider": "AT-SPI", "pid": process.pid,
                               "production": "Winit/FemtoVG", "first_frame_extent": [extent.width, extent.height], "first_frame_colors": colors,
                               "multiline_native_keys": True, "modifier_selection": True,
-                              "native_dialog_cancel_reopen": dialogs, "portal_parent": prefix,
+                              "native_dialog_cancel_reopen": dialogs, "portal_protocol": prefix, "portal_parents": parents,
+                              "x11_observed_main_windows": expected_x11_windows, "x11_chooser_windows": chooser_windows,
                               "native_dialog_open": "My 3 Hz pair", "recreated_wayland_surface_ids": surface_ids, "audio_device_opened": False}))
         except BaseException:
             app = app_for(process.pid)

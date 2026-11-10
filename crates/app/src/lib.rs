@@ -25,3 +25,7 @@ pub mod workspace;
 
 #[cfg(test)]
 use auditorylab_core::test_support as test_recipes;
+
+#[cfg(test)]
+#[path = "../tests/support/copy_boundary.rs"]
+pub(crate) mod copy_boundary;

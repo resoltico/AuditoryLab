@@ -133,6 +133,8 @@ impl RecipeSnapshot {
                     _ => None,
                 };
                 self.recipe.copy_preview(
+                    None,
+                    None,
                     catalog,
                     crate::core::vocabulary::copy_note(self.recipe()),
                     crate::core::vocabulary::copy_title(&self.title()),
