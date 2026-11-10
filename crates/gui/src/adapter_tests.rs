@@ -2,6 +2,9 @@
 //! [`SlintAdapter::install`] exactly as at startup, drive a real workspace.
 //! Dialogs are answered through a recording shell; audio is the portable
 //! workspace's typed refusal, so no device is touched.
+#[path = "recording_report_tests.rs"]
+mod recording_report_tests;
+
 use crate::adapter::{Shell, SlintAdapter, Windows};
 #[path = "field_feedback_tests.rs"]
 mod field_feedback_tests;
