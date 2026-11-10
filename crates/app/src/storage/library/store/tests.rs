@@ -306,3 +306,28 @@ fn aborted_scans_remain_distinct_from_record_level_diagnostics() {
     );
     assert_eq!(fs::read(record).unwrap(), b"invalid portable record");
 }
+
+#[test]
+fn native_io_action_does_not_choose_read_or_mutation_category() {
+    for (error, expected) in [
+        (
+            root::read_io(IoOperation::Open, std::io::Error::other("read boundary")),
+            Outcome::Unreadable,
+        ),
+        (
+            root::write_io(IoOperation::Open, std::io::Error::other("write boundary")),
+            Outcome::Write,
+        ),
+    ] {
+        assert_eq!(error.outcome(), expected);
+        let native = match error {
+            Error::Read { error }
+            | Error::File {
+                error: FileError::Io(error),
+            } => error,
+            other => panic!("original I/O cause lost: {other:?}"),
+        };
+        assert_eq!(native.action, IoOperation::Open);
+        assert_eq!(native.cause.error().kind(), std::io::ErrorKind::Other);
+    }
+}

@@ -17,8 +17,8 @@ use serde::{Deserialize, Serialize};
 ///
 /// Recipe content is immutable outside core; edits must pass a checked builder.
 /// ```compile_fail
-/// use auditorylab_core::{Recipe, catalog};
-/// let recipe = Recipe::parse(&catalog::ENTRIES[0].text()).unwrap();
+/// use auditorylab_core::catalog;
+/// let recipe = catalog::ENTRIES[0].recipe().unwrap();
 /// let _ = recipe.content;
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]

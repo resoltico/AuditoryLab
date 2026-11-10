@@ -347,8 +347,9 @@ impl LibraryStore {
     pub(crate) fn new(root: LibraryRoot) -> Result<Self, Error> {
         let mut reserved = BTreeSet::new();
         for entry in crate::core::catalog::ENTRIES {
-            let recipe =
-                Recipe::parse(&entry.text()).map_err(|e| Error::InvalidBuiltin { error: e })?;
+            let recipe = entry
+                .recipe()
+                .map_err(|e| Error::InvalidBuiltin { error: e })?;
             if !reserved.insert(recipe.document().id) {
                 return Err(Error::DuplicateBuiltin {
                     id: recipe.document().id,
@@ -847,7 +848,7 @@ fn exists(dir: &Dir, name: &str) -> Result<bool, Error> {
     match dir.symlink_metadata(name) {
         Ok(_) => Ok(true),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
-        Err(e) => Err(root::io(IoOperation::Inspect, e)),
+        Err(e) => Err(root::read_io(IoOperation::Inspect, e)),
     }
 }
 fn prune_memberships(lease: &root::Lease, memberships: &mut Memberships) -> Result<usize, Error> {
@@ -872,9 +873,9 @@ fn reconcile_moves(
     let trash = lease.directory("trash")?;
     for entry in trash
         .entries()
-        .map_err(|e| root::io(IoOperation::Read, e))?
+        .map_err(|e| root::read_io(IoOperation::Read, e))?
     {
-        let entry = entry.map_err(|e| root::io(IoOperation::Inspect, e))?;
+        let entry = entry.map_err(|e| root::read_io(IoOperation::Inspect, e))?;
         let name = entry.file_name();
         if name
             .to_str()
@@ -888,7 +889,7 @@ fn reconcile_moves(
         {
             recipes
                 .remove_file(&name)
-                .map_err(|e| root::io(IoOperation::Remove, e))?;
+                .map_err(|e| root::write_io(IoOperation::Remove, e))?;
             warnings.push(crate::storage::warning::StorageWarning::RecoveredMove {
                 name: (name).clone(),
             });
@@ -1066,12 +1067,12 @@ impl LibraryScan<'_> {
             .lease
             .dir
             .entries()
-            .map_err(|e| root::io(IoOperation::Read, e))?
+            .map_err(|e| root::read_io(IoOperation::Read, e))?
         {
             if self.cancel.is_requested() {
                 return Err(cancelled());
             }
-            let entry = entry.map_err(|e| root::io(IoOperation::Inspect, e))?;
+            let entry = entry.map_err(|e| root::read_io(IoOperation::Inspect, e))?;
             let name = entry.file_name();
             if matches!(
                 name.to_str(),
@@ -1102,11 +1103,14 @@ impl LibraryScan<'_> {
     fn records(&mut self) -> Result<(), Error> {
         for (directory, trashed) in [("recipes", false), ("trash", true)] {
             let dir = self.lease.directory(directory)?;
-            for entry in dir.entries().map_err(|e| root::io(IoOperation::Read, e))? {
+            for entry in dir
+                .entries()
+                .map_err(|e| root::read_io(IoOperation::Read, e))?
+            {
                 if self.cancel.is_requested() {
                     return Err(cancelled());
                 }
-                let entry = entry.map_err(|e| root::io(IoOperation::Inspect, e))?;
+                let entry = entry.map_err(|e| root::read_io(IoOperation::Inspect, e))?;
                 self.count += 1;
                 if self.count > self.limits.entries {
                     return Err(budget());
@@ -1204,7 +1208,7 @@ impl LibraryScan<'_> {
         let stages = self.lease.directory(".stage")?;
         for entry in stages
             .entries()
-            .map_err(|e| root::io(IoOperation::Read, e))?
+            .map_err(|e| root::read_io(IoOperation::Read, e))?
         {
             if self.cancel.is_requested() {
                 return Err(cancelled());
@@ -1213,7 +1217,7 @@ impl LibraryScan<'_> {
             if self.count > self.limits.entries {
                 return Err(budget());
             }
-            let entry = entry.map_err(|e| root::io(IoOperation::Inspect, e))?;
+            let entry = entry.map_err(|e| root::read_io(IoOperation::Inspect, e))?;
             self.result
                 .stages
                 .push(std::path::Path::new(".stage").join(entry.file_name()));
