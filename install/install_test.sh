@@ -43,7 +43,7 @@ machine=$(uname -m)
 [[ "${hardware}" != 1 ]] || machine=arm64
 case "${machine}" in x86_64 | amd64) arch=${x64_token} ;; arm64 | aarch64) arch=${arm64_token} ;; *) echo "Unsupported native processor: ${machine}" >&2; exit 2 ;; esac
 if [[ "${archive_versioned}" == 1 ]]; then
-    candidates=("${dist}/${archive_prefix}"*"${archive_separator}${os}${archive_separator}${arch}.tar.gz")
+    candidates=("${dist}/${archive_prefix}"[0-9]*"${archive_separator}${os}${archive_separator}${arch}.tar.gz")
     [[ ${#candidates[@]} -eq 1 && -f "${candidates[0]}" ]] || { echo 'Expected one native versioned archive' >&2; exit 2; }
     native_archive=${candidates[0]}
 else native_archive=${dist}/${archive_prefix}${os}${archive_separator}${arch}.tar.gz; fi

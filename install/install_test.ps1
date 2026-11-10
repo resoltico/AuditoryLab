@@ -345,8 +345,11 @@ try {
         if ($script:failures -gt 0) { throw "$($script:failures) helper checks failed." }
         return
     }
-    $versions = @(Get-ChildItem -LiteralPath $Dist -Filter 'auditorylab-*-windows-*.zip' | ForEach-Object {
-        if ($_.Name -cmatch '^auditorylab-([0-9]+\.[0-9]+\.[0-9]+)-windows-(x86_64|aarch64)\.zip$') { $Matches[1] }
+    $archivePattern = '^auditorylab-([0-9]+\.[0-9]+\.[0-9]+)-windows-(x86_64|aarch64)\.zip$'
+    # The complete release also contains GUI ZIPs; mutate only actual CLI inputs.
+    $windowsArchives = @(Get-ChildItem -LiteralPath $Dist -Filter '*.zip' | Where-Object { $_.Name -cmatch $archivePattern })
+    $versions = @($windowsArchives | ForEach-Object {
+        if ($_.Name -cmatch $archivePattern) { $Matches[1] }
     } | Select-Object -Unique)
     if ($versions.Count -ne 1) { throw 'Expected one release version in the native Windows archives.' }
     $testVersion = $versions[0]
@@ -428,7 +431,7 @@ try {
         $beforeSeal = [IO.File]::ReadAllText($receiptSeal)
         $tampered = Join-Path $work "$shellName-tampered"
         [void][IO.Directory]::CreateDirectory($tampered)
-        foreach ($file in Get-ChildItem -LiteralPath $Dist -Filter '*.zip') { [IO.File]::Copy($file.FullName, (Join-Path $tampered $file.Name)) }
+        foreach ($file in $windowsArchives) { [IO.File]::Copy($file.FullName, (Join-Path $tampered $file.Name)) }
         $lines = @([IO.File]::ReadAllLines((Join-Path $Dist $checksumName)) | ForEach-Object { ('0' * 64) + '  ' + ($_ -split '\s+')[1] })
         [IO.File]::WriteAllLines((Join-Path $tampered $checksumName), $lines)
         Check 'bad checksum fails through -File' ((Invoke-Installer $shell @('-InstallDir', $dir, '-NoModifyPath') $tampered -AsFile) -ne 0)
@@ -436,7 +439,7 @@ try {
         Check 'binary and receipt unchanged' ((Get-FileHash -LiteralPath $exe).Hash -eq $before -and [IO.File]::ReadAllText($receiptFile) -ceq $beforeReceipt -and [IO.File]::ReadAllText($receiptSeal) -ceq $beforeSeal)
         $wrongVersion = Join-Path $work "$shellName-wrong-version"
         [void][IO.Directory]::CreateDirectory($wrongVersion)
-        foreach ($file in Get-ChildItem -LiteralPath $Dist -Filter 'auditorylab-*-windows-*.zip') {
+        foreach ($file in $windowsArchives) {
             $renamed = $file.Name -creplace '^auditorylab-[0-9]+\.[0-9]+\.[0-9]+-', 'auditorylab-999.0.0-'
             [IO.File]::Copy($file.FullName, (Join-Path $wrongVersion $renamed))
             Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -460,7 +463,7 @@ try {
         Write-Host '--- malformed and ambiguous release data'
         $duplicate = Join-Path $work "$shellName-duplicate-checksum"
         [void][IO.Directory]::CreateDirectory($duplicate)
-        foreach ($file in Get-ChildItem -LiteralPath $Dist -Filter '*.zip') { [IO.File]::Copy($file.FullName, (Join-Path $duplicate $file.Name)) }
+        foreach ($file in $windowsArchives) { [IO.File]::Copy($file.FullName, (Join-Path $duplicate $file.Name)) }
         $manifest = [IO.File]::ReadAllText((Join-Path $Dist $checksumName))
         [IO.File]::WriteAllText((Join-Path $duplicate $checksumName), $manifest + "`n" + $manifest)
         Check 'duplicate checksums fail without replacement' ((Invoke-Installer $shell @('-InstallDir', $dir, '-NoModifyPath') $duplicate) -ne 0 -and (Get-FileHash -LiteralPath $exe).Hash -eq $before)
@@ -470,7 +473,7 @@ try {
         foreach ($kind in $badKinds) {
             $badZip = Join-Path $work ("$shellName-$kind-zip")
             [void][IO.Directory]::CreateDirectory($badZip)
-            foreach ($file in Get-ChildItem -LiteralPath $Dist -Filter '*.zip') {
+            foreach ($file in $windowsArchives) {
                 $path = Join-Path $badZip $file.Name
                 [IO.File]::Copy($file.FullName, $path)
                 $zip = [IO.Compression.ZipFile]::Open($path, [IO.Compression.ZipArchiveMode]::Update)
