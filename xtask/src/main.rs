@@ -442,6 +442,8 @@ fn source_notice(version: &str, source: &source::Source) -> String {
             (Unix UTC seconds)\nMatching Corresponding Source archive: \
             auditorylab-{version}-source.tar.gz\nDownload: \
             https://github.com/resoltico/AuditoryLab/releases/download/v{version}/auditorylab-{version}-source.tar.gz\n\
+            CI binaries: download the corresponding-source artifact from the same \
+            workflow run as the binary archive and verify this source revision.\n\
             Software uses AGPL-3.0-only; see LICENSE and PROJECT-NOTICE.md. Owner \
             artwork uses the same public license.\nProvide matching \
             Corresponding Source, including modifications and required build/install \

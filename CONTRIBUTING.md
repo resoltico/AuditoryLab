@@ -26,6 +26,8 @@ cargo xtask verify-vendor
 actionlint
 ```
 
+The Unix installer qualification harness also needs Python 3.8+ for isolated signal/process-group cases; the installed CLI and standalone installers do not require Python.
+
 The artwork check needs Python 3.9+ with its standard library; ordinary Rust builds use tracked SVGs without running Python. See the [editable source guide](artwork/onboarding/README.md) for generation and ownership.
 
 The compiler warns about ordinary hygiene locally. Core emits missing-documentation warnings; unsafe-code rules remain denied. CI denies workspace Clippy pedantic findings and documentation warnings without applying a global warning denial to vendored path dependencies.

@@ -26,7 +26,9 @@ trademark rights. Third-party artwork, fonts and other components keep their own
 
 Release packaging produces `auditorylab-VERSION-source.tar.gz` alongside the
 binary archives. Obtain the source archive for the same build as the binaries;
-`SOURCE.txt` identifies its source revision and download location. The archive contains
+`SOURCE.txt` identifies its source revision and download location. CI binary artifacts
+have a matching `corresponding-source` artifact in the same workflow run; verify the
+source revision agrees before using either. The archive contains
 the tracked project sources, artwork and build/install inputs plus Cargo's vendored
 locked dependency sources, including local patches. It also includes Cargo configuration
 to restore those dependencies without a registry download. Retain the matching archive

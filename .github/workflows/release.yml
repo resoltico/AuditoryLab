@@ -86,10 +86,16 @@ jobs:
           path: target/distributions
           merge-multiple: false
           digest-mismatch: error
+      - name: Download the source qualified with these binaries
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: corresponding-source
+          path: target/source-artifact
+          digest-mismatch: error
       - name: Write checksums and release notes
         run: |
           cargo xtask collect-assets "$RELEASE_VERSION" target/distributions target/assets
-          cargo xtask source-archive "target/assets/auditorylab-${RELEASE_VERSION}-source.tar.gz"
+          cp "target/source-artifact/auditorylab-${RELEASE_VERSION}-source.tar.gz" target/assets/
           python3 install/prepare-test-release.py target/assets
           cargo xtask notes "$RELEASE_VERSION" > target/notes.md
       - id: provenance

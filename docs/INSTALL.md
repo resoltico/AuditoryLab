@@ -71,6 +71,8 @@ and current-session PATH unchanged.
 
 The public 0.12.0 installer retains its published behavior and has no explicit unmanaged-replacement option. The lifecycle corrections below describe the reviewed checkout and will be available in a future release. To use them before publication, inspect and run `install/install.sh` or `install/install.ps1` from this checkout; do not pass the new flag to an older downloaded script.
 
+This checkout requires the expanded project licensing notices in newly built CLI archives. Immutable public 0.12.0 archives do not contain those added files. Before a future release, qualify checkout changes against matching CI archives and their `SHA256SUMS` in a flat directory, selecting that directory with `AUDITORYLAB_DOWNLOAD_BASE` and the archive's stable version with `--version` / `-Version`. Obtain the same workflow run's `corresponding-source` artifact. Public install commands above continue to use the published script and compatible published assets. For an older release's archived payload, use that release's reviewed installer; do not edit or replace public assets to satisfy this checkout's package contract.
+
 ## Update and choose a release
 
 Run the same install command again. The installer resolves latest once to a stable
