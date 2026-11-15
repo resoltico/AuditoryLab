@@ -193,7 +193,7 @@ pub(crate) fn structure_description(structure: &Structure) -> String {
             .voices
             .iter()
             .find(|v| v.id == r.owner && v.role == r.role)
-            .map(|v| match (r.method, v.facts.carrier, v.facts.modulation) {
+            .map_or_default(|v| match (r.method, v.facts.carrier, v.facts.modulation) {
                 (Method::Sinusoidal, _, Some(ModulationFacts::Sinusoidal { depth, .. })) => {
                     format!(" · depth {}%", compact_number(depth * 100.0))
                 }
@@ -205,8 +205,7 @@ pub(crate) fn structure_description(structure: &Structure) -> String {
                     )
                 }
                 _ => String::new(),
-            })
-            .unwrap_or_default();
+            });
         let role = if structure.changing {
             match r.role {
                 auditorylab_core::SlotRole::Outgoing => "Outgoing ",
@@ -258,8 +257,7 @@ pub(crate) fn structure_description(structure: &Structure) -> String {
     let route = routes
         .first()
         .filter(|first| routes.iter().all(|r| r == *first))
-        .map(|s| format!(" · {s}"))
-        .unwrap_or_default();
+        .map_or_default(|s| format!(" · {s}"));
     format!(
         "{}{text}{route}",
         if structure.changing {

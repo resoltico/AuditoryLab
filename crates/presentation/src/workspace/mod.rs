@@ -262,8 +262,7 @@ pub fn parameter_text(
         diagnostic: field
             .diagnostic
             .as_ref()
-            .map(|cause| field_diagnostic(cause, editor))
-            .unwrap_or_default(),
+            .map_or_default(|cause| field_diagnostic(cause, editor)),
     }
 }
 /// Render one metadata field directly from its typed view.
@@ -281,11 +280,10 @@ pub fn metadata_text(
         diagnostic: field
             .diagnostic
             .as_ref()
-            .map(|cause| match cause {
+            .map_or_default(|cause| match cause {
                 FieldDiagnostic::Sound(error) => crate::errors::acoustic::sound_error(error),
                 _ => field_diagnostic(cause, editor),
-            })
-            .unwrap_or_default(),
+            }),
     }
 }
 /// Render one component directly; child fields retain their app-owned structure.
@@ -314,8 +312,7 @@ pub fn component_text(
                 component
                     .facts
                     .as_ref()
-                    .map(crate::voice_summary)
-                    .unwrap_or_default()
+                    .map_or_default(crate::voice_summary)
             },
             |pair| {
                 format!(
@@ -664,8 +661,7 @@ pub fn library_view(data: &auditorylab_app::workspace::LibraryView) -> LibraryTe
     let ownership = data
         .selected
         .and_then(|index| data.rows.get(index))
-        .map(|row| crate::library::row(row, data.sort).collection)
-        .unwrap_or_default();
+        .map_or_default(|row| crate::library::row(row, data.sort).collection);
     LibraryText {
         heading,
         title: snapshot.title(),
@@ -858,7 +854,7 @@ pub fn action_view(
     workspace: &auditorylab_app::workspace::Workspace,
 ) -> ActionText {
     let reason = |refusal: &Refusal| action_reason(refusal, workspace);
-    let play_reason = view.play_reason.as_ref().map(reason).unwrap_or_default();
+    let play_reason = view.play_reason.as_ref().map_or_default(reason);
     let (operation_summary, operation_outcome, operation_details) =
         transport_feedback(view, workspace, &play_reason);
     ActionText {
@@ -868,27 +864,18 @@ pub fn action_view(
             auditorylab_app::vocabulary::Operation::PlaySelectedSound
         })
         .label(),
-        copy_reason: view.copy_reason.as_ref().map(reason).unwrap_or_default(),
+        copy_reason: view.copy_reason.as_ref().map_or_default(reason),
         operation_summary,
         operation_outcome,
         operation_details,
         play_reason,
-        save_reason: view.save_reason.as_ref().map(reason).unwrap_or_default(),
-        export_reason: view.export_reason.as_ref().map(reason).unwrap_or_default(),
-        pair_add_reason: view
-            .pair_add_reason
-            .as_ref()
-            .map(reason)
-            .unwrap_or_default(),
-        add_component_reason: view
-            .add_component_reason
-            .as_ref()
-            .map(reason)
-            .unwrap_or_default(),
+        save_reason: view.save_reason.as_ref().map_or_default(reason),
+        export_reason: view.export_reason.as_ref().map_or_default(reason),
+        pair_add_reason: view.pair_add_reason.as_ref().map_or_default(reason),
+        add_component_reason: view.add_component_reason.as_ref().map_or_default(reason),
         removed_component: view
             .removed_component
-            .map(|c| removed_component(c.form, c.id))
-            .unwrap_or_default(),
+            .map_or_default(|c| removed_component(c.form, c.id)),
         transport_label: view.transport_action.label().into(),
         play_target: view.play_target.clone(),
         file_status: [

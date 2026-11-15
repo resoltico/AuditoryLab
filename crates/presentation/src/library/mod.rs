@@ -524,8 +524,7 @@ pub fn workspace_library_status(value: &auditorylab_app::workspace::Workspace) -
         ),
         None => d
             .problem
-            .map(crate::errors::library_diagnostic_message)
-            .unwrap_or_default(),
+            .map_or_default(crate::errors::library_diagnostic_message),
     }
 }
 /// A folder that was never set up holds nothing, so it reads as complete
@@ -681,8 +680,7 @@ pub fn selection_binding(
             key: binding.key.to_string(),
             token: binding
                 .version_token
-                .map(|token| token.to_string())
-                .unwrap_or_default(),
+                .map_or_default(|token| token.to_string()),
             trashed: binding.trashed,
         },
     )

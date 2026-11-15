@@ -943,8 +943,7 @@ fn binding(binding: Option<SelectionBinding<'_>>) -> (String, String, bool) {
         binding.key.to_string(),
         binding
             .version_token
-            .map(|token| token.to_string())
-            .unwrap_or_default(),
+            .map_or_default(|token| token.to_string()),
         binding.trashed,
     )
 }
