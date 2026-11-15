@@ -422,8 +422,7 @@ impl SlintAdapter {
             .executor
             .borrow_mut()
             .as_mut()
-            .map(|executor| executor.poll())
-            .unwrap_or_default();
+            .map_or_default(|executor| executor.poll());
         if let Some(workspace) = self.workspace.borrow_mut().as_mut() {
             for response in responses {
                 workspace.respond(response);
@@ -437,13 +436,12 @@ impl SlintAdapter {
             .workspace
             .borrow_mut()
             .as_mut()
-            .map(|workspace| {
+            .map_or_default(|workspace| {
                 // Commands must refresh pure source models even when monitoring has
                 // stopped the redraw timer. Worker ticks use this same completion path.
                 workspace.poll();
                 workspace.take_effects()
-            })
-            .unwrap_or_default();
+            });
         let mut shown_view = None;
         for effect in effects {
             if let Some(view) = self.perform(effect) {
@@ -554,8 +552,7 @@ impl SlintAdapter {
             .workspace
             .borrow()
             .as_ref()
-            .map(|w| w.editor().draft().title().to_owned())
-            .unwrap_or_default();
+            .map_or_default(|w| w.editor().draft().title().to_owned());
         let title = auditorylab_presentation::display_scalar(&(title));
         match title.char_indices().nth(60) {
             Some((cut, _)) => format!("{}…", &title[..cut]),

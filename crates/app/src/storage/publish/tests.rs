@@ -317,15 +317,11 @@ fn kill_at_pause(child: &mut Child, ready: &Path) {
     let deadline = Instant::now() + Duration::from_secs(20);
     while !ready.exists() {
         if let Some(status) = child.try_wait().unwrap() {
-            let output = child
-                .stderr
-                .take()
-                .map(|mut stream| {
-                    let mut text = String::new();
-                    stream.read_to_string(&mut text).unwrap();
-                    text
-                })
-                .unwrap_or_default();
+            let output = child.stderr.take().map_or_default(|mut stream| {
+                let mut text = String::new();
+                stream.read_to_string(&mut text).unwrap();
+                text
+            });
             panic!("child exited before pause {status}: {output}");
         }
         if Instant::now() > deadline {

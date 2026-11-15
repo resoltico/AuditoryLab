@@ -1528,7 +1528,7 @@ impl Workspace {
                 match self.view {
                     View::Workbench => self.editor.session().draft().title().to_owned(),
                     View::Library | View::DeviceCheck | View::Recordings => {
-                        self.shown().map(RecipeSnapshot::title).unwrap_or_default()
+                        self.shown().map_or_default(RecipeSnapshot::title)
                     }
                 }
             },
@@ -1601,10 +1601,7 @@ impl Workspace {
                         .is_ok(),
                     O::LibraryRename => self
                         .selected_mutation_admission(EntryMutation::Rename {
-                            title: self
-                                .selected()
-                                .map(RecipeSnapshot::title)
-                                .unwrap_or_default(),
+                            title: self.selected().map_or_default(RecipeSnapshot::title),
                         })
                         .is_ok(),
                     O::LibraryRestore => self

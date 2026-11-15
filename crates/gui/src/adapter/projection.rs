@@ -123,8 +123,7 @@ impl SlintAdapter {
         self.workspace
             .borrow()
             .as_ref()
-            .map(|w| w.query().to_owned())
-            .unwrap_or_default()
+            .map_or_default(|w| w.query().to_owned())
     }
 
     /// Reconcile the document's rows by identity. Only a replaced document
