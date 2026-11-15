@@ -1035,7 +1035,11 @@ fn about_and_licenses_use_production_actions_and_reopen_without_losing_terms() {
     assert!(h.windows.licenses.window().is_visible());
     assert_eq!(
         h.windows.licenses.get_licenses().as_str(),
-        include_str!("../../../LICENSE")
+        concat!(
+            include_str!("../../../PROJECT-NOTICE.md"),
+            "\n\n",
+            include_str!("../../../LICENSE")
+        )
     );
     h.windows.licenses.invoke_third_party_licenses_requested();
     assert!(h.windows.licenses.get_notice().contains("missing or empty"));

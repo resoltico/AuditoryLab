@@ -17,12 +17,14 @@ use std::{
     process::{Command, Stdio},
 };
 use targets::platform;
-const LEGAL_FILES: [&str; 5] = [
+const LEGAL_FILES: [&str; 7] = [
     "LICENSE",
     "README.txt",
     "THIRD-PARTY-NOTICES.txt",
     "COPYRIGHT-library.html",
     "SOURCE.txt",
+    "PROJECT-NOTICE.md",
+    "LICENSE-COMMERCIAL.md",
 ];
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 fn run(command: &mut Command) -> Result<()> {
@@ -196,10 +198,10 @@ fn readme(version: &str, gui: bool, target: &str) -> String {
         .replace(
             "{legal}",
             if gui {
-                "Software: MPL-2.0; owner artwork: separate proprietary terms in LICENSE.\n\
-                Unchanged artwork may accompany modified MPL-covered Auditory Lab distributions."
+                "Software: AGPL-3.0-only; project-owned artwork uses the same public license.\n\
+                See PROJECT-NOTICE.md for license scope and Corresponding Source."
             } else {
-                "Software: MPL-2.0; see LICENSE."
+                "Software: AGPL-3.0-only; see LICENSE and PROJECT-NOTICE.md."
             },
         )
         .replace("{platform_notes}\n", notes)
@@ -338,15 +340,21 @@ fn about(product: &str, target: &str, meta: &Value, executable: Option<&Path>) -
         text.push_str(&fonts::notices(&fonts::embedded(&fs::read(executable)?))?);
     }
     if product == "gui" {
-        text.push_str(
-            "\nOwner artwork terms (complete software and artwork terms are also in LICENSE)\n\n",
-        );
-        text.push_str(
-            include_str!("../../LICENSE")
-                .split("The unmodified Mozilla Public License follows.")
-                .next()
-                .ok_or("artwork terms missing")?,
-        );
+        text.push_str(include_str!("../templates/slint-badge-notice.txt"));
+        text.push_str(include_str!(
+            "../../third_party/i-slint-compiler/LICENSES/CC-BY-ND-4.0.txt"
+        ));
+        if target.contains("apple") {
+            text.push_str(include_str!("../templates/slint-cupertino-notice.txt"));
+            text.push_str(include_str!(
+                "../../third_party/i-slint-compiler/LICENSES/Apache-2.0.txt"
+            ));
+        } else if target.contains("windows") || target.contains("linux") {
+            text.push_str(include_str!("../templates/slint-fluent-notice.txt"));
+            text.push_str(include_str!(
+                "../../third_party/i-slint-compiler/LICENSES/MIT.txt"
+            ));
+        }
     }
     Ok(text)
 }
@@ -431,15 +439,20 @@ fn smoke(cli: &Path, scratch: &Path) -> Result<()> {
 fn source_notice(version: &str, source: &source::Source) -> String {
     format!(
         "Auditory Lab {version}\nSource revision: {}\nSource commit epoch: {} \
-            (Unix UTC seconds)\nCorresponding source: \
-            https://github.com/resoltico/AuditoryLab/tree/{}\nRelease source \
-            archives: https://github.com/resoltico/AuditoryLab/releases\nSoftware \
-            uses MPL-2.0; owner artwork has separate terms in \
-            LICENSE.\nRedistributors must provide corresponding MPL-covered \
-            source and tell recipients how to obtain it.\n",
-        source.revision, source.epoch, source.revision
+            (Unix UTC seconds)\nMatching Corresponding Source archive: \
+            auditorylab-{version}-source.tar.gz\nDownload: \
+            https://github.com/resoltico/AuditoryLab/releases/download/v{version}/auditorylab-{version}-source.tar.gz\n\
+            CI binaries: download the corresponding-source artifact from the same \
+            workflow run as the binary archive and verify this source revision.\n\
+            Software uses AGPL-3.0-only; see LICENSE and PROJECT-NOTICE.md. Owner \
+            artwork uses the same public license.\nProvide matching \
+            Corresponding Source, including modifications and required build/install \
+            inputs, when the AGPL requires it. Upstream archives do not cover \
+            downstream changes.\n",
+        source.revision, source.epoch
     )
 }
+
 fn copy_tree(source: &Path, destination: &Path) -> Result<()> {
     fs::create_dir_all(destination)?;
     for entry in fs::read_dir(source)? {
@@ -493,7 +506,9 @@ fn dist(target: &str, out: &Path, icons: Option<&Path>) -> Result<()> {
                 folder.join("README.txt"),
                 readme(&version, product == "gui", target),
             )?;
-            fs::copy("LICENSE", folder.join("LICENSE"))?;
+            for name in ["LICENSE", "PROJECT-NOTICE.md", "LICENSE-COMMERCIAL.md"] {
+                fs::copy(name, folder.join(name))?;
+            }
             fs::write(folder.join("COPYRIGHT-library.html"), &rust_copyright)?;
             fs::write(folder.join("SOURCE.txt"), source_notice(&version, &source))?;
             if product == "gui" && target.contains("apple") {
@@ -564,6 +579,7 @@ fn main() -> Result<()> {
         Some("check-style") if args.len() == 1 => style::check(),
         Some("check-targets") if args.len() == 1 => targets::check(),
         Some("verify-vendor") if args.len() == 1 => vendor::verify(),
+        Some("source-archive") if args.len() == 2 => source::archive(Path::new(&args[1])),
         Some("dist") => run_dist(&args),
         Some("compile-icons") if args.len() == 2 => {
             macos::compile_icons(Path::new(&args[1]), &source::Source::resolve()?)
@@ -622,7 +638,7 @@ fn main() -> Result<()> {
             "use cargo xtask check-style, check-targets, verify-vendor, dist --target TARGET [--out DIR] \
             [--icons DIR], compile-icons OUTPUT, inspect-package TARGET ARCHIVE, \
             collect-assets VERSION INPUT OUTPUT, notices PRODUCT TARGET OUTPUT [EXECUTABLE], \
-            notes VERSION, or check-release VERSION"
+            source-archive OUTPUT, notes VERSION, or check-release VERSION"
                 .into(),
         ),
     }
@@ -801,14 +817,17 @@ mod tests {
     #[test]
     fn readmes_state_only_their_own_product_terms_and_launch_steps() {
         let cli = readme("0.4.0", false, "aarch64-apple-darwin");
-        assert!(cli.contains("Software: MPL-2.0; see LICENSE."), "{cli}");
+        assert!(
+            cli.contains("Software: AGPL-3.0-only; see LICENSE and PROJECT-NOTICE.md."),
+            "{cli}"
+        );
         assert!(
             !cli.contains("artwork") && !cli.contains("open the app"),
             "{cli}"
         );
         assert!(cli.contains("after trying to run auditorylab"), "{cli}");
         let gui = readme("0.4.0", true, "aarch64-apple-darwin");
-        assert!(gui.contains("owner artwork: separate proprietary terms in LICENSE"));
+        assert!(gui.contains("project-owned artwork uses the same public license"));
         assert!(gui.contains("after trying to open the app"));
         assert!(!gui.contains("{legal}") && !cli.contains("{legal}"));
     }

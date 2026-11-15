@@ -116,6 +116,25 @@ fn windows_executable(bytes: &[u8], desktop: bool) -> Result<()> {
     }
     Ok(())
 }
+fn project_terms(root: &Path) -> Result<()> {
+    for (name, expected) in [
+        ("LICENSE", include_bytes!("../../LICENSE").as_slice()),
+        (
+            "PROJECT-NOTICE.md",
+            include_bytes!("../../PROJECT-NOTICE.md").as_slice(),
+        ),
+        (
+            "LICENSE-COMMERCIAL.md",
+            include_bytes!("../../LICENSE-COMMERCIAL.md").as_slice(),
+        ),
+    ] {
+        if fs::read(root.join(name))? != expected {
+            return Err(format!("package {name} differs from its complete terms").into());
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn inspect(
     archive: &Path,
     out: &Path,
@@ -160,9 +179,7 @@ pub(crate) fn inspect(
             "packaged Rust standard-library notices differ from the compiler's original".into(),
         );
     }
-    if fs::read(root.join("LICENSE"))? != include_bytes!("../../LICENSE") {
-        return Err("package LICENSE differs from complete software/artwork terms".into());
-    }
+    project_terms(&root)?;
     if fs::read_to_string(root.join("SOURCE.txt"))? != crate::source_notice(version, source) {
         return Err("package source availability identity differs".into());
     }
@@ -386,7 +403,19 @@ mod tests {
         ] {
             fs::write(folder.join(name), "fixture").unwrap();
         }
-        fs::write(folder.join("LICENSE"), include_bytes!("../../LICENSE")).unwrap();
+        for (name, text) in [
+            ("LICENSE", include_bytes!("../../LICENSE").as_slice()),
+            (
+                "PROJECT-NOTICE.md",
+                include_bytes!("../../PROJECT-NOTICE.md").as_slice(),
+            ),
+            (
+                "LICENSE-COMMERCIAL.md",
+                include_bytes!("../../LICENSE-COMMERCIAL.md").as_slice(),
+            ),
+        ] {
+            fs::write(folder.join(name), text).unwrap();
+        }
         fs::write(
             folder.join("SOURCE.txt"),
             crate::source_notice(

@@ -41,7 +41,6 @@ fn entries(parent: &Path, at: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
             entries(parent, &entry?.path(), out)?;
         }
     }
-    out.sort();
     Ok(())
 }
 #[cfg_attr(
@@ -73,6 +72,7 @@ pub(crate) fn write(folder: &Path, out: &Path, format: Format, epoch: u64) -> Re
     let parent = folder.parent().ok_or("archive parent missing")?;
     let mut members = Vec::new();
     entries(parent, folder, &mut members)?;
+    members.sort();
     match format {
         Format::Tar => {
             let gzip = flate2::GzBuilder::new()

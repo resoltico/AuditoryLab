@@ -19,6 +19,8 @@ fn beside_executable(executable: &Path) -> Result<PathBuf, String> {
     };
     for name in [
         "LICENSE",
+        "PROJECT-NOTICE.md",
+        "LICENSE-COMMERCIAL.md",
         "THIRD-PARTY-NOTICES.txt",
         "COPYRIGHT-library.html",
         "SOURCE.txt",
@@ -59,6 +61,8 @@ mod tests {
             std::fs::create_dir_all(&resources).unwrap();
             for name in [
                 "LICENSE",
+                "PROJECT-NOTICE.md",
+                "LICENSE-COMMERCIAL.md",
                 "THIRD-PARTY-NOTICES.txt",
                 "COPYRIGHT-library.html",
                 "SOURCE.txt",

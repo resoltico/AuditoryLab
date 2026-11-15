@@ -34,6 +34,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .embed_resources(slint_build::EmbedResourcesKind::EmbedFiles),
     )?;
     println!("cargo:rerun-if-changed=../../LICENSE");
+    println!("cargo:rerun-if-changed=../../PROJECT-NOTICE.md");
     println!(
         "cargo:rerun-if-changed=../../artwork/auditorylab-icon/assets/runtime/window-icon.png"
     );

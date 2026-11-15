@@ -6,7 +6,7 @@
 //! the calling thread until the session reaches a terminal outcome; the
 //! stream is torn down before its report is read.
 // Copyright 2026 Ervins Strauhmanis
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 mod error;
 pub(crate) use error::CODES as DIAGNOSTIC_CODES;

@@ -1,6 +1,6 @@
 //! Export of an `auditorylab-core` session to a 32-bit float WAV stream.
 // Copyright 2026 Ervins Strauhmanis
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 mod error;
 pub(crate) use error::CODES as ERROR_CODES;

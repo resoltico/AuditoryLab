@@ -170,19 +170,19 @@
   {
     "original": "/Users/erst/.codex/visualizations/2026/10/29/01a18744-f3ff-7ee2-9369-2ea8d9f8e438/auditorylab-onboarding-reviewed.html",
     "package": "reference/mockups/auditorylab-onboarding-reviewed.html",
-    "sha256": "eb3915721ae6d0f86964bc0b9f5307678fb610855703633b20ef6bc9c594ff19",
+    "sha256": "395c53fd78d7a9ef535725009f88efedff73488ac2b5b5420a8a6386fce89507",
     "role": "current corrected mixed-content design reference; not production application code"
   },
   {
     "original": "/Users/erst/Tools/auditorylab/target/handoffs/prepare-onboarding-preview.py",
     "package": "reference/mockups/prepare-reviewed-preview.py",
-    "sha256": "fc1fb4710ae427b7257794662cbee6f815cda39e8fabbc24d6a9eb0f91e73b00",
+    "sha256": "000ec4736e7d22091829c8ec5ec2aceabe7ae94992a71a733ca79c1c98ae5bb0",
     "role": "retained preparation helper; environment-specific software reference, not an app build dependency"
   },
   {
     "original": "/Users/erst/Tools/auditorylab/target/handoffs/prepare-onboarding-artwork.py",
     "package": "implementation-materials/artwork/onboarding/reference/prepare-onboarding-artwork.py",
-    "sha256": "6e4c5c9dabebbf2d5a6afff298b7b2355c1f494ab9c48c6cd46edad1dc3dd398",
-    "role": "historical art-bearing preparation source for preferred masters; proprietary reference, not a production build command"
+    "sha256": "e9e476798d0042ea73984c9f16a29dc9cc5b50e1d2d24ab8bb64f34e8d160520",
+    "role": "historical art-bearing preparation source for preferred masters; AGPL-3.0-only reference, not a production build command"
   }
 ]

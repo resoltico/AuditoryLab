@@ -1,7 +1,7 @@
 //! Waiting for a stream's terminal outcome, with a stall watchdog, an
 //! overall allowance for finite sources and a bounded wait after Stop.
 // Copyright 2026 Ervins Strauhmanis
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 use super::transport::{Rounding, frame_duration};
 use auditorylab_core::SampleRate;

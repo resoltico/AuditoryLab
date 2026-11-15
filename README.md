@@ -17,13 +17,19 @@ Set the device volume low before pressing Play, then raise it gradually. Digital
 Install the CLI for your user account on macOS or Linux:
 
 ```sh
-curl -fsSL https://github.com/resoltico/AuditoryLab/releases/latest/download/install.sh | sh
+curl -fsSL -o install-auditorylab.sh https://github.com/resoltico/AuditoryLab/releases/latest/download/install.sh &&
+sh ./install-auditorylab.sh
 ```
 
 On Windows, use PowerShell:
 
 ```powershell
-powershell -ExecutionPolicy ByPass -c "irm https://github.com/resoltico/AuditoryLab/releases/latest/download/install.ps1 | iex"
+& {
+    $ErrorActionPreference = 'Stop'
+    Invoke-WebRequest -UseBasicParsing https://github.com/resoltico/AuditoryLab/releases/latest/download/install.ps1 -OutFile .\install-auditorylab.ps1 -ErrorAction Stop
+    powershell -NoProfile -ExecutionPolicy ByPass -File .\install-auditorylab.ps1
+    if ($LASTEXITCODE -ne 0) { throw "Installer failed with exit $LASTEXITCODE" }
+}
 ```
 
 The installers verify the native CLI, support updates and offline uninstall,
@@ -105,4 +111,4 @@ An unbundled macOS executable can be run through Cargo; build a distribution for
 
 ## License
 
-Copyright © 2026 Ervins Strauhmanis. Software and documentation use MPL-2.0. Third-party components retain their own terms and appear in product-specific dependency notices. Owner artwork has separate terms in [LICENSE](LICENSE); the [artwork guide](artwork/README.md) identifies editable sources and attribution.
+Copyright © 2026 Ervins Strauhmanis. Software and documentation use [AGPL-3.0-only](LICENSE); see [project and contribution terms](PROJECT-NOTICE.md) and [commercial licensing status](LICENSE-COMMERCIAL.md). Third-party components retain their own terms and appear in product-specific dependency notices. Project-owned artwork uses the same AGPL-3.0-only license; the [artwork guide](artwork/README.md) identifies editable sources and attribution.

@@ -27,21 +27,21 @@ for name in ['auditorylab-start-here.html','auditorylab-onboarding-spectrum.html
 # All factual representative rates have one implementation input. Native Band owns membership/ranges.
 examples={'schema':1,'window_seconds':1,'normalized_amplitude':1,'initial_phase_cycles':0,'examples':[{'band':b[0].lower(),'example_hz':b[2]} for b in values['BANDS']]}
 (PKG/'implementation-materials/crates/app/src/learning/band_examples.json').write_text(json.dumps(examples,indent=2)+'\n')
-notice='''Copyright (c) 2026 Ervins Strauhmanis. All rights reserved.
-SPDX-License-Identifier: LicenseRef-Proprietary-Artwork
+notice='''Copyright (c) 2026 Ervins Strauhmanis.
+SPDX-License-Identifier: AGPL-3.0-only
 
-The root Auditory Lab LICENSE proprietary artwork terms govern these drawing inputs and generated art. The MPL generator's license does not grant rights to modify or independently reuse this artwork. Existing icon permissions and previously granted rights are preserved. Scientific facts, mathematical definitions and legally required rights are not claimed exclusively.
+Project-owned drawing inputs and generated artwork use AGPL-3.0-only; see the root LICENSE and PROJECT-NOTICE.md. Scientific facts and mathematical definitions are not claimed exclusively. No trademark rights are granted.
 '''
 (SRC/'LICENSE').write_text(notice)
-(SRC/'lettering.json').write_text(json.dumps({'copyright':'Copyright (c) 2026 Ervins Strauhmanis. All rights reserved.','license':'LicenseRef-Proprietary-Artwork','advance':9,'space_advance':5,'glyphs':values['GLYPHS']},indent=2)+'\n')
-palette={'copyright':'Copyright (c) 2026 Ervins Strauhmanis. All rights reserved.','license':'LicenseRef-Proprietary-Artwork','themes':{}}
+(SRC/'lettering.json').write_text(json.dumps({'copyright':'Copyright (c) 2026 Ervins Strauhmanis.','license':'AGPL-3.0-only','advance':9,'space_advance':5,'glyphs':values['GLYPHS']},indent=2)+'\n')
+palette={'copyright':'Copyright (c) 2026 Ervins Strauhmanis.','license':'AGPL-3.0-only','themes':{}}
 for mode,key in [('light','LIGHT'),('dark','DARK')]:
  v=values[key]
  p={'APPEARANCE':mode,'BACKGROUND':v['bg'],'FIELD':v['center'],'INK':v['ink'],'SUB':v['sub'],'LINE':v['line'],'HALO_OPACITY':'.22' if mode=='dark' else '.11','FILL_OPACITY':'.14' if mode=='dark' else '.09'}
  p.update({'COLOR_'+b[0]:color for b,color in zip(values['BANDS'],v['colors'])})
  palette['themes'][mode]=p
 (SRC/'palette.json').write_text(json.dumps(palette,indent=2)+'\n')
-art_comment='<!-- Copyright (c) 2026 Ervins Strauhmanis. All rights reserved.\nSPDX-License-Identifier: LicenseRef-Proprietary-Artwork\nSee the root Auditory Lab LICENSE for artwork permissions. -->\n'
+art_comment='<!-- Copyright (c) 2026 Ervins Strauhmanis.\nSPDX-License-Identifier: AGPL-3.0-only\nSee the root Auditory Lab LICENSE and PROJECT-NOTICE.md for AGPL-3.0-only terms. -->\n'
 # SVG masters own creative composition and glyph placements. Mathematical wave slots are regenerated.
 dark=(VIS/'rhythm-spectrum-studies/spectral-ribbon-dark.svg').read_text()
 dark=art_comment+dark
@@ -49,7 +49,7 @@ replacements={'#081622':'BACKGROUND','#122f3a':'FIELD','#edf5f7':'INK','#aec2ce'
 replacements.update({color:'COLOR_'+b[0] for b,color in zip(values['BANDS'],values['DARK']['colors'])})
 for color,token in replacements.items():dark=dark.replace(color,'${'+token+'}')
 dark=dark.replace('dark appearance','${APPEARANCE} appearance').replace('stop-opacity="0.22"','stop-opacity="${HALO_OPACITY}"').replace('opacity="0.14"','opacity="${FILL_OPACITY}"')
-# Replace original glyph definitions with one shared proprietary lettering input.
+# Replace original glyph definitions with one shared project-owned lettering input.
 pattern=r'<path id="g[0-9]+" d="[^"]*"/>'
 glyph_matches=re.findall(pattern,dark)
 assert len(glyph_matches)==len(values['GLYPHS'])
@@ -67,7 +67,7 @@ for b,cx,path in zip(values['BANDS'],centers,long_paths):
  dark=dark.replace(path,'${'+token+'}')
  slots[token]={'band':b[0].lower(),'x0':cx-132.5,'x1':cx+132.5,'center_y':344,'amplitude':73}
 (SRC/'spectral-ribbon.svg.in').write_text(dark)
-layout={'license':'LicenseRef-Proprietary-Artwork','masters':{'spectral-ribbon':{'template':'spectral-ribbon.svg.in','wave_slots':slots}}}
+layout={'license':'AGPL-3.0-only','masters':{'spectral-ribbon':{'template':'spectral-ribbon.svg.in','wave_slots':slots}}}
 # Five matched illustrative rhythm masters: same phase, duration, representative rate, normalization and colors.
 def glyph_label(text,x,y,size,color,align='start'):
  advance=9;scale=size/10;units=sum(5 if c==' ' else advance for c in text)-2
@@ -86,10 +86,7 @@ for b in values['BANDS']:
 (SRC/'layout.json').write_text(json.dumps(layout,indent=2)+'\n')
 # Proposed license update is a reviewable deliverable, not a live repository edit.
 license_text=(ROOT/'LICENSE').read_text()
-old='and images generated from those files. These files and images are excluded from the MPL grant above.'
-new='artwork/onboarding/source, artwork/onboarding/assets, artwork/onboarding/reference, and images generated from those files. These files and images are excluded from the MPL grant above.'
-assert license_text.count(old)==1
-license_text=license_text.replace(old,new)
 (PKG/'implementation-materials/LICENSE').write_text(license_text)
+(PKG/'implementation-materials/PROJECT-NOTICE.md').write_text((ROOT/'PROJECT-NOTICE.md').read_text())
 (PKG/'materials/retained-art-inventory.json').write_text(json.dumps(inventory,indent=2)+'\n')
 print(json.dumps({'staging':str(PKG),'historical_inputs_preserved':len(inventory),'selected_and_individual_masters':len(layout['masters'])},indent=2))

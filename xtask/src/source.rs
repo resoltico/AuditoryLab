@@ -105,6 +105,184 @@ impl Source {
     }
 }
 
+struct TrackedSource {
+    index: Vec<u8>,
+    files: Vec<(std::path::PathBuf, Vec<u8>, bool)>,
+}
+impl TrackedSource {
+    fn read(root: &std::path::Path) -> Result<Self> {
+        use std::{
+            fs,
+            path::{Component, Path},
+        };
+        if !capture(Command::new("git").current_dir(root).args([
+            "ls-files",
+            "--others",
+            "--exclude-standard",
+            "-z",
+        ]))?
+        .is_empty()
+        {
+            return Err("source archive refuses untracked files; review and add intended sources to Git first".into());
+        }
+        let index = capture(
+            Command::new("git")
+                .current_dir(root)
+                .args(["ls-files", "--stage", "-z"]),
+        )?;
+        let mut files = Vec::new();
+        for entry in index.split(|b| *b == 0).filter(|p| !p.is_empty()) {
+            let entry = std::str::from_utf8(entry)?;
+            let (fields, path) = entry.split_once('\t').ok_or("invalid Git index entry")?;
+            let fields: Vec<_> = fields.split(' ').collect();
+            if fields.len() != 3 || !matches!(fields[0], "100644" | "100755") || fields[2] != "0" {
+                return Err("source archive requires resolved stage-zero regular files".into());
+            }
+            let relative = Path::new(path);
+            if !relative
+                .components()
+                .all(|c| matches!(c, Component::Normal(_)))
+            {
+                return Err("source archive has a non-relative tracked path".into());
+            }
+            let original = root.join(relative);
+            if !fs::symlink_metadata(&original)?.is_file() {
+                return Err(format!(
+                    "source archive requires an ordinary tracked file: {}",
+                    original.display()
+                )
+                .into());
+            }
+            files.push((
+                relative.to_owned(),
+                fs::read(original)?,
+                fields[0] == "100755",
+            ));
+        }
+        Ok(Self { index, files })
+    }
+    fn copy_to(&self, folder: &std::path::Path) -> Result<()> {
+        for (relative, bytes, executable) in &self.files {
+            let destination = folder.join(relative);
+            std::fs::create_dir_all(destination.parent().ok_or("source parent missing")?)?;
+            std::fs::write(&destination, bytes)?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(
+                    destination,
+                    std::fs::Permissions::from_mode(if *executable { 0o755 } else { 0o644 }),
+                )?;
+            }
+            #[cfg(not(unix))]
+            let _ = executable;
+        }
+        Ok(())
+    }
+    fn verify(&self, root: &std::path::Path) -> Result<()> {
+        let current = Self::read(root)?;
+        if current.index != self.index {
+            return Err(
+                "Git index changed during source archive preparation; no archive was published"
+                    .into(),
+            );
+        }
+        for ((path, before, _), (_, after, _)) in self.files.iter().zip(&current.files) {
+            if before != after {
+                return Err(format!("Tracked source changed during archive preparation: {}; no archive was published", path.display()).into());
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Package tracked working sources and Cargo's complete locked dependency graph.
+/// General-purpose toolchains and platform system libraries are prerequisites.
+pub(crate) fn archive(out: &std::path::Path) -> Result<()> {
+    use std::fs;
+    if out.exists() {
+        return Err(format!("source archive output already exists: {}", out.display()).into());
+    }
+    let root = env::current_dir()?;
+    let tracked = TrackedSource::read(&root)?;
+    let meta = crate::metadata(None)?;
+    let version = crate::version(&meta)?;
+    let identity = Source::resolve()?;
+    fs::create_dir_all("target")?;
+    let scratch = tempfile::Builder::new()
+        .prefix("source-archive-")
+        .tempdir_in("target")?;
+    let folder = scratch.path().join(format!("auditorylab-{version}-source"));
+    fs::create_dir(&folder)?;
+    tracked.copy_to(&folder)?;
+    let vendor = folder.join("vendor");
+    let generated = String::from_utf8(capture(
+        Command::new("cargo")
+            .args(["vendor", "--locked", "--versioned-dirs"])
+            .arg(&vendor),
+    )?)?;
+    let original = fs::read_to_string(folder.join(".cargo/config.toml"))?;
+    let mut config: toml::Value = toml::from_str(&original)?;
+    let mut sources: toml::Value = toml::from_str(&generated)?;
+    sources["source"]["vendored-sources"]["directory"] = toml::Value::String("vendor".into());
+    if config.get("source").is_some() {
+        return Err("source archive cannot replace existing Cargo source configuration".into());
+    }
+    config
+        .as_table_mut()
+        .ok_or("Cargo configuration must be a table")?
+        .insert("source".into(), sources["source"].clone());
+    fs::write(folder.join(".cargo/config.toml"), toml::to_string(&config)?)?;
+    fs::write(
+        folder.join("SOURCE.txt"),
+        crate::source_notice(version, &identity),
+    )?;
+    // Verify the staged dependency graph can resolve without registry/network IO.
+    crate::run(
+        Command::new("cargo")
+            .current_dir(&folder)
+            .args(["metadata", "--locked", "--offline", "--format-version", "1"])
+            .stdout(std::process::Stdio::null()),
+    )?;
+    let prepared = scratch.path().join("source.tar.gz");
+    crate::archive::write(
+        &folder,
+        &prepared,
+        crate::archive::Format::Tar,
+        identity.epoch,
+    )?;
+    crate::archive::verify_metadata(&prepared, crate::archive::Format::Tar, identity.epoch)?;
+    tracked.verify(&root)?;
+    if let Some(parent) = out.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    publish(&prepared, out)?;
+    println!("Wrote corresponding source: {}", out.display());
+    Ok(())
+}
+
+fn publish(prepared: &std::path::Path, out: &std::path::Path) -> Result<()> {
+    let mut input = std::fs::File::open(prepared)?;
+    let mut output = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(out)
+        .map_err(|error| {
+            format!(
+                "cannot exclusively create source archive {}: {error}",
+                out.display()
+            )
+        })?;
+    std::io::copy(&mut input, &mut output).map_err(|error| {
+        format!(
+            "source archive copy failed; inspect incomplete output {}: {error}",
+            out.display()
+        )
+    })?;
+    output.sync_all()?;
+    Ok(())
+}
+
 /// Convert Unix seconds to UTC civil fields; DOS ZIP stores seconds rounded down to even.
 pub(crate) fn zip_time(seconds: u64) -> Result<zip::DateTime> {
     epoch(&seconds.to_string())?;
@@ -155,6 +333,76 @@ pub(crate) fn zip_time(seconds: u64) -> Result<zip::DateTime> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn source_publication_refuses_a_destination_created_after_preflight() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("prepared.tar.gz");
+        let out = temp.path().join("published.tar.gz");
+        std::fs::write(&source, "prepared source archive").unwrap();
+        assert!(!out.exists());
+        std::fs::write(&out, "concurrent owner bytes").unwrap();
+        assert!(super::publish(&source, &out).is_err());
+        assert_eq!(std::fs::read(&out).unwrap(), b"concurrent owner bytes");
+        assert_eq!(std::fs::read(&source).unwrap(), b"prepared source archive");
+    }
+    #[test]
+    fn source_snapshot_rejects_changes_at_the_vendor_boundary() {
+        use std::{fs, process::Command};
+        for change in ["bytes", "index", "untracked"] {
+            let temp = tempfile::tempdir().unwrap();
+            let root = temp.path();
+            assert!(
+                Command::new("git")
+                    .current_dir(root)
+                    .args(["init", "-q"])
+                    .status()
+                    .unwrap()
+                    .success()
+            );
+            fs::write(root.join("source.rs"), "original source").unwrap();
+            assert!(
+                Command::new("git")
+                    .current_dir(root)
+                    .args(["add", "source.rs"])
+                    .status()
+                    .unwrap()
+                    .success()
+            );
+            let snapshot = super::TrackedSource::read(root).unwrap();
+            let staged = root.join("staged");
+            // Staging is outside tracked input discovery in production (target/).
+            fs::write(root.join(".git/info/exclude"), "staged/\narchive.tar.gz\n").unwrap();
+            snapshot.copy_to(&staged).unwrap();
+            assert_eq!(
+                fs::read(staged.join("source.rs")).unwrap(),
+                b"original source"
+            );
+            snapshot.verify(root).unwrap();
+            match change {
+                "bytes" => fs::write(root.join("source.rs"), "changed source").unwrap(),
+                "index" => {
+                    fs::write(root.join("source.rs"), "new staged source").unwrap();
+                    assert!(
+                        Command::new("git")
+                            .current_dir(root)
+                            .args(["add", "source.rs"])
+                            .status()
+                            .unwrap()
+                            .success()
+                    );
+                }
+                "untracked" => fs::write(root.join("new-build-input.rs"), "new source").unwrap(),
+                _ => unreachable!(),
+            }
+            let out = root.join("archive.tar.gz");
+            let result = snapshot.verify(root).and_then(|()| {
+                fs::write(&out, "would publish archive")?;
+                Ok(())
+            });
+            assert!(result.is_err(), "{change}");
+            assert!(!out.exists(), "{change} must refuse before publishing");
+        }
+    }
     #[test]
     fn source_archives_require_both_validated_identity_inputs() {
         let temp = tempfile::tempdir().unwrap();

@@ -1,5 +1,5 @@
 // Copyright 2026 Ervins Strauhmanis
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Portable identity and declared history, independent of local collection state.
 use alloc::string::{String, ToString};
 use chrono::{DateTime, Datelike, SecondsFormat, Utc};

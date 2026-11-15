@@ -2,6 +2,10 @@
 
 Start from a clean checkout with the [source prerequisites](README.md#build-from-source). [rust-toolchain.toml](rust-toolchain.toml) owns the compiler/components; root [Cargo.toml](Cargo.toml) owns product name/copyright/version metadata, and [Cargo.lock](Cargo.lock) pins dependencies. [CI](.github/workflows/ci.yml) owns auxiliary tool versions and shard selection; [native target mapping](.github/native-targets.json) owns runner selection. Packaging owns supported target/platform pairs, checked against that map and deny policy by `cargo xtask check-targets`.
 
+Before submitting, read the [contribution terms](PROJECT-NOTICE.md#contribution-terms).
+Confirm your agreement using the checkbox in the pull request template. Contributors keep
+their copyright and grant the stated public license and additional commercial licensing rights.
+
 ## Checks
 
 Keep tool scratch under this checkout’s `target/`:
@@ -21,6 +25,8 @@ cargo deny check
 cargo xtask verify-vendor
 actionlint
 ```
+
+The Unix installer qualification harness also needs Python 3.8+ for isolated signal/process-group cases; the installed CLI and standalone installers do not require Python. The PowerShell harness includes actual runspace cancellation and ordinary failure controls on the production transaction; macOS PowerShell helpers do not establish native Windows registry/ACL/runtime behavior.
 
 The artwork check needs Python 3.9+ with its standard library; ordinary Rust builds use tracked SVGs without running Python. See the [editable source guide](artwork/onboarding/README.md) for generation and ownership.
 
