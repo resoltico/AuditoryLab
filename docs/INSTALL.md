@@ -71,7 +71,7 @@ and current-session PATH unchanged.
 
 The public 0.12.0 installer retains its published behavior and has no explicit unmanaged-replacement option. The lifecycle corrections below describe the reviewed checkout and will be available in a future release. To use them before publication, inspect and run `install/install.sh` or `install/install.ps1` from this checkout; do not pass the new flag to an older downloaded script.
 
-This checkout requires the expanded project licensing notices in newly built CLI archives. Immutable public 0.12.0 archives do not contain those added files. Before a future release, qualify checkout changes against matching CI archives and their `SHA256SUMS` in a flat directory, selecting that directory with `AUDITORYLAB_DOWNLOAD_BASE` and the archive's stable version with `--version` / `-Version`. Obtain the same workflow run's `corresponding-source` artifact. Public install commands above continue to use the published script and compatible published assets. For an older release's archived payload, use that release's reviewed installer; do not edit or replace public assets to satisfy this checkout's package contract.
+This checkout requires the expanded project licensing notices in newly built CLI archives. Immutable public 0.12.0 archives do not contain those added files. Before a future release, download the matching `dist-PLATFORM` CI artifact into a fresh flat directory; it contains the CLI and desktop archives. From the matching reviewed source checkout, run `python3 install/prepare-test-release.py /absolute/qualified-artifacts` to copy its installers and calculate `SHA256SUMS` for this local qualification mirror. Select that directory with `AUDITORYLAB_DOWNLOAD_BASE` and the archive's stable version with `--version` / `-Version`. Obtain the same workflow run's `corresponding-source` artifact. Public install commands above continue to use the published script and compatible published assets. For an older release's archived payload, use that release's reviewed installer; do not edit or replace public assets to satisfy this checkout's package contract.
 
 ## Update and choose a release
 
@@ -131,11 +131,13 @@ filename, version output or PATH entry does not establish ownership.
 A receiptless ordinary executable is refused by default, with its exact path and an explicit replacement command. In this checkout, use `--replace-unmanaged` / `-ReplaceUnmanaged` only for an install where private installer state is absent:
 
 ```sh
-sh install/install.sh --install-dir '/absolute/my tools' --replace-unmanaged
+AUDITORYLAB_DOWNLOAD_BASE='/absolute/qualified-artifacts' \
+sh install/install.sh --version 0.12.0 --install-dir '/absolute/my tools' --replace-unmanaged
 ```
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy ByPass -File .\install\install.ps1 -InstallDir 'C:\My Tools' -ReplaceUnmanaged
+$env:AUDITORYLAB_DOWNLOAD_BASE = 'C:\QualifiedArtifacts'
+powershell -NoProfile -ExecutionPolicy ByPass -File .\install\install.ps1 -Version 0.12.0 -InstallDir 'C:\My Tools' -ReplaceUnmanaged
 if ($LASTEXITCODE -ne 0) { throw "Installer failed with exit $LASTEXITCODE" }
 ```
 
