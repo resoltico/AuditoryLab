@@ -121,11 +121,13 @@ On Windows an update can retain one uniquely named, receipt-owned running
 executable. Close processes using it before another update or uninstall if
 cleanup is refused. The installer never adopts or deletes arbitrary `.old` files.
 
+In this checkout, Unix uninstall and rollback preserve private recovery images before rewriting startup files in place, retaining their symlink and hardlink identities. A failed write or handled interruption attempts to restore only attributable changes. If restoration is unsafe or fails, retain the reported staging directory and privately inspect its `rewrite.N` paths, identities, exact `preimage`/`postimage` and available `observed`/`restore-image` files against the current startup file. These files may contain private shell configuration. Retry refuses retained staging until recovery is reviewed; do not remove evidence or overwrite later user edits blindly.
+
 ## Ownership and unmanaged installations
 
 The installer uses `.auditorylab-install` beside the executable
 for ownership receipts and managed data. It verifies managed file hashes before
-update or removal and refuses existing unowned or changed files. A matching
+update or removal and refuses unowned files by default and changed managed files. A matching
 filename, version output or PATH entry does not establish ownership.
 
 A receiptless ordinary executable is refused by default, with its exact path and an explicit replacement command. In this checkout, use `--replace-unmanaged` / `-ReplaceUnmanaged` only for an install where private installer state is absent:
