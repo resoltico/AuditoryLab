@@ -2,13 +2,16 @@
 
 ## [Unreleased]
 
-- Unix uninstall and rollback protect startup files during failed or interrupted rewrites; unsafe restoration retains private complete recovery images and blocks retry pending review.
+## [0.13.0] - 2026-11-15
+
 - Software, documentation and project-owned artwork use AGPL-3.0-only, replacing MPL-2.0 software and proprietary artwork terms; third-party terms remain separate.
 - Contributions retain copyright, use AGPL-3.0-only and also grant the owner commercial licensing rights; separate commercial terms are not currently offered.
+- Unix uninstall and rollback protect startup files during failed or interrupted rewrites; unsafe restoration retains private complete recovery images and blocks retry pending review.
 - CLI installers add explicit backed-up unmanaged replacement, missing-payload repair and precise ownership/recovery errors; backups remain outside shared bin directories.
 - CLI installers preserve prior files and bounded PATH effects on handled interruption; incomplete restoration retains evidence. Windows PATH value kinds are preserved.
 - Downloads include project licensing notices and matching source archives with locked dependencies; redistributors must provide Corresponding Source for their changes.
 - Desktop notices select Slint's GPLv3 option and retain separate attribution and licenses for embedded third-party branding graphics.
+- Builds use Rust 1.100.0 and zip 9.6.0; the macOS icon producer uses Xcode 26.6 while native macOS 15 builds retain Xcode 26.3.
 
 ## [0.12.0] - 2026-11-10
 

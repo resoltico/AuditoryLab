@@ -67,36 +67,30 @@ use the quoted full executable path printed by the installer while this terminal
 keeps its current PATH, or open a new terminal after successful persistence. `--no-modify-path` / `-NoModifyPath` leaves persistent
 and current-session PATH unchanged.
 
-## Released installers and this checkout
-
-The public 0.12.0 installer retains its published behavior and has no explicit unmanaged-replacement option. The lifecycle corrections below describe the reviewed checkout and will be available in a future release. To use them before publication, inspect and run `install/install.sh` or `install/install.ps1` from this checkout; do not pass the new flag to an older downloaded script.
-
-This checkout requires the expanded project licensing notices in newly built CLI archives. Immutable public 0.12.0 archives do not contain those added files. Before a future release, download the matching `dist-PLATFORM` CI artifact into a fresh flat directory; it contains the CLI and desktop archives. From the matching reviewed source checkout, run `python3 install/prepare-test-release.py /absolute/qualified-artifacts` to copy its installers and calculate `SHA256SUMS` for this local qualification mirror. Select that directory with `AUDITORYLAB_DOWNLOAD_BASE` and the archive's stable version with `--version` / `-Version`. Obtain the same workflow run's `corresponding-source` artifact. Public install commands above continue to use the published script and compatible published assets. For an older release's archived payload, use that release's reviewed installer; do not edit or replace public assets to satisfy this checkout's package contract.
-
 ## Update and choose a release
 
 Run the same install command again. The installer resolves latest once to a stable
 `vX.Y.Z` tag, then downloads both archive and `SHA256SUMS` from that release.
 A failed download, checksum or candidate test happens before replacing the active
-program. An update requires intact verified ownership metadata and every remaining owned file to match its receipt. This checkout also permits repairing or uninstalling an intact receipt whose managed executable is absent; a replacement or changed file is refused.
+program. An update requires intact verified ownership metadata and every remaining owned file to match its receipt. The installer also permits repairing or uninstalling an intact receipt whose managed executable is absent; a replacement or changed file is refused.
 
 Select a release explicitly, for example:
 
 ```sh
-curl -fsSL -o install-auditorylab.sh https://github.com/resoltico/AuditoryLab/releases/download/v0.12.0/install.sh &&
-sh ./install-auditorylab.sh --version 0.12.0
+curl -fsSL -o install-auditorylab.sh https://github.com/resoltico/AuditoryLab/releases/download/v0.13.0/install.sh &&
+sh ./install-auditorylab.sh --version 0.13.0
 ```
 
 ```powershell
 & {
     $ErrorActionPreference = 'Stop'
-    Invoke-WebRequest -UseBasicParsing https://github.com/resoltico/AuditoryLab/releases/download/v0.12.0/install.ps1 -OutFile .\install-auditorylab.ps1 -ErrorAction Stop
-    powershell -NoProfile -ExecutionPolicy ByPass -File .\install-auditorylab.ps1 -Version 0.12.0
+    Invoke-WebRequest -UseBasicParsing https://github.com/resoltico/AuditoryLab/releases/download/v0.13.0/install.ps1 -OutFile .\install-auditorylab.ps1 -ErrorAction Stop
+    powershell -NoProfile -ExecutionPolicy ByPass -File .\install-auditorylab.ps1 -Version 0.13.0
     if ($LASTEXITCODE -ne 0) { throw "Installer failed with exit $LASTEXITCODE" }
 }
 ```
 
-These examples pin both installer and payload to 0.12.0. Substitute the same chosen stable release in both places. If instead you use `AUDITORYLAB_VERSION`, that environment pin remains set in the session; clear it to return to latest:
+These examples pin both installer and payload to 0.13.0. Substitute the same chosen stable release in both places. If instead you use `AUDITORYLAB_VERSION`, that environment pin remains set in the session; clear it to return to latest:
 
 ```sh
 unset AUDITORYLAB_VERSION
@@ -121,7 +115,7 @@ On Windows an update can retain one uniquely named, receipt-owned running
 executable. Close processes using it before another update or uninstall if
 cleanup is refused. The installer never adopts or deletes arbitrary `.old` files.
 
-In this checkout, Unix uninstall and rollback preserve private recovery images before rewriting startup files in place, retaining their symlink and hardlink identities. A failed write or handled interruption attempts to restore only attributable changes. If restoration is unsafe or fails, retain the reported staging directory and privately inspect its `rewrite.N` paths, identities, exact `preimage`/`postimage` and available `observed`/`restore-image` files against the current startup file. These files may contain private shell configuration. Retry refuses retained staging until recovery is reviewed; do not remove evidence or overwrite later user edits blindly.
+Unix uninstall and rollback preserve private recovery images before rewriting startup files in place, retaining their symlink and hardlink identities. A failed write or handled interruption attempts to restore only attributable changes. If restoration is unsafe or fails, retain the reported staging directory and privately inspect its `rewrite.N` paths, identities, exact `preimage`/`postimage` and available `observed`/`restore-image` files against the current startup file. These files may contain private shell configuration. Retry refuses retained staging until recovery is reviewed; do not remove evidence or overwrite later user edits blindly.
 
 ## Ownership and unmanaged installations
 
@@ -130,16 +124,14 @@ for ownership receipts and managed data. It verifies managed file hashes before
 update or removal and refuses unowned files by default and changed managed files. A matching
 filename, version output or PATH entry does not establish ownership.
 
-A receiptless ordinary executable is refused by default, with its exact path and an explicit replacement command. In this checkout, use `--replace-unmanaged` / `-ReplaceUnmanaged` only for an install where private installer state is absent:
+A receiptless ordinary executable is refused by default, with its exact path and an explicit replacement command. Use `--replace-unmanaged` / `-ReplaceUnmanaged` only for an install where private installer state is absent:
 
 ```sh
-AUDITORYLAB_DOWNLOAD_BASE='/absolute/qualified-artifacts' \
-sh install/install.sh --version 0.12.0 --install-dir '/absolute/my tools' --replace-unmanaged
+sh ./install-auditorylab.sh --version 0.13.0 --install-dir '/absolute/my tools' --replace-unmanaged
 ```
 
 ```powershell
-$env:AUDITORYLAB_DOWNLOAD_BASE = 'C:\QualifiedArtifacts'
-powershell -NoProfile -ExecutionPolicy ByPass -File .\install\install.ps1 -Version 0.12.0 -InstallDir 'C:\My Tools' -ReplaceUnmanaged
+powershell -NoProfile -ExecutionPolicy ByPass -File .\install-auditorylab.ps1 -Version 0.13.0 -InstallDir 'C:\My Tools' -ReplaceUnmanaged
 if ($LASTEXITCODE -ne 0) { throw "Installer failed with exit $LASTEXITCODE" }
 ```
 
@@ -203,11 +195,11 @@ Your recipes, User Library, recordings, exports and desktop preferences are not 
 | `--install-dir DIR` | `-InstallDir DIR` | `AUDITORYLAB_INSTALL_DIR` | Choose an absolute directory. |
 | `--no-modify-path` | `-NoModifyPath` | `AUDITORYLAB_NO_MODIFY_PATH=1` | Do not change PATH or shell startup files. |
 | `--uninstall` | `-Uninstall` | `AUDITORYLAB_UNINSTALL=1` (Windows) | Remove unchanged owned files. |
-| `--replace-unmanaged` | `-ReplaceUnmanaged` | | Checkout-only install: back up and replace a receiptless ordinary executable when private installer state is absent. |
+| `--replace-unmanaged` | `-ReplaceUnmanaged` | | Install: back up and replace a receiptless ordinary executable when private installer state is absent. |
 | `--help` | `-Help` | | Show usage. |
 
-Pass Unix options to the saved script. In PowerShell use environment variables before
-`irm ... | iex`, or parameters on the saved, reviewed script shown above.
+Pass options to the saved, reviewed script shown above. In PowerShell, set any
+environment variables before launching that script.
 
 `AUDITORYLAB_DOWNLOAD_BASE` selects an HTTPS release mirror or an absolute local
 directory containing the release's archive and `SHA256SUMS`. HTTPS is required
@@ -226,8 +218,9 @@ another directory. Startup/registry write failures are reported.
 - The executable at the selected install directory.
 - The private `.auditorylab-install` ownership directory. Its receipt is data, not
   an executable shell configuration file.
-- `LICENSE`, `README.txt`, `THIRD-PARTY-NOTICES.txt`, `COPYRIGHT-library.html` and
-  `SOURCE.txt` are retained under the private directory in `legal/`. The archived
+- `LICENSE`, `PROJECT-NOTICE.md`, `LICENSE-COMMERCIAL.md`, `README.txt`,
+  `THIRD-PARTY-NOTICES.txt`, `COPYRIGHT-library.html` and `SOURCE.txt` are
+  retained under the private directory in `legal/`. The archived
   README describes manual archive layout; use the installer's printed executable
   path for this installation. These files are not runtime dependencies.
   The installer does not install the desktop GUI.
@@ -266,8 +259,9 @@ archive's legal material with any copy you redistribute.
 ## Troubleshooting
 
 If an ownership check fails, inspect the selected path and private directory.
-Choose a fresh directory or remove the prior files manually; a version string
-is not proof that this installer owns a file. If a lock remains after a crash,
+Choose a fresh directory, or use explicit backed-up replacement for an ordinary
+receiptless executable. Do not remove ownership or recovery metadata to bypass
+a refusal; a version string is not ownership proof. If a lock remains after a crash,
 first establish that no installer is using it before manual cleanup.
 
 If the verified candidate cannot run, use its reported diagnostic to check the
