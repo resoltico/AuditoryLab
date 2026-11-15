@@ -26,7 +26,7 @@ cargo xtask verify-vendor
 actionlint
 ```
 
-The Unix installer qualification harness also needs Python 3.8+ for isolated signal/process-group cases; the installed CLI and standalone installers do not require Python.
+The Unix installer qualification harness also needs Python 3.8+ for isolated signal/process-group cases; the installed CLI and standalone installers do not require Python. The PowerShell harness includes actual runspace cancellation and ordinary failure controls on the production transaction; macOS PowerShell helpers do not establish native Windows registry/ACL/runtime behavior.
 
 The artwork check needs Python 3.9+ with its standard library; ordinary Rust builds use tracked SVGs without running Python. See the [editable source guide](artwork/onboarding/README.md) for generation and ownership.
 
