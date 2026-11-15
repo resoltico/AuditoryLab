@@ -1,6 +1,6 @@
 //! Immutable job captures and the application-owned thread runner.
 // Copyright 2026 Ervins Strauhmanis
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 use super::{Response, Workspace};
 use crate::audio::session::{LiveControl, PlaybackControl, PlaybackReport, Session};

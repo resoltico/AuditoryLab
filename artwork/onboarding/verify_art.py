@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2026 Ervins Strauhmanis
-# SPDX-License-Identifier: MPL-2.0
+# SPDX-License-Identifier: AGPL-3.0-only
 """Independent artifact checks. These do not qualify native app integration."""
 import argparse
 import hashlib
@@ -72,7 +72,7 @@ def verify_assets(folder, layout, rates):
         for appearance in ['light', 'dark']:
             path = folder / (stem + '-' + appearance + '.svg')
             text = path.read_text()
-            assert 'SPDX-License-Identifier: LicenseRef-Proprietary-Artwork' in text
+            assert 'SPDX-License-Identifier: AGPL-3.0-only' in text
             tree = ET.fromstring(text)
             assert not tree.findall('.//s:text', NS) and not tree.findall('.//s:image', NS)
             # Inline/standalone compositions share neutral transparent geometry.
@@ -257,7 +257,7 @@ def main():
               'gamma_edit_updates_both_views_and_caption': True,
               'invalid_numeric_types_and_cost_rejected': True, 'missing_glyph_rejected': True,
               'source_overwrite_rejected': True, 'hardlinked_source_preserved': True,
-              'repeat_regeneration_and_output_mode_preserved': True, 'nonregular_output_rejected': True, 'redirected_output_rejected_before_writing': True, 'complete_artwork_manifest_verified': True, 'historical_source_bytes_preserved': len(history), 'native_integration_verified': False}
+              'repeat_regeneration_and_output_mode_preserved': True, 'nonregular_output_rejected': True, 'redirected_output_rejected_before_writing': True, 'complete_artwork_manifest_verified': True, 'retained_reference_inventory_verified': len(history), 'native_integration_verified': False}
     if args.result:
         args.result.write_text(json.dumps(result, indent=2) + '\n')
     print(json.dumps({key: value for key, value in result.items() if key != 'wave_checks'}, indent=2))

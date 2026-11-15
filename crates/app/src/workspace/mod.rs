@@ -14,7 +14,7 @@
 //! thread has exited and been joined, and an action waiting for a task runs
 //! only after that join.
 // Copyright 2026 Ervins Strauhmanis
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 mod audio;
 mod choices;

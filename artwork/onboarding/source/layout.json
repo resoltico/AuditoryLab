@@ -1,5 +1,5 @@
 {
-  "license": "LicenseRef-Proprietary-Artwork",
+  "license": "AGPL-3.0-only",
   "masters": {
     "spectral-ribbon": {
       "template": "spectral-ribbon.svg.in",

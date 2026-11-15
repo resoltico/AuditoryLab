@@ -1,14 +1,11 @@
 #!/usr/bin/env python3
 # Copyright (c) 2026 Ervins Strauhmanis
-# SPDX-License-Identifier: MPL-2.0
-# This Source Code Form is subject to the terms of the Mozilla Public
-# License, v. 2.0. If a copy of the MPL was not distributed with this
-# file, You can obtain one at https://mozilla.org/MPL/2.0/.
-"""Export separately licensed SVG masters using shared palettes and example rates.
+# SPDX-License-Identifier: AGPL-3.0-only
+# Software is licensed under AGPL-3.0-only; see the root LICENSE and PROJECT-NOTICE.md.
+"""Export project-owned SVG masters using shared palettes and example rates.
 
-Code is MPL-covered. Creative SVG masters, glyph paths, palettes and layouts in
-source/, and generated artwork, have proprietary artwork terms in root LICENSE.
-No rights to those inputs are granted by this script's software license.
+Code, creative SVG masters, glyph paths, palettes, layouts and generated artwork
+use AGPL-3.0-only; see the root LICENSE and PROJECT-NOTICE.md.
 
 Python 3.9+ standard library only. Standalone figures use tracked exports;
 the desktop learning UI renders native labels and schematic paths.

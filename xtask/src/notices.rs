@@ -1,7 +1,7 @@
 //! Per-product dependency license coverage and formatting.
 use serde_json::Value;
+use std::collections::BTreeSet;
 use std::fmt::Write as _;
-use std::{collections::BTreeSet, fs, path::Path};
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 fn string<'a>(value: &'a Value, key: &str) -> Result<&'a str> {
     value[key]
@@ -111,44 +111,6 @@ pub(crate) fn assemble(
                 string(license, "text")?
             );
         }
-    }
-    let mut slint = Vec::new();
-    for c in crates {
-        let package = &c["package"];
-        let id = string(package, "id")?;
-        if !covered.contains(id)
-            && package["license"]
-                .as_str()
-                .is_some_and(|s| s.contains("LicenseRef-Slint-Royalty-free-2.0"))
-        {
-            covered.insert(id.to_owned());
-            if normal.contains(id) {
-                slint.push(format!(
-                    "{} {}",
-                    string(package, "name")?,
-                    string(package, "version")?
-                ));
-            }
-        }
-    }
-    if !slint.is_empty() {
-        let package = array(metadata, "packages")?
-            .iter()
-            .find(|p| p["name"] == "slint")
-            .ok_or("Slint package missing")?;
-        let manifest = Path::new(string(package, "manifest_path")?);
-        let license = manifest
-            .parent()
-            .ok_or("Slint directory missing")?
-            .join("LICENSES/LicenseRef-Slint-Royalty-free-2.0.md");
-        slint.sort();
-        let _ = write!(
-            text,
-            "Slint Royalty-free Desktop, Mobile, and Web Applications License \
-            2.0\nUsed by: {}\n\n{}\n\n",
-            slint.join(", "),
-            fs::read_to_string(license)?
-        );
     }
     let missing: Vec<_> = actual.difference(&covered).collect();
     if !missing.is_empty() {
@@ -279,7 +241,8 @@ mod tests {
     }
     #[test]
     fn own_crates_are_omitted_and_mpl_components_name_their_source() {
-        let own = json!({"id":"own","name":"auditorylab-core","version":"1","license":"MPL-2.0"});
+        let own =
+            json!({"id":"own","name":"auditorylab-core","version":"1","license":"AGPL-3.0-only"});
         let mpl = json!({"id":"m","name":"option-ext","version":"0.2.0","license":"MPL-2.0",
             "source":"registry+https://github.com/rust-lang/crates.io-index"});
         let about = json!({"crates":[{"package":own},{"package":mpl}],

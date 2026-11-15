@@ -260,9 +260,14 @@ impl SlintAdapter {
             )
             .into(),
         );
-        windows
-            .licenses
-            .set_licenses(include_str!("../../../LICENSE").into());
+        windows.licenses.set_licenses(
+            concat!(
+                include_str!("../../../PROJECT-NOTICE.md"),
+                "\n\n",
+                include_str!("../../../LICENSE")
+            )
+            .into(),
+        );
         if let Some(preferences) = adapter.preferences.borrow().as_ref() {
             apply_font(windows, &preferences.font);
         }

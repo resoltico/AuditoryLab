@@ -1,6 +1,6 @@
 //! Application-owned teaching choices and illustrative rates; core owns band membership.
 // Copyright 2026 Ervins Strauhmanis
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 use crate::core::rhythm::Band;
 
 /// Revisit-able orientation destinations, independent of document identity.

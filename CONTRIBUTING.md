@@ -2,6 +2,10 @@
 
 Start from a clean checkout with the [source prerequisites](README.md#build-from-source). [rust-toolchain.toml](rust-toolchain.toml) owns the compiler/components; root [Cargo.toml](Cargo.toml) owns product name/copyright/version metadata, and [Cargo.lock](Cargo.lock) pins dependencies. [CI](.github/workflows/ci.yml) owns auxiliary tool versions and shard selection; [native target mapping](.github/native-targets.json) owns runner selection. Packaging owns supported target/platform pairs, checked against that map and deny policy by `cargo xtask check-targets`.
 
+Before submitting, read the [contribution terms](PROJECT-NOTICE.md#contribution-terms).
+Confirm your agreement using the checkbox in the pull request template. Contributors keep
+their copyright and grant the stated public license and additional commercial licensing rights.
+
 ## Checks
 
 Keep tool scratch under this checkout’s `target/`:

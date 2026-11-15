@@ -1,6 +1,6 @@
 # Application artwork
 
-Auditory Lab's “Woven” icon shows two sine waves woven across each other. The [root LICENSE](../LICENSE) governs the artwork, its drawing source and generated images separately from MPL-covered software. Unchanged art may accompany original or modified Auditory Lab source/binary distributions. Copying the drawing source for builds is permitted; modifying the art or reusing it independently requires permission. Normal application, preview and build code remains MPL-covered.
+Auditory Lab’s “Woven” icon shows two sine waves woven across each other. Project-owned artwork, editable drawing source, generated images and software use [AGPL-3.0-only](../LICENSE); see [project terms](../PROJECT-NOTICE.md). Third-party components retain their own terms. No trademark rights are granted.
 
 ## Sources and attribution
 
@@ -8,7 +8,7 @@ Auditory Lab's “Woven” icon shows two sine waves woven across each other. Th
 
 ## Onboarding illustrations
 
-[Onboarding artwork](onboarding/README.md) supplies **Spectral ribbon / A spectrum of rhythms**, matched sinusoidal band illustrations and their SVG masters, glyphs, palettes and layout inputs. Drawing generators, reference compositions and design mockups are available under `onboarding/reference/`. The exporter, verifier and identified preview/build software use MPL-2.0; creative inputs, generated images and art-bearing source use the root proprietary artwork terms. The root LICENSE is authoritative for the exact path and mixed-content scope.
+[Onboarding artwork](onboarding/README.md) supplies **Spectral ribbon / A spectrum of rhythms**, matched sinusoidal band illustrations and their SVG masters, glyphs, palettes and layout inputs. Drawing generators, reference compositions and design mockups are available under `onboarding/reference/`. The exporter, verifier, preview/build software, creative inputs, generated images and art-bearing source use AGPL-3.0-only.
 
 The shared application learning data defines representative rates; core owns band intervals. Illustrations are normalized one-second sine examples, distinct from real pulse-amplitude envelopes. Regeneration and independent semantic checks are optional authoring operations. The native guide uses application-owned example rates and scalable native labels; the transparent SVG figures remain editable standalone exports.
 

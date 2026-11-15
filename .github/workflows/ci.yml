@@ -108,6 +108,21 @@ jobs:
       - name: Verify maintained dependency patches and target graphs
         if: github.event_name != 'schedule'
         run: cargo xtask verify-vendor
+      - name: Verify corresponding source archive and offline dependency resolution
+        if: github.event_name != 'schedule'
+        run: |
+          cargo xtask source-archive target/corresponding-source.tar.gz
+          mkdir target/source-check
+          tar -xzf target/corresponding-source.tar.gz -C target/source-check
+          cd target/source-check/auditorylab-*-source
+          export CARGO_HOME="${GITHUB_WORKSPACE}/target/empty-source-cargo-home"
+          cargo metadata --locked --offline --format-version 1 > /dev/null
+          mv vendor vendor-unavailable
+          if cargo metadata --locked --offline --format-version 1 > /dev/null 2>&1; then
+            echo 'Offline resolution unexpectedly succeeded without vendored sources.' >&2
+            exit 1
+          fi
+          mv vendor-unavailable vendor
       - name: Verify patched build executor
         if: github.event_name != 'schedule'
         # Cargo 1.99.1 panics when selecting this build-only dependency's tests.

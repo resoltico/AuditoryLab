@@ -1,5 +1,5 @@
 // Copyright 2026 Ervins Strauhmanis
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 //! The exact samples of every kind of component, pinned so that any
 //! platform, compiler or code change that alters one bit is noticed.

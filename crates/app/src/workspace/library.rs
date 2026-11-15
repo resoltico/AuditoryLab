@@ -1,7 +1,7 @@
 //! Managed-library state and immutable worker requests. Only selected User content
 //! is retained in full; index rows are disposable summaries.
 // Copyright 2026 Ervins Strauhmanis
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 use super::{
     Arc, AudioRequest, Cancel, DocumentId, DocumentLocation, Error, FacetCounts, FacetKind,

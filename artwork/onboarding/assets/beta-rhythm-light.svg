@@ -1,6 +1,6 @@
-<!-- Copyright (c) 2026 Ervins Strauhmanis. All rights reserved.
-SPDX-License-Identifier: LicenseRef-Proprietary-Artwork
-See the root Auditory Lab LICENSE for artwork permissions. -->
+<!-- Copyright (c) 2026 Ervins Strauhmanis.
+SPDX-License-Identifier: AGPL-3.0-only
+See the root Auditory Lab LICENSE and PROJECT-NOTICE.md for AGPL-3.0-only terms. -->
 
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1000" height="260" viewBox="0 0 1000 260" role="img" aria-labelledby="title desc">
 <title id="title">Beta illustrative rhythm, 20 cycles per second, light appearance</title>

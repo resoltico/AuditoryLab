@@ -29,17 +29,17 @@ mock=mock.replace("else if(a==='edit-study')create", "else if(a==='new-blank')cr
 mock=mock.replace("button('Browse built-in sounds','library')", "button('Browse Library','library')")
 mock=mock.replace('The overview shows selected EEG associations. The examples below show rhythms authored in a sound.', 'The overview shows selected EEG associations. The individual diagrams below use the same example rates and one-second normalization.')
 mock=mock.replace('The ${b.name} label describes a rhythm in this sound. It does not mean your brain is in a “${b.name} state.”', 'In the Library, a ${b.name} label classifies an authored rhythm rate. It does not establish the listener’s brain state.')
-# This remains a mixed-content historical/design reference, not MPL production application source.
+# This remains a mixed-content historical/design reference, not AGPL production application source.
 mixed='''<!-- Copyright (c) 2026 Ervins Strauhmanis.
-SPDX-License-Identifier: MPL-2.0 AND LicenseRef-Proprietary-Artwork
-Preview application code is MPL-covered. Embedded illustration payloads are
-separately proprietary artwork; see package licensing and source materials.
+SPDX-License-Identifier: AGPL-3.0-only
+Preview application code and project-owned embedded illustration payloads use
+AGPL-3.0-only; see LICENSE and PROJECT-NOTICE.md.
 This is a design reference, not production save/audio/application logic. -->
 '''
 reviewed=VIS/'auditorylab-onboarding-reviewed.html'
 reviewed.write_text(mixed+mock)
 (PKG/'reference/mockups/auditorylab-onboarding-reviewed.html').write_text(mixed+mock)
-# Portable preview: explicit external artwork references keep its MPL code separate.
+# Portable preview: explicit external artwork references keep its AGPL code separate.
 portable=mock
 start=portable.index('  const spectrumAssets=');end=portable.index('\n  const saved = ',start)
 assets={theme:'../implementation-materials/artwork/onboarding/assets/spectral-ribbon-'+theme+'.svg' for theme in ['light','dark']}
@@ -49,11 +49,8 @@ portable=re.sub(r'\s*<section data-variant="Learn alongside".*?</section>', '', 
 portable=portable.replace('class="viz-carousel"','class="preview-stage"')
 portable=portable.replace('<div class="viz-controls">','<div class="preview-controls">')
 header='''<!-- Copyright (c) 2026 Ervins Strauhmanis.
-SPDX-License-Identifier: MPL-2.0
-This Source Code Form is subject to the terms of the Mozilla Public License,
-v. 2.0. See https://mozilla.org/MPL/2.0/ . External artwork retains its separate
-proprietary terms in implementation-materials/LICENSE. No artwork payload is
-licensed by this preview's software notice. All save/audio behavior is mocked.
+SPDX-License-Identifier: AGPL-3.0-only
+Software and project-owned artwork use AGPL-3.0-only; see LICENSE and PROJECT-NOTICE.md. All save/audio behavior is mocked.
 -->
 '''
 wrap='''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Auditory Lab onboarding design reference</title><style>body{font-family:system-ui,sans-serif;margin:16px;background:#fff;color:#20262c}.preview-controls{display:flex;gap:12px;align-items:center;margin-bottom:12px}.preview-controls select{font:inherit;padding:5px}.preview-stage{max-width:1100px;margin:auto}</style></head><body>'''

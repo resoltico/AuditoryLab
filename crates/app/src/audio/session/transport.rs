@@ -8,7 +8,7 @@
 //! buffer, when the callback runs and when its first frame plays. Time is
 //! measured from the stream's own origin.
 // Copyright 2026 Ervins Strauhmanis
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 use super::monitor::{MonitorWriter, PlaybackMonitor};
 use super::source::Source;

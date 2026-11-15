@@ -89,6 +89,7 @@ jobs:
       - name: Write checksums and release notes
         run: |
           cargo xtask collect-assets "$RELEASE_VERSION" target/distributions target/assets
+          cargo xtask source-archive "target/assets/auditorylab-${RELEASE_VERSION}-source.tar.gz"
           python3 install/prepare-test-release.py target/assets
           cargo xtask notes "$RELEASE_VERSION" > target/notes.md
       - id: provenance

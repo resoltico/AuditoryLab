@@ -1,7 +1,7 @@
 use crate::workspace::controls;
 use auditorylab_core::{CarrierKind, ModulationKind};
 // Copyright 2026 Ervins Strauhmanis
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 use super::*;
 use crate::services::save_content;
