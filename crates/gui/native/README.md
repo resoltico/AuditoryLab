@@ -25,7 +25,7 @@ Windows graphical qualification requires OpenGL 2.0 or later. `prepare-windows-m
 
 ## Windows interoperability limitation
 
-The legacy managed `UIAutomationClient` GetSelection/UiaHTextRangeFromVariant conversion path is not supported for this adapter on Windows Server 2022; it can return invalid range handles. This does not qualify as a working text-selection integration path.
+The managed `UIAutomationClient` GetSelection/UiaHTextRangeFromVariant conversion path is not supported for this adapter on Windows Server 2022; it can return invalid range handles. This does not qualify as a working text-selection integration path.
 
 Required text-range qualification uses Microsoft's [public COM SDK selection API](https://learn.microsoft.com/en-us/windows/win32/api/uiautomationclient/nf-uiautomationclient-iuiautomationtextpattern-getselection), with actual native input, exact caret/full-selection endpoints and complete selected content. Producer typed-interface/IID/ownership and failure-HRESULT unit controls complement that graphical integration check; they do not replace it.
 

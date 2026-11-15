@@ -20,7 +20,10 @@ concurrency:
 env:
   RUST_BACKTRACE: '1'
   AUDITORYLAB_SOURCE_REVISION: ${{ github.sha }}
+  # Native macOS 15 builders require the last Xcode compatible with Sequoia.
   MACOS_XCODE_VERSION: '26.3'
+  # Latest stable Xcode installed on the hosted macOS 26 icon producer.
+  MACOS_ICON_XCODE_VERSION: '26.6'
   CARGO_DENY_VERSION: '0.20.2'
   CARGO_ABOUT_VERSION: '0.9.3'
   CARGO_MUTANTS_VERSION: '27.1.0'
@@ -200,7 +203,7 @@ jobs:
         run: |
           mkdir -p target/tmp
           echo "TMPDIR=${GITHUB_WORKSPACE}/target/tmp" >> "$GITHUB_ENV"
-          developer="/Applications/Xcode_${MACOS_XCODE_VERSION}.app/Contents/Developer"
+          developer="/Applications/Xcode_${MACOS_ICON_XCODE_VERSION}.app/Contents/Developer"
           test -d "$developer"
           echo "DEVELOPER_DIR=$developer" >> "$GITHUB_ENV"
       - run: rustup toolchain install
@@ -311,7 +314,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes build-essential pkg-config libasound2-dev libfontconfig1-dev libglib2.0-bin libxkbcommon-x11-0 zsh fish
       - run: rustup toolchain install
-      - name: Select icon-capable Xcode
+      - name: Select native build Xcode
         if: runner.os == 'macOS'
         run: |
           developer="/Applications/Xcode_${MACOS_XCODE_VERSION}.app/Contents/Developer"
@@ -401,7 +404,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes build-essential pkg-config libasound2-dev libfontconfig1-dev libglib2.0-bin libxkbcommon-x11-0 zsh fish
       - run: rustup toolchain install
-      - name: Select icon-capable Xcode
+      - name: Select native build Xcode
         if: runner.os == 'macOS'
         run: |
           developer="/Applications/Xcode_${MACOS_XCODE_VERSION}.app/Contents/Developer"
