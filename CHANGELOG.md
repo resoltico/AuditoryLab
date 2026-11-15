@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Unix uninstall and rollback protect startup files during failed or interrupted rewrites; unsafe restoration retains private complete recovery images and blocks retry pending review.
 - Software, documentation and project-owned artwork use AGPL-3.0-only, replacing MPL-2.0 software and proprietary artwork terms; third-party terms remain separate.
 - Contributions retain copyright, use AGPL-3.0-only and also grant the owner commercial licensing rights; separate commercial terms are not currently offered.
 - CLI installers add explicit backed-up unmanaged replacement, missing-payload repair and precise ownership/recovery errors; backups remain outside shared bin directories.
