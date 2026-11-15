@@ -346,6 +346,14 @@ fn about(product: &str, target: &str, meta: &Value, executable: Option<&Path>) -
         ));
         if target.contains("apple") {
             text.push_str(include_str!("../templates/slint-cupertino-notice.txt"));
+            text.push_str(include_str!(
+                "../../third_party/i-slint-compiler/LICENSES/Apache-2.0.txt"
+            ));
+        } else if target.contains("windows") || target.contains("linux") {
+            text.push_str(include_str!("../templates/slint-fluent-notice.txt"));
+            text.push_str(include_str!(
+                "../../third_party/i-slint-compiler/LICENSES/MIT.txt"
+            ));
         }
     }
     Ok(text)
