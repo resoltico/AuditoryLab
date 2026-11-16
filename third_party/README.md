@@ -18,7 +18,7 @@ The verifier authenticates archives before extraction, compares every source byt
 | Symphonia RIFF | RF64/BW64 ds64 lengths use checked bounds and bounded table metadata. | RF64/BW64 export-sample equivalence, invalid-size refusals and sparse seeking beyond 4 GiB in [recording decoder tests](../crates/app/src/storage/recording/decode/tests.rs). |
 | Symphonia AAC | Non-LC ADTS profiles and in-band SBR are rejected before incomplete samples can be returned. | AAC-profile and in-band SBR refusals in [recording decoder tests](../crates/app/src/storage/recording/decode/tests.rs), with AAC-LC fixture positive controls. |
 | AccessKit Windows | UIA SAFEARRAYs preserve typed provider interface pointers, their IID metadata and COM reference ownership; unsupported text searches return failure HRESULTs. | Native [selection tests](accesskit_windows/src/selection_tests.rs) and actual selected multiline text through the [Windows UI Automation harness](../crates/gui/native/windows.ps1). |
-| Slint core | Aggregate modifier synchronization, complete shaped multiline extents, accumulated clipping and active-row focus validation. | Modifier, cursor, control-focus and clipped-editor [window tests](../crates/gui/src/window_tests.rs), [focus/reflow tests](../crates/gui/src/focus_reflow_tests.rs) and retired-row callback [adapter tests](../crates/gui/src/adapter_tests.rs). |
+| Slint core | Aggregate modifier synchronization, complete shaped multiline extents, maximal viewport coverage for oversized reveal targets, accumulated clipping and active-row focus validation. | Modifier, cursor, control-focus and clipped-editor [window tests](../crates/gui/src/window_tests.rs), [focus/reflow tests](../crates/gui/src/focus_reflow_tests.rs) and retired-row callback [adapter tests](../crates/gui/src/adapter_tests.rs). |
 | Slint Winit backend | Aggregate macOS modifiers and deferred OS termination routing use the shared native backend. | Wayland first-show/details recreation, macOS modifiers and About/Quit Save/Discard/Cancel through the [native harnesses](../crates/gui/native/README.md). |
 | Winit | Modeless Wayland parents can be reacquired, and AppKit termination is deferred/coalesced without replacing the toolkit delegate. | Parent recreation/invalid-parent checks through [Details binding](../crates/gui/src/details_parent.rs), [termination state tests](winit/src/platform_impl/macos/app_state.rs) and native Quit/Cancel. |
 
@@ -36,7 +36,7 @@ Modeless parent-request retention belongs to the [Details binding](../crates/gui
 
 ## Checks
 
-The workspace GUI suite exercises the production controls and retained focus/input behavior. On Linux, the [native graphical harness](../crates/gui/native/README.md) exercises the actual registry adapter through AT-SPI cache discovery and control updates.
+The workspace GUI suite exercises the production controls and retained focus/input behavior. The core's `reveal_bounds_tests` specify literal minimal-move, oversized-coverage, scroll-limit and nonfinite cases; CI runs only that named vendor module with the current `std` feature before full production-feature GUI integration; renderer unit fixtures are outside this geometry test. On Linux, the [native graphical harness](../crates/gui/native/README.md) exercises the actual registry adapter through AT-SPI cache discovery and control updates.
 
 On Windows, provider-array tests exercise the native SAFEARRAY ABI and reference ownership:
 

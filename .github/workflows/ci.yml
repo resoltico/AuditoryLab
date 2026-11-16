@@ -262,6 +262,11 @@ jobs:
           sudo apt-get install --yes build-essential pkg-config libasound2-dev libfontconfig1-dev libglib2.0-bin libxkbcommon-x11-0
       - run: rustup toolchain install
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Verify current reveal bounds for oversized targets
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        env:
+          CARGO_TARGET_DIR: target/vendor-tests
+        run: cargo test --manifest-path third_party/i-slint-core/Cargo.toml --locked --no-default-features --features std --lib reveal_bounds_tests
       - run: cargo test --workspace --locked
       - name: Check callback median cost
         if: matrix.target == 'x86_64-unknown-linux-gnu' || matrix.target == 'aarch64-apple-darwin'
