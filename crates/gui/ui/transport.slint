@@ -45,7 +45,7 @@ export component TransportBar inherits Rectangle {
     in property <[string]> transport-labels;
     in property <length> ui-size;
     callback update-monitor-layout();
-    public function focus-monitor() { monitor.focus(); }
+    public function focus-monitor() { monitor.ensure-visible(ScrollBehavior.instant); monitor.focus(); }
     accessible-role: groupbox;
     accessible-label: ViewCaptions.playback-transport;
     changed preferred-height => { root.update-monitor-layout(); }
@@ -56,6 +56,7 @@ export component TransportBar inherits Rectangle {
     max-height: self.preferred-height;
     vertical-stretch: 0;
     background: Palette.background;
+
     Rectangle {
         y: 0px;
         height: 1px;
@@ -67,6 +68,7 @@ export component TransportBar inherits Rectangle {
         padding-left: 12px;
         padding-right: 12px;
         spacing: 4px;
+
         HorizontalBox {
             vertical-stretch: 0;
             padding: 0px;
@@ -98,6 +100,7 @@ export component TransportBar inherits Rectangle {
             VerticalLayout {
                 horizontal-stretch: 1;
                 alignment: center;
+
                 Text {
                     min-width: 0px;
                     text: root.player-title + (root.playback-busy || root.play-target == "" ? "" :
@@ -146,6 +149,7 @@ export component TransportBar inherits Rectangle {
                 horizontal-stretch: 0;
                 min-width: elapsed-template.preferred-width;
                 preferred-width: elapsed-template.preferred-width;
+
                 elapsed-template := Text {
                     visible: false;
                     text: "00:00:00 / 00:00:00";

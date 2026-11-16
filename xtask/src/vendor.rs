@@ -70,10 +70,7 @@ fn resolved_source(package: &serde_json::Value, version: &str, vendor: &Path) ->
 fn expected_in_product(name: &str, product: &str, target: &str) -> Result<bool> {
     Ok(match name {
         "accesskit_windows" => product == "gui" && target.contains("windows"),
-        "accesskit_unix" => product == "gui" && target.contains("linux"),
-        "i-slint-core" | "i-slint-compiler" | "i-slint-backend-winit" | "winit" | "spin_on" => {
-            product == "gui"
-        }
+        "i-slint-core" | "i-slint-backend-winit" | "winit" | "spin_on" => product == "gui",
         "symphonia-codec-aac" | "symphonia-format-riff" => true,
         _ => return Err(format!("missing target/product policy for patch {name}").into()),
     })
@@ -197,7 +194,6 @@ mod tests {
         assert!(
             !expected_in_product("accesskit_windows", "gui", "x86_64-unknown-linux-gnu").unwrap()
         );
-        assert!(expected_in_product("accesskit_unix", "gui", "x86_64-unknown-linux-gnu").unwrap());
         assert!(
             expected_in_product("symphonia-codec-aac", "cli", "aarch64-pc-windows-msvc").unwrap()
         );

@@ -1,7 +1,7 @@
 //! Workspace commands and path-independent action callbacks.
 use super::{
-    ComponentHandle, Duration, MainWindow, Rc, SlintAdapter, View, Weak, Workspace, library,
-    open_web, present_details, read_only,
+    ComponentHandle, Duration, MainWindow, Rc, SlintAdapter, View, Weak, Windows, Workspace,
+    library, open_web, present_details, read_only,
 };
 use auditorylab_app::device_check::{DeviceAnswer, DeviceTest};
 use auditorylab_app::workspace::{
@@ -19,6 +19,33 @@ macro_rules! on {
             });
         }};
     }
+
+pub(super) fn install_application_actions(adapter: &Rc<SlintAdapter>, windows: &Windows) {
+    for commands in [
+        windows
+            .main
+            .global::<crate::generated::ApplicationCommands>(),
+        windows
+            .about
+            .global::<crate::generated::ApplicationCommands>(),
+        windows
+            .licenses
+            .global::<crate::generated::ApplicationCommands>(),
+        windows
+            .monitor
+            .global::<crate::generated::ApplicationCommands>(),
+        windows
+            .details
+            .global::<crate::generated::ApplicationCommands>(),
+        windows
+            .audio_controls
+            .global::<crate::generated::ApplicationCommands>(),
+    ] {
+        on!(adapter, commands, on_about, |a| a.show_about());
+        on!(adapter, commands, on_quit, |a| a
+            .command(|w| w.apply(Command::Close)));
+    }
+}
 
 pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
     install_learning_actions(adapter, ui);
@@ -315,9 +342,6 @@ fn install_workbench_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
     on!(adapter, ui, on_based_on_source, |a| a.command(
         |w| w.apply(Command::Editor(EditorCommand::ShowBasedOnSource))
     ));
-    on!(adapter, ui, on_quit, |a| a
-        .command(|w| w.apply(Command::Close)));
-    on!(adapter, ui, on_about, |a| a.show_about());
     on!(adapter, ui, on_open_guide, |_a| super::open_web(
         &auditorylab_app::identity::BUILD_IDENTITY.document_url("docs/desktop.md")
     ));

@@ -32,6 +32,8 @@ The artwork check needs Python 3.9+ with its standard library; ordinary Rust bui
 
 The compiler warns about ordinary hygiene locally. Core emits missing-documentation warnings; unsafe-code rules remain denied. CI denies workspace Clippy pedantic findings and documentation warnings without applying a global warning denial to vendored path dependencies.
 
+The desktop build and inline widget probes select Slint edition 1.19. Conditional and repeated children participate in natural layout sizing; decoration overlays use percentage sizes so they follow their fields without defining the fields' intrinsic size. Application controls and selected rows use `ensure-visible`; native About/Quit menus declare `MenuItem.role` and bind `ApplicationCommands` in every window.
+
 Use the CI-pinned cargo-deny, cargo-mutants, cargo-about and actionlint versions. Install `slint-lsp` with `--locked --no-default-features` at the resolved Slint version in Cargo.lock; the style gate rejects a version mismatch. On Windows, point TMP/TEMP to an absolute directory under `target/`. Linux calendar checks need system `tzdata`.
 
 Unit tests exercise owners and private adapters; integration tests use public services and the actual CLI. GUI tests install production callbacks on an offscreen platform with an injected deterministic executor; a separate test uses the real Runner and Slint event proxy to cover completion with no redraw timer and notification coalescing. Startup installs that same wake path. App unit tests assert typed state and causes. Presentation unit and integration suites render through the public app API. Shared behavioral recipes come from core’s dev-only `test-support` feature. Use independent numerical/structural expectations, relevant failures and negative controls. Check discovered/ignored counts and retain useful failure evidence.
@@ -78,7 +80,7 @@ Prefer removing unnecessary work over lint suppression. For a necessary numeric 
 
 ## Dependencies and native toolkit
 
-Review graph changes with Cargo.lock. `cargo deny check` covers advisories, source policy, duplicates and licenses. [Dependency integration](third_party/README.md) records archive pins, patch behavior and retirement conditions. Update source, patch, digest and affected consumer checks together. `cargo xtask verify-vendor` authenticates, applies and compares every source byte and checks target/product resolution.
+Review graph changes with Cargo.lock. `cargo deny check` covers advisories, source policy, duplicates and licenses. [Dependency integration](third_party/README.md) records archive pins, maintained behavior and qualification. Update source, patch, digest and affected consumer checks together. `cargo xtask verify-vendor` authenticates, applies and compares every source byte and checks target/product resolution.
 
 ## Build storage and cleanup
 
@@ -98,13 +100,21 @@ Use the [release guide](docs/releasing.md) for native toolchains, icon resources
 
 ## CLI installer verification
 
+Published installer Help links identify the full source commit stamped before
+checksums are generated; source installers link to `main`. For local archive
+qualification, `install/prepare-test-release.py DIRECTORY` stages source Help;
+add `--revision FULL_COMMIT` only for archives built from that committed source.
+The release workflow supplies its checked-out commit automatically. Staging
+refuses existing installer/checksum files. Run the packaging and parity tests
+with `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s install -p '*_test.py'`.
+
 The self-contained scripts in [install/](install/) share the reviewed
 [PDFConcat](https://github.com/resoltico/pdfconcat/tree/main/install) engine with
-EML Attachment Remover. Only the bounded literal product settings differ.
+EML Attachment Remover and HTMLCut. Only the bounded literal product settings differ.
 `install/engine-source.txt` pins the canonical PDFConcat commit; end users do not
 fetch code from either other repository at runtime. When changing behavior,
-review and commit it in PDFConcat, synchronize both consumer engines while
-preserving product settings, update both full commit pins, and qualify all three.
+review and commit it in PDFConcat, synchronize all consumer engines while
+preserving product settings, update their full commit pins, and qualify all four.
 Keep archive layouts, architecture names and legal-material lists product-specific.
 
 ```sh

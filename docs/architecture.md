@@ -150,4 +150,4 @@ External saves recheck opened identity/bytes immediately before replacement; an 
 
 Core `Measurement::prefix_frames` owns the fitting FFT input size and cap used by both construction and recording prefix buffering; application frame/packet/skip budgets remain independent safeguards. Presentation owns recording energy-row selection, channel/threshold order and text; the native adapter owns models and drawing.
 
-[Formats](formats.md) owns schema/layout/JSON/exit contracts. [Dependency integration](../third_party/README.md) records authenticated patches and retirement conditions. [Contributing](../CONTRIBUTING.md) lists executable gates and the review checklist.
+[Formats](formats.md) owns schema/layout/JSON/exit contracts. [Dependency integration](../third_party/README.md) records authenticated patches and qualification. [Contributing](../CONTRIBUTING.md) lists executable gates and the review checklist.

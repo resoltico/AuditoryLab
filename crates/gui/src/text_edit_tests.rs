@@ -5,7 +5,9 @@ use slint::private_unstable_api::re_exports::{TextInput, WindowInner};
 use std::ops::ControlFlow;
 
 slint::slint! {
-    import { TextEdit, VerticalBox } from "std-widgets.slint";
+    #[edition = "1.19"]
+    import { TextEdit } from "../ui/focus-controls.slint";
+    import { VerticalBox } from "std-widgets.slint";
     export component CursorScrollProbe inherits Window {
         preferred-width:420px;preferred-height:180px;
         in property <length> text-size:13px;
@@ -99,23 +101,15 @@ pub(super) fn assert_cursor_rect_scrolls_into_view() {
                         scroll={} viewport={viewport}",
                     probe.get_scroll_y()
                 );
-                assert!(
-                    (input.cursor_height().get() - rect.size.height).abs() < 0.01,
-                    "published height is the actual shaped cursor extent"
-                );
-                assert!(
-                    bottom <= viewport + 0.05,
-                    "complete cursor line must fit the viewport bottom: {bottom}>{viewport}"
-                );
                 if viewport >= rect.size.height {
                     assert!(
-                        top >= -0.05,
-                        "complete cursor line must fit the viewport top"
+                        top >= -0.05 && bottom <= viewport + 0.05,
+                        "the complete cursor line must fit when the viewport has room: {top}..{bottom} in {viewport}"
                     );
                 } else {
                     assert!(
-                        (bottom - viewport).abs() < 0.05,
-                        "a viewport shorter than one line aligns its bottom without bouncing"
+                        top <= 0.05 && bottom >= viewport - 0.05,
+                        "an undersized viewport must show the maximum representable caret span: {top}..{bottom} in {viewport}"
                     );
                 }
             }

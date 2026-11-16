@@ -1,3 +1,6 @@
+export { ApplicationCommands } from "application-menu.slint";
+import { ApplicationCommands } from "application-menu.slint";
+import { TextEdit } from "focus-controls.slint";
 import { RecordingFindings, RecordingEnergy } from "models.slint";
 export { DateInput } from "models.slint";
 import { DateInput } from "models.slint";
@@ -26,7 +29,6 @@ import {
     VerticalBox,
     HorizontalBox,
     ProgressIndicator,
-    TextEdit,
 } from "std-widgets.slint";
 export {
     EntryAddress,
@@ -66,11 +68,11 @@ export {
 import { MonitorPanel, MonitorData } from "monitor.slint";
 
 export component MainWindow inherits Window {
+    in property <bool> initial-layout-ready: false;
     icon: @image-url("../../../artwork/auditorylab-icon/assets/runtime/window-icon.png");
     title: Terms.caption-product-name;
     in-out property <bool> edits-suspended:false;
     in-out property <bool> monitor-open:false;
-    in property <bool> native-mac: false;
     in property <string> draft-brief;
     in property <string> draft-location;
     in property <string> draft-location-details;
@@ -337,7 +339,7 @@ export component MainWindow inherits Window {
             root.restore-notice-focus();
         }
     }
-    public function focus-workspace-navigation() { workspace-navigation.focus(); }
+    public function focus-workspace-navigation() { workspace-navigation.ensure-visible(ScrollBehavior.instant); workspace-navigation.focus(); }
     in property <int> tab-index: 0;
     in property <string> device-check-introduction;
     in property <[DeviceTestRow]> device-tests;
@@ -451,15 +453,14 @@ export component MainWindow inherits Window {
     callback close-open-file(EntryAddress);
     callback edit-shortcut(string);
     callback open-guide();
-    callback about();
     callback based-on-source();
-    callback quit();
     callback rate-changed(int);
     callback window-changed();
     callback tab-changed(int);
     callback open-workbench();
     callback new-draft();
     callback save-recipe();
+
     dialogs := Dialogs {
         window-width: root.width;
         window-height: root.height;
@@ -506,6 +507,7 @@ export component MainWindow inherits Window {
     MenuBar {
         Menu {
             title: Terms.caption-file;
+
             MenuItem {
                 title: Actions.new-sound.label;
                 enabled: Actions.new-sound.enabled;
@@ -563,11 +565,11 @@ export component MainWindow inherits Window {
                 activated => { root.stop-audio(); }
             }
 
-            // macOS puts Quit in the application menu.
-            if !root.native-mac: MenuItem {
+            MenuItem {
+                role: MenuItemRole.quit;
                 title: Terms.action-quit;
                 activated => {
-                    root.quit();
+                    ApplicationCommands.quit();
                 }
             }
         }
@@ -577,6 +579,7 @@ export component MainWindow inherits Window {
         // the keystroke away from the field it is meant for.
         Menu {
             title: Terms.action-edit;
+
             MenuItem {
                 title: Terms.action-undo;
                 activated => { root.edit-shortcut("z"); }
@@ -605,6 +608,7 @@ export component MainWindow inherits Window {
 
         Menu {
             title: Terms.caption-help;
+
             MenuItem {
                 title: "Start here";
                 activated => { root.resume-learning(); }
@@ -615,10 +619,11 @@ export component MainWindow inherits Window {
                 activated => { root.open-guide(); }
             }
 
-            if !root.native-mac: MenuItem {
+            MenuItem {
+                role: MenuItemRole.about;
                 title: Terms.caption-about-product;
                 activated => {
-                    root.about();
+                    ApplicationCommands.about();
                 }
             }
         }
@@ -632,6 +637,7 @@ export component MainWindow inherits Window {
         y: max(16px, (root.height - self.height) / 3);
         close-policy: close-on-click-outside;
         forward-focus: preference-focus;
+
         Rectangle {
             background: Palette.background;
             border-width: 1px;
@@ -647,9 +653,11 @@ export component MainWindow inherits Window {
                 }
                 return reject;
             }
+
             VerticalBox {
                 padding: 16px;
                 spacing: 12px;
+
                 Text {
                     text: "Couldn't save the Start here preference";
                     color: Palette.foreground;
@@ -670,6 +678,7 @@ export component MainWindow inherits Window {
                 HorizontalBox {
                     padding: 0px;
                     vertical-stretch: 0;
+
                     RunningTaskActions {
                         audio-busy: root.playback-busy;
                         exporting: root.exporting;
@@ -694,6 +703,7 @@ export component MainWindow inherits Window {
 
     workspace-layout := VerticalBox {
         spacing: 0px;
+
         notice-banner := Rectangle {
             visible: root.onboarding-notice != "" && !root.learning-visible;
             preferred-height: self.visible ? notice-content.preferred-height : 0px;
@@ -701,12 +711,14 @@ export component MainWindow inherits Window {
             max-height: self.preferred-height;
             vertical-stretch: 0;
             clip: true;
+
             notice-content := HorizontalBox {
                 x: 0px;
                 y: 0px;
                 width: parent.width;
                 height: parent.height;
                 padding: 4px;
+
                 Text {
                     text: "Couldn't save that you've seen Start here; it may open again " +
                         "next time. Everything else works.";
@@ -729,6 +741,7 @@ export component MainWindow inherits Window {
             changed preferred-height => { root.update-monitor-layout(); }
             vertical-stretch: 0;
             padding: 8px;
+
             workspace-navigation := WorkspaceNavigation {
                 current: root.learning-visible ? 4 : root.tab-index;
                 text-size: root.ui-size;
@@ -770,7 +783,9 @@ export component MainWindow inherits Window {
 
         Rectangle {
             min-height: 0px;
+
             library-page := LibraryPane {
+                initial-layout-ready: root.initial-layout-ready;
                 visible: !root.learning-visible && root.tab-index == 0;
                 width: parent.width;
                 height: parent.height;
@@ -1013,9 +1028,11 @@ export component MainWindow inherits Window {
             background: Palette.control-background;
             border-width: 1px;
             border-color: Palette.border;
+
             drawer-content := VerticalBox {
                 padding: 8px;
                 spacing: 3px;
+
                 Rectangle {
                     height: 6px;
                     background: grip-touch.has-hover || grip-focus.has-focus ?
@@ -1039,6 +1056,7 @@ export component MainWindow inherits Window {
                         root.resize-monitor(root.effective-drawer-height / 1px - 16);
                     }
                     forward-focus: grip-focus;
+
                     grip-focus := FocusScope {
                         key-pressed(e) => {
                             if e.text == Key.UpArrow {

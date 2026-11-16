@@ -1,10 +1,10 @@
+import { ApplicationCommands } from "application-menu.slint";
+import { ComboBox, TextEdit } from "focus-controls.slint";
 import { ViewCaptions } from "view-captions.slint";
 import { Actions } from "actions.slint";
 import { Button } from "button.slint";
 import { Terms } from "vocabulary.slint";
 import {
-    ComboBox,
-    TextEdit,
     ScrollView,
     VerticalBox,
     HorizontalBox,
@@ -29,6 +29,7 @@ export component Lane inherits Rectangle {
     min-width: root.axis-width + root.axis-row-height * 4 + 8px;
     accessible-role: image;
     accessible-label: root.label + Terms.caption-samples-common-symmetric-scale + root.limit;
+
     title := Text {
         x: 6px;
         y: root.axis-row-height * 1.5 - self.preferred-height / 2;
@@ -67,6 +68,7 @@ export component Lane inherits Rectangle {
         width: max(1px, parent.width - root.axis-width - 8px);
         height: root.axis-row-height * 2;
         clip: true;
+
         Rectangle {
             y: parent.height / 2;
             height: 1px;
@@ -127,10 +129,12 @@ export component MonitorPanel inherits VerticalBox {
     callback collapse();
     spacing: 4px;
     padding: 0px;
+
     HorizontalBox {
         padding: 0px;
         vertical-stretch: 0;
         cross-axis-alignment: center;
+
         Text {
             min-width: 0px;
             text: ViewCaptions.output-monitor;
@@ -170,9 +174,11 @@ export component MonitorPanel inherits VerticalBox {
     HorizontalBox {
         padding: 0px;
         spacing: 12px;
+
         VerticalBox {
             padding: 0px;
             spacing: 3px;
+
             Text {
                 min-width: 0px;
                 text: root.data.caption;
@@ -200,6 +206,7 @@ export component MonitorPanel inherits VerticalBox {
             HorizontalBox {
                 padding: 0px;
                 vertical-stretch: 0;
+
                 Text {
                     text: "−" + root.data.spanlabel;
                 }
@@ -219,6 +226,7 @@ export component MonitorPanel inherits VerticalBox {
             spacing: 4px;
             preferred-width: root.ui-size * 21;
             max-width: root.ui-size * 25;
+
             span-choice := ComboBox {
                 model: root.span-choices;
                 current-index: root.data.spanchoice;
@@ -238,6 +246,7 @@ export component MonitorPanel inherits VerticalBox {
             HorizontalBox {
                 padding: 0px;
                 spacing: 4px;
+
                 Button {
                     text: root.data.held ? Terms.action-return-to-live : Terms.action-hold-display;
                     triggered => { root.hold(); }
@@ -275,6 +284,7 @@ export component MonitorPanel inherits VerticalBox {
         vertical-stretch: 0;
         min-height: root.ui-size * 2.5;
         max-height: root.ui-size * 2.5;
+
         Text {
             text: root.data.warning;
             visible: root.data.warning != "";
@@ -302,6 +312,24 @@ export component MonitorPanel inherits VerticalBox {
 }
 
 export component MonitorWindow inherits Window {
+    MenuBar {
+        Menu {
+            title: Terms.caption-product-name;
+
+            MenuItem {
+                role: MenuItemRole.about;
+                title: Terms.caption-about-product;
+                activated => { ApplicationCommands.about(); }
+            }
+
+            MenuItem {
+                role: MenuItemRole.quit;
+                title: Terms.action-quit;
+                activated => { ApplicationCommands.quit(); }
+            }
+        }
+    }
+
     public function sync-controls() { panel.sync-controls(); }
     title: ViewCaptions.output-monitor;
     in property <string> ui-family;
@@ -322,6 +350,7 @@ export component MonitorWindow inherits Window {
     callback details();
     callback dismiss();
     forward-focus: monitor-keys;
+
     monitor-keys := FocusScope {
         width: parent.width;
         height: parent.height;
@@ -354,9 +383,11 @@ export component MonitorWindow inherits Window {
             }
             return reject;
         }
+
         monitor-scroll := ScrollView {
             VerticalBox {
                 padding: 16px;
+
                 panel := MonitorPanel {
                     max-height: self.preferred-height;
                     data: root.data;
@@ -376,6 +407,24 @@ export component MonitorWindow inherits Window {
 }
 
 export component DetailsWindow inherits Window {
+    MenuBar {
+        Menu {
+            title: Terms.caption-product-name;
+
+            MenuItem {
+                role: MenuItemRole.about;
+                title: Terms.caption-about-product;
+                activated => { ApplicationCommands.about(); }
+            }
+
+            MenuItem {
+                role: MenuItemRole.quit;
+                title: Terms.action-quit;
+                activated => { ApplicationCommands.quit(); }
+            }
+        }
+    }
+
     in property <string> ui-family;
     in property <length> ui-size:13px;
     default-font-family: root.ui-family;
@@ -384,18 +433,20 @@ export component DetailsWindow inherits Window {
     title: root.heading;
     in property <string> content;
     in property <bool> can-refresh;
-    public function focus-close() { close.focus(); }
+    public function focus-close() { close.ensure-visible(ScrollBehavior.instant); close.focus(); }
     callback refresh-content();
     preferred-width: 750px;
     preferred-height: 600px;
     min-width: 500px;
     min-height: 350px;
     callback dismiss();
+
     FocusScope {
         key-pressed(e) => {
             if e.text == Key.Escape { root.dismiss(); return accept; }
             return reject;
         }
+
         VerticalBox {
             Text {
                 text: root.heading;
@@ -422,6 +473,24 @@ export component DetailsWindow inherits Window {
 }
 
 export component AudioControlsWindow inherits Window {
+    MenuBar {
+        Menu {
+            title: Terms.caption-product-name;
+
+            MenuItem {
+                role: MenuItemRole.about;
+                title: Terms.caption-about-product;
+                activated => { ApplicationCommands.about(); }
+            }
+
+            MenuItem {
+                role: MenuItemRole.quit;
+                title: Terms.action-quit;
+                activated => { ApplicationCommands.quit(); }
+            }
+        }
+    }
+
     title: Terms.caption-audio-controls;
     in property <string> ui-family;
     in property <length> ui-size:13px;
@@ -431,13 +500,14 @@ export component AudioControlsWindow inherits Window {
     in property <string> elapsed;
     in property <bool> active;
     min-width: max(320px,controls.min-width);
-    min-height: controls.preferred-height;
     preferred-width: 400px;
-    preferred-height: max(150px,self.min-height);
+    preferred-height: 150px;
     callback stop();
+
     controls := VerticalBox {
         padding: 16px;
         spacing: 8px;
+
         Text {
             min-width: 0px;
             text: root.source;

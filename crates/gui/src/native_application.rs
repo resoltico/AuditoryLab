@@ -1,6 +1,6 @@
-//! macOS application integration: Quit and About arrive through the Slint
-//! backend's typed application handler, and a file panel offers Stop for the
-//! audio session that was playing when it opened.
+//! macOS application termination arrives through the Slint backend's typed
+//! application handler. A file panel offers Stop for the audio session that
+//! was playing when it opened.
 use crate::adapter::SlintAdapter;
 use objc2::{
     DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send, rc::Retained,
@@ -46,16 +46,6 @@ impl slint::winit_030::CustomApplicationHandler for ApplicationHandler {
         match self.adapter.borrow().upgrade() {
             Some(adapter) => adapter.request_termination(request),
             None => reply_to_termination(request, false),
-        }
-    }
-
-    fn application_about_title(&self) -> Option<String> {
-        Some(auditorylab_presentation::build_info::about_title())
-    }
-
-    fn about_requested(&mut self, _: &ActiveEventLoop) {
-        if let Some(adapter) = self.adapter.borrow().upgrade() {
-            adapter.show_about();
         }
     }
 }

@@ -391,7 +391,8 @@ fn play_save_export_and_prompts_run_through_the_shared_workflow() {
         panic!("unsaved changes are confirmed");
     };
     ui.invoke_new_draft();
-    ui.invoke_quit();
+    ui.global::<crate::generated::ApplicationCommands>()
+        .invoke_quit();
     assert_eq!(
         h.take(),
         [Request::Close(false)],
@@ -411,7 +412,8 @@ fn play_save_export_and_prompts_run_through_the_shared_workflow() {
     assert_eq!(ui.get_components().row_count(), 0);
     assert!(h.take().is_empty(), "a stale answer changes nothing");
 
-    ui.invoke_quit();
+    ui.global::<crate::generated::ApplicationCommands>()
+        .invoke_quit();
     h.adapter.tick();
     assert_eq!(h.take(), [Request::Close(true)]);
 }
@@ -1011,9 +1013,34 @@ fn drag(ui: &MainWindow, from: slint::LogicalPosition, to: slint::LogicalPositio
 #[test]
 fn about_and_licenses_use_production_actions_and_reopen_without_losing_terms() {
     let h = Harness::new();
-    h.ui().invoke_about();
-    settle(h.windows.about.window());
-    assert!(h.windows.about.window().is_visible());
+    for commands in [
+        h.windows
+            .main
+            .global::<crate::generated::ApplicationCommands>(),
+        h.windows
+            .about
+            .global::<crate::generated::ApplicationCommands>(),
+        h.windows
+            .licenses
+            .global::<crate::generated::ApplicationCommands>(),
+        h.windows
+            .monitor
+            .global::<crate::generated::ApplicationCommands>(),
+        h.windows
+            .details
+            .global::<crate::generated::ApplicationCommands>(),
+        h.windows
+            .audio_controls
+            .global::<crate::generated::ApplicationCommands>(),
+    ] {
+        h.windows.about.invoke_dismiss();
+        commands.invoke_about();
+        settle(h.windows.about.window());
+        assert!(
+            h.windows.about.window().is_visible(),
+            "each window owns a bound About action"
+        );
+    }
     assert_eq!(
         h.windows.about.get_identity().as_str(),
         auditorylab_app::identity::BUILD_IDENTITY
@@ -1058,7 +1085,9 @@ fn about_and_licenses_use_production_actions_and_reopen_without_losing_terms() {
     for _ in 0..2 {
         h.windows.about.invoke_dismiss();
         assert!(!h.windows.about.window().is_visible());
-        h.ui().invoke_about();
+        h.ui()
+            .global::<crate::generated::ApplicationCommands>()
+            .invoke_about();
         assert!(h.windows.about.window().is_visible());
         h.windows.licenses.invoke_dismiss();
         assert!(!h.windows.licenses.window().is_visible());
@@ -1934,6 +1963,7 @@ fn persistent_native_filters_use_shared_query_and_invalid_dates_preserve_it() {
 }
 
 slint::slint! {
+    #[edition = "1.19"]
     import { BoundButton } from "ui/library-controls.slint";
     export { EntryAddress, LibraryMutationAction } from "ui/library-actions.slint";
     import { EntryAddress, LibraryMutationAction } from "ui/library-actions.slint";
@@ -2433,17 +2463,42 @@ fn first_selected_row_keeps_the_results_note_in_view_after_launch() {
     h.wait_for_files();
     let ui = h.ui();
     ui.window().set_size(slint::LogicalSize::new(1280.0, 932.0));
-    for _ in 0..3 {
-        h.settle();
-        std::thread::sleep(Duration::from_millis(15));
-    }
     h.settle();
     assert!(ui.get_library_alert().contains("incomplete"));
     assert_eq!(ui.get_selected(), 0);
+    let note = labelled(ui, ui.get_library_alert().as_str());
     assert!(
-        ui.get_library_scroll_y().abs() < 1.0,
-        "the note above the selected first row must stay in view, got {}",
-        ui.get_library_scroll_y()
+        note.is_visible(),
+        "the incomplete-inventory warning must be visible"
+    );
+    let results = labelled(
+        ui,
+        ui.global::<crate::generated::Terms>()
+            .get_caption_library_results()
+            .as_str(),
+    );
+    let viewport = results
+        .visit_descendants(|item| {
+            if item
+                .downcast::<slint::private_unstable_api::re_exports::Flickable>()
+                .is_some()
+            {
+                ControlFlow::Break(item.clone())
+            } else {
+                ControlFlow::Continue(())
+            }
+        })
+        .expect("the actual results viewport exists");
+    let bounds = note.geometry();
+    let origin = note.map_to_window(bounds.origin);
+    let view = viewport.geometry();
+    let view_origin = viewport.map_to_window(view.origin);
+    assert!(
+        origin.x >= view_origin.x
+            && origin.y >= view_origin.y
+            && origin.x + bounds.size.width <= view_origin.x + view.size.width
+            && origin.y + bounds.size.height <= view_origin.y + view.size.height,
+        "the complete warning must fit the actual results viewport: {origin:?} {bounds:?} in {view_origin:?} {view:?}"
     );
 }
 
@@ -2771,7 +2826,8 @@ fn real_save_capture_and_delayed_completion_preserve_newer_edits_and_close_promp
     assert_eq!(saved.title, "Captured by Save");
     assert!(h.adapter.inspect(|w| w.file_busy()));
     assert!(ui.get_dirty());
-    ui.invoke_quit();
+    ui.global::<crate::generated::ApplicationCommands>()
+        .invoke_quit();
     assert!(h.adapter.inspect(|w| w.action_pending()));
     assert!(
         h.take().is_empty(),

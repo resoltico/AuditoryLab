@@ -29,7 +29,7 @@ fn context(nodes: Vec<(NodeId, Node)>, focus: NodeId) -> Arc<Context> {
     let tree = Tree::new(
         TreeUpdate {
             nodes,
-            tree: Some(accesskit::Tree::new(NodeId(0))),
+            tree: Some(accesskit::TreeInfo::new(NodeId(0))),
             tree_id: TreeId::ROOT,
             focus,
         },
@@ -37,7 +37,7 @@ fn context(nodes: Vec<(NodeId, Node)>, focus: NodeId) -> Arc<Context> {
     );
     Context::new(HWND::default().into(), tree, Arc::new(NoActions), false)
 }
-fn consumer_id(context: &Context, local: NodeId) -> accesskit_consumer::NodeId {
+fn consumer_id(context: &Context, local: NodeId) -> accesskit_consumer::FullNodeId {
     context
         .read_tree()
         .state()

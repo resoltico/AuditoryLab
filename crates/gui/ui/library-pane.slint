@@ -1,3 +1,4 @@
+import { ComboBox, TextEdit, LineEdit } from "focus-controls.slint";
 import { ViewCaptions } from "view-captions.slint";
 import { Actions } from "actions.slint";
 import { Button } from "button.slint";
@@ -6,9 +7,6 @@ import { LibraryNavigationItem } from "library-navigation.slint";
 import { Terms } from "vocabulary.slint";
 import {
     Palette,
-    ComboBox,
-    TextEdit,
-    LineEdit,
     VerticalBox,
     HorizontalBox,
     ScrollView,
@@ -67,6 +65,7 @@ export component LibraryPane inherits Rectangle {
     in property <bool> has-results;
     callback library-action(EntryAddress, LibraryMutationAction, string);
     in property <string> library-alert;
+    in property <bool> initial-layout-ready: false;
     in property <string> library-classification;
     in property <string> library-dates;
     in property <string> library-dates-utc;
@@ -133,6 +132,7 @@ export component LibraryPane inherits Rectangle {
             vertical-stretch: 0;
             padding: 12px;
             spacing: 10px;
+
             LineEdit {
                 text <=> root.query;
                 placeholder-text: Terms.caption-search-recipes;
@@ -173,10 +173,12 @@ export component LibraryPane inherits Rectangle {
                 horizontal-stretch: 0;
                 accessible-role: groupbox;
                 accessible-label: Terms.caption-browse-rhythm;
+
                 VerticalBox {
                     width: navigation-scroll.visible-width;
                     padding: 10px;
                     spacing: 4px;
+
                     Text {
                         text: ViewCaptions.collections;
                         font-weight: 600;
@@ -223,9 +225,11 @@ export component LibraryPane inherits Rectangle {
                     vertical-stretch: 0;
                     padding: 0px;
                     spacing: 4px;
+
                     HorizontalBox {
                         padding: 0px;
                         vertical-stretch: 0;
+
                         ComboBox {
                             min-width: 0px;
                             model: root.collection-labels;
@@ -273,6 +277,7 @@ export component LibraryPane inherits Rectangle {
                     HorizontalBox {
                         padding: 0px;
                         vertical-stretch: 0;
+
                         LineEdit {
                             text <=> root.query;
                             placeholder-text: Terms.caption-search-recipes;
@@ -291,6 +296,7 @@ export component LibraryPane inherits Rectangle {
                     if !root.compact: HorizontalBox {
                         padding: 0px;
                         vertical-stretch: 0;
+
                         ComboBox {
                             min-width: 0px;
                             model: root.band-labels;
@@ -330,6 +336,7 @@ export component LibraryPane inherits Rectangle {
                     vertical-stretch: 0;
                     padding: 12px;
                     spacing: 8px;
+
                     Text {
                         text: root.library-heading;
                         font-size: root.ui-size * 1.4;
@@ -342,6 +349,7 @@ export component LibraryPane inherits Rectangle {
                 HorizontalBox {
                     padding: 0px;
                     vertical-stretch: 0;
+
                     Text {
                         text: root.library-overview;
                         min-width: 0px;
@@ -362,6 +370,7 @@ export component LibraryPane inherits Rectangle {
                 if root.library-restrictions != "" || root.library-filters-active: HorizontalBox {
                     padding: 0px;
                     vertical-stretch: 0;
+
                     Text {
                         text: root.library-restrictions;
                         min-width: 0px;
@@ -380,6 +389,17 @@ export component LibraryPane inherits Rectangle {
                 }
 
                 entries := ScrollView {
+                    property <bool> restore-ready: root.library-restoring &&
+                        (root.library-restore-ready || !root.has-results) &&
+                        self.visible-height > 0px && self.content-height > 0px;
+                    function restore-scroll() {
+                        if self.restore-ready {
+                            self.content-y = root.library-scroll-y;
+                            root.library-restoring = false;
+                        }
+                    }
+                    init => { self.restore-scroll(); }
+                    changed restore-ready => { self.restore-scroll(); }
                     min-height: max(64px,root.ui-size * 3);
                     content-y: root.library-scroll-y;
                     changed content-y => {
@@ -389,6 +409,7 @@ export component LibraryPane inherits Rectangle {
                     }
                     accessible-role: list;
                     accessible-label: Terms.caption-library-results;
+
                     VerticalBox {
                         spacing: 4px;
                         width: entries.visible-width;
@@ -418,6 +439,7 @@ export component LibraryPane inherits Rectangle {
 
                         if !root.has-results: HorizontalBox {
                             vertical-stretch: 0;
+
                             Button {
                                 horizontal-stretch: 0;
                                 text: Terms.caption-create-sound;
@@ -432,39 +454,19 @@ export component LibraryPane inherits Rectangle {
 
                         for item[index] in root.catalog: catalog-row := Rectangle {
                             property <bool> selected-row: root.selected == index;
-                                    // A row created already selected, such as a new import,
-                                    // reveals itself once it has been laid out.
-                                    initial-reveal := Timer {
-                                interval: 1ms;
-                                running: catalog-row.selected-row;
-                                triggered => {
-                                    self.running = false;
-                                    if root.library-restoring { root.library-restore-ready = true; }
-                                    else { catalog-row.reveal(); }
-                                }
+                            property <bool> reveal-ready: self.selected-row && root.initial-layout-ready &&
+                                entries.visible-width > 0px && entries.visible-height > 0px &&
+                                self.width > 0px && self.height > 0px;
+                            init => {
+                                if root.library-restoring { root.library-restore-ready = true; }
+                                else { self.reveal(); }
                             }
-
                             function reveal() {
-                                if self.selected-row && !root.library-restoring {
-                                    // The first row keeps the notes above it in view, even
-                                    // after a reveal during an earlier, unsettled layout.
-                                    if index == 0 && self.y + self.height <=
-                                        entries.visible-height {
-                                        entries.content-y = 0px;
-                                    }
-                                    else if self.y + entries.content-y < 0px {
-                                        entries.content-y = -self.y;
-                                    }
-                                    else if self.y + self.height + entries.content-y >
-                                        entries.visible-height {
-                                        entries.content-y = entries.visible-height - self.y -
-                                            self.height;
-                                    }
+                                if self.reveal-ready && !root.library-restoring {
+                                    self.ensure-visible(ScrollBehavior.instant);
                                 }
                             }
-                            changed selected-row => { self.reveal(); }
-                            changed y => { self.reveal(); }
-                            changed height => { self.reveal(); }
+                            changed reveal-ready => { self.reveal(); }
 
                             height: max(root.ui-size * 3.5, card-content.preferred-height + 16px);
                             border-radius: 6px;
@@ -479,11 +481,12 @@ export component LibraryPane inherits Rectangle {
                             accessible-item-selected: self.selected-row;
                             property <bool> wants-focus: self.selected-row && item.binding != "" &&
                                 root.focused-library-key == item.binding;
-                            changed wants-focus => { if self.wants-focus { focus.focus(); } }
+                            changed wants-focus => { if self.wants-focus { self.ensure-visible(ScrollBehavior.instant); focus.focus(); } }
 
                             accessible-action-default => {
                                 touch.clicked();
                             }
+
                             card-content := VerticalLayout {
                                 x: 10px;
                                 y: 8px;
@@ -494,6 +497,7 @@ export component LibraryPane inherits Rectangle {
                                 // was studied for on the next.
                                 HorizontalLayout {
                                     spacing: 8px;
+
                                     Text {
                                         text: item.title;
                                         font-size: root.ui-size * 1.08;
@@ -542,6 +546,7 @@ export component LibraryPane inherits Rectangle {
                                     != "";
                                 changed has-focus => {
                                     if self.has-focus {
+                                        catalog-row.ensure-visible(ScrollBehavior.instant);
                                         root.focused-library-key = item.binding;
                                     }
                                     else if catalog-row.selected-row && root.focused-library-key ==
@@ -587,6 +592,7 @@ export component LibraryPane inherits Rectangle {
                         Section {
                             title: Terms.caption-library-storage-and-recovery;
                             ui-size: root.ui-size;
+
                             Text {
                                 text: root.library-status;
                                 wrap: word-wrap;
@@ -597,6 +603,7 @@ export component LibraryPane inherits Rectangle {
                             HorizontalBox {
                                 padding: 0px;
                                 vertical-stretch: 0;
+
                                 Button {
                                     enabled: Actions.library-refresh.enabled;
                                     text: Actions.library-refresh.label;
@@ -619,6 +626,7 @@ export component LibraryPane inherits Rectangle {
                             HorizontalBox {
                                 padding: 0px;
                                 vertical-stretch: 0;
+
                                 Button {
                                     text: Terms.action-reset-sort;
                                     horizontal-stretch: 0;
@@ -643,24 +651,12 @@ export component LibraryPane inherits Rectangle {
                         }
                     }
                 }
-                        // Re-created compact list rows must not replace the saved
-                        // scroll position with their initial selection reveal.
-                        Timer {
-                    interval: 1ms;
-                    running: root.library-restoring && (root.library-restore-ready ||
-                        !root.has-results);
-                    triggered => {
-                        entries.content-y = max(min(0px,root.library-scroll-y),min(0px,
-                            entries.visible-height - entries.content-height));
-                        root.library-scroll-y = entries.content-y;
-                        root.library-restoring = false;
-                    }
-                }
             }
             // A hairline divider with a wider grab area; it highlights while
             // pointed at or focused.
             if !root.compact && root.has-results: Rectangle {
                 width: 8px;
+
                 Rectangle {
                     x: (parent.width - self.width) / 2;
                     width: resize-touch.has-hover || resize-focus.has-focus ? 3px : 1px;
@@ -686,6 +682,7 @@ export component LibraryPane inherits Rectangle {
                     root.resize-library-pane(root.sidebar-width / 1px - 16);
                 }
                 forward-focus: resize-focus;
+
                 resize-focus := FocusScope {
                     key-pressed(event) => {
                         if event.text == Key.LeftArrow {
@@ -852,6 +849,7 @@ export component LibraryPane inherits Rectangle {
                         Section {
                             title: Terms.caption-waveform-pattern;
                             ui-size: root.ui-size;
+
                             Text {
                                 min-width: 0px;
                                 text: root.model-caption;
@@ -863,6 +861,7 @@ export component LibraryPane inherits Rectangle {
                                 padding: 0px;
                                 spacing: 4px;
                                 vertical-stretch: 0;
+
                                 Text {
                                     min-width: 0px;
                                     text: lane.label;
@@ -876,6 +875,7 @@ export component LibraryPane inherits Rectangle {
                                     background: Palette.control-background;
                                     accessible-role: image;
                                     accessible-label: lane.label + Terms.caption-calculated-pattern;
+
                                     Path {
                                         x: 4px;
                                         width: parent.width - 8px;
@@ -932,6 +932,7 @@ export component LibraryPane inherits Rectangle {
                         Section {
                             title: Terms.caption-classification;
                             ui-size: root.ui-size;
+
                             Text {
                                 text: root.library-classification;
                                 wrap: word-wrap;
@@ -943,9 +944,11 @@ export component LibraryPane inherits Rectangle {
                         Section {
                             title: Terms.caption-export-sound;
                             ui-size: root.ui-size;
+
                             HorizontalBox {
                                 padding: 0px;
                                 vertical-stretch: 0;
+
                                 ExportRate {
                                     horizontal-stretch: 0;
                                     choices: root.export-rates;
@@ -962,6 +965,7 @@ export component LibraryPane inherits Rectangle {
                             HorizontalBox {
                                 padding: 0px;
                                 vertical-stretch: 0;
+
                                 Button {
                                     text: Actions.export.label + "…";
                                     enabled: Actions.export.enabled;

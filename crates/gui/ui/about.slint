@@ -1,8 +1,9 @@
+import { ApplicationCommands } from "application-menu.slint";
+import { TextEdit } from "focus-controls.slint";
 import { Button } from "button.slint";
 import { Terms } from "vocabulary.slint";
 import {
     AboutSlint,
-    TextEdit,
     VerticalBox,
     HorizontalBox,
 } from "std-widgets.slint";
@@ -18,7 +19,7 @@ export component AboutWindow inherits Window {
     title: Terms.caption-about-product;
     icon: @image-url("../../../artwork/auditorylab-icon/assets/runtime/window-icon.png");
     in property <length> ui-size: 13px;
-    // Match the companion EML About dialog's toolkit typography.
+    // Use the native UI size for this independent window.
     default-font-size: root.ui-size;
     preferred-width: max(420px, root.ui-size * 30);
     preferred-height: max(500px, root.ui-size * 33);
@@ -27,10 +28,28 @@ export component AboutWindow inherits Window {
     callback open-licenses();
     callback dismiss();
     callback focus-website();
-    focus-website => { website.focus(); }
+    focus-website => { website.ensure-visible(ScrollBehavior.instant); website.focus(); }
+
     MenuBar {
         Menu {
+            title: Terms.caption-product-name;
+
+            MenuItem {
+                role: MenuItemRole.about;
+                title: Terms.caption-about-product;
+                activated => { ApplicationCommands.about(); }
+            }
+
+            MenuItem {
+                role: MenuItemRole.quit;
+                title: Terms.action-quit;
+                activated => { ApplicationCommands.quit(); }
+            }
+        }
+
+        Menu {
             title: Terms.action-edit;
+
             MenuItem {
                 title: Terms.action-copy;
                 shortcut: @keys(Control + C);
@@ -60,18 +79,22 @@ export component AboutWindow inherits Window {
     }
 
     forward-focus: about-focus;
+
     about-focus := FocusScope {
         key-pressed(event) => {
             if event.text == Key.Escape { root.dismiss(); return accept; }
             return reject;
         }
+
         VerticalBox {
             padding: 24px;
             spacing: 12px;
             alignment: center;
+
             HorizontalBox {
                 alignment: center;
                 padding: 0px;
+
                 Image {
                     source: root.icon;
                     width: 64px;
@@ -110,6 +133,7 @@ export component AboutWindow inherits Window {
                 alignment: center;
                 spacing: 12px;
                 padding: 0px;
+
                 website := Button {
                     text: Terms.caption-project-website;
                     triggered => { root.open-source(); }
@@ -125,6 +149,7 @@ export component AboutWindow inherits Window {
                 alignment: center;
                 vertical-stretch: 0;
                 padding: 0px;
+
                 AboutSlint {
                     width: 280px;
                     height: 100px;
@@ -151,14 +176,33 @@ export component LicenseWindow inherits Window {
     callback dismiss();
     callback focus-start();
     focus-start => {
+        license-text.ensure-visible(ScrollBehavior.instant);
         license-text.focus();
         license-text.set-selection-offsets(0, 0);
         license-text.content-y = 0px;
     }
     forward-focus: license-focus;
+
     MenuBar {
         Menu {
+            title: Terms.caption-product-name;
+
+            MenuItem {
+                role: MenuItemRole.about;
+                title: Terms.caption-about-product;
+                activated => { ApplicationCommands.about(); }
+            }
+
+            MenuItem {
+                role: MenuItemRole.quit;
+                title: Terms.action-quit;
+                activated => { ApplicationCommands.quit(); }
+            }
+        }
+
+        Menu {
             title: Terms.action-edit;
+
             MenuItem {
                 title: Terms.action-copy;
                 shortcut: @keys(Control + C);
@@ -181,6 +225,7 @@ export component LicenseWindow inherits Window {
             if event.text == Key.Escape { root.dismiss(); return accept; }
             return reject;
         }
+
         VerticalBox {
             license-text := TextEdit {
                 text: root.licenses;
@@ -192,6 +237,7 @@ export component LicenseWindow inherits Window {
                 padding: 12px;
                 spacing: 12px;
                 vertical-stretch: 0;
+
                 Text {
                     text: root.notice;
                     wrap: word-wrap;

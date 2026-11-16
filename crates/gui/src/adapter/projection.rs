@@ -31,6 +31,7 @@ impl SlintAdapter {
             self.project_document(&ui);
         }
         self.project_telemetry(&ui);
+        ui.set_initial_layout_ready(self.main_ready.get());
         self.sync_auxiliary(&ui);
         self.schedule();
         self.updating.set(false);

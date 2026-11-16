@@ -1,3 +1,4 @@
+import { LineEdit } from "focus-controls.slint";
 // SPDX-License-Identifier: AGPL-3.0-only
 import { ViewCaptions } from "view-captions.slint";
 import { Actions } from "actions.slint";
@@ -7,7 +8,6 @@ import {
     Palette,
     VerticalBox,
     ScrollView,
-    LineEdit,
     ProgressIndicator,
 } from "std-widgets.slint";
 import {
@@ -19,6 +19,7 @@ import { Section } from "editor.slint";
 
 component FindingSection inherits Section {
     in property <string> content;
+
     Text {
         text: root.content;
         wrap: word-wrap;
@@ -56,10 +57,12 @@ export component RecordingsPane inherits Rectangle {
         content-width: self.visible-width;
         width: parent.width;
         height: parent.height;
+
         VerticalBox {
             width: recordings-scroll.visible-width;
             padding: 16px;
             spacing: 14px;
+
             Text {
                 text: ViewCaptions.recordings;
                 font-size: root.ui-size * 1.5;
@@ -77,6 +80,7 @@ export component RecordingsPane inherits Rectangle {
 
             HorizontalLayout {
                 alignment: start;
+
                 Button {
                     text: Actions.open-recording.label + "…";
                     enabled: Actions.open-recording.enabled;
@@ -94,9 +98,11 @@ export component RecordingsPane inherits Rectangle {
             if root.has-recording: Section {
                 title: root.recording.name;
                 ui-size: root.ui-size;
+
                 GridLayout {
                     spacing-horizontal: 16px;
                     spacing-vertical: 6px;
+
                     Row {
                         Text {
                             text: Terms.caption-recording-location;
@@ -140,6 +146,7 @@ export component RecordingsPane inherits Rectangle {
             }
             if root.has-recording: VerticalLayout {
                 spacing: 8px;
+
                 Text {
                     text: "Start and at-most length in whole seconds (blank: 0 and 600)";
                     wrap: word-wrap;
@@ -167,6 +174,7 @@ export component RecordingsPane inherits Rectangle {
                 HorizontalLayout {
                     spacing: 8px;
                     alignment: start;
+
                     Button {
                         text: Actions.analyze-recording.label;
                         enabled: Actions.analyze-recording.enabled;
@@ -210,8 +218,10 @@ export component RecordingsPane inherits Rectangle {
             if root.has-analysis: Section {
                 title: "Tones";
                 ui-size: root.ui-size;
+
                 VerticalLayout {
                     spacing: 8px;
+
                     Text {
                         text: "Spectrum · 20–2000 Hz (log scale) · left blue, right orange";
                         wrap: word-wrap;
@@ -222,6 +232,7 @@ export component RecordingsPane inherits Rectangle {
                     Rectangle {
                         height: 160px;
                         background: Palette.background;
+
                         Path {
                             width: parent.width;
                             height: parent.height;
@@ -297,6 +308,7 @@ export component RecordingsPane inherits Rectangle {
             if root.has-analysis: Section {
                 title: "Low tones";
                 ui-size: root.ui-size;
+
                 VerticalLayout {
                     spacing: 6px;
                     for share in root.energy: VerticalLayout {
@@ -310,6 +322,7 @@ export component RecordingsPane inherits Rectangle {
                         if share.defined: Rectangle {
                             height: 8px;
                             background: Palette.border;
+
                             Rectangle {
                                 x: 0px;
                                 height: parent.height;

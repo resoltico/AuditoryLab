@@ -1,4 +1,6 @@
-import { Palette } from "std-widgets.slint";
+import {
+    Palette,
+} from "std-widgets.slint";
 export component LibraryNavigationItem inherits Rectangle {
     in property <string> label;
     in property <string> detail;
@@ -18,6 +20,7 @@ export component LibraryNavigationItem inherits Rectangle {
     border-width: focus.has-focus ? 2px : 0px;
     border-color: Palette.accent-background;
     border-radius: 5px;
+
     Rectangle {
         x: 0px;
         width: 3px;
@@ -32,8 +35,10 @@ export component LibraryNavigationItem inherits Rectangle {
         width: parent.width - 24px;
         height: parent.height - 20px;
         spacing: 3px;
+
         HorizontalLayout {
             spacing: 8px;
+
             Text {
                 text: root.label;
                 min-width: 0px;
@@ -64,7 +69,9 @@ export component LibraryNavigationItem inherits Rectangle {
     }
 
     forward-focus: focus;
+
     focus := FocusScope {
+        changed has-focus => { if self.has-focus { root.ensure-visible(ScrollBehavior.instant); } }
         key-pressed(event) => {
             if event.text == "\n" || event.text == " " { root.activated(); return accept; }
             return reject;

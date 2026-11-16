@@ -1,14 +1,11 @@
+import { LineEdit, TextEdit, Slider, ComboBox } from "focus-controls.slint";
 import { ViewCaptions } from "view-captions.slint";
 import { Button } from "button.slint";
 import { Terms } from "vocabulary.slint";
 import {
     Palette,
-    LineEdit,
-    TextEdit,
-    Slider,
     HorizontalBox,
     VerticalBox,
-    ComboBox,
 } from "std-widgets.slint";
 import { ParameterRow, MetadataRow } from "models.slint";
 // A titled part of a page. Sections are always open: the page shows what it
@@ -20,6 +17,7 @@ export component Section inherits VerticalBox {
     padding-top: 6px;
     spacing: 8px;
     vertical-stretch: 0;
+
     Rectangle {
         height: 1px;
         background: Palette.border;
@@ -60,6 +58,7 @@ export component NumericField inherits LineEdit {
     changed staged => {
         if root.staged && !root.dirty { root.captured = root.binding; }
         root.dirty = root.staged;
+        if !root.staged && self.has-focus { self.ensure-visible(ScrollBehavior.instant); }
     }
     init => {
         self.text = root.display-text;
@@ -92,6 +91,7 @@ export component NumericField inherits LineEdit {
         root.commit(owner, value);
     }
     changed has-focus => {
+        if self.has-focus { self.ensure-visible(ScrollBehavior.instant); }
         if !self.has-focus && root.dirty && !root.edits-suspended {
             root.dirty = false;
             root.commit(root.captured, self.text);
@@ -113,9 +113,11 @@ export component ParameterControl inherits VerticalBox {
     callback slide(string, float);
     padding: 0px;
     vertical-stretch: 0;
+
     HorizontalBox {
         padding: 0px;
         vertical-stretch: 0;
+
         Text {
             text: root.parameter.label;
             vertical-alignment: center;
@@ -144,6 +146,7 @@ export component ParameterControl inherits VerticalBox {
             preferred-height: field.preferred-height;
             min-height: field.min-height;
             horizontal-stretch: 0;
+
             field := NumericField {
                 width: parent.width;
                 height: parent.height;
@@ -162,8 +165,8 @@ export component ParameterControl inherits VerticalBox {
             }
 
             if root.parameter.diagnostic != "": Rectangle {
-                width: parent.width;
-                height: parent.height;
+                width: 100%;
+                height: 100%;
                 background: transparent;
                 border-width: 2px;
                 border-color: Palette.accent-background;
@@ -207,6 +210,7 @@ export component NotesInput inherits TextEdit {
     changed staged => {
         if root.staged && !root.dirty { root.captured = root.binding; }
         root.dirty = root.staged;
+        if !root.staged && self.has-focus { self.ensure-visible(ScrollBehavior.instant); }
     }
     init => {
         self.text = root.display-text;
@@ -234,6 +238,7 @@ export component NotesInput inherits TextEdit {
         return reject;
     }
     changed has-focus => {
+        if self.has-focus { self.ensure-visible(ScrollBehavior.instant); }
         if !self.has-focus && root.dirty && !root.edits-suspended {
             root.dirty = false;
             root.commit(root.captured, self.text);
@@ -282,7 +287,7 @@ export component StableButton inherits Rectangle {
     in property <string> description;
     callback clicked();
     forward-focus: button;
-    public function focus-button() { button.focus(); }
+    public function focus-button() { button.ensure-visible(ScrollBehavior.instant); button.focus(); }
     property <length> stable-width: max(measure.preferred-width, button.preferred-width);
     min-width: root.stable-width;
     preferred-width: root.stable-width;
@@ -291,6 +296,7 @@ export component StableButton inherits Rectangle {
     preferred-height: button.min-height;
     max-height: button.min-height;
     horizontal-stretch: 0;
+
     measure := VerticalLayout {
         visible: false;
         for label in root.labels: Button {
@@ -321,6 +327,7 @@ export component ExportRate inherits HorizontalBox {
     in property <[string]> choices;
     in property <bool> edit-enabled;
     callback changed(int);
+
     Text {
         text: ViewCaptions.export-sample-rate;
         vertical-alignment: center;

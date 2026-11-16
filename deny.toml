@@ -13,9 +13,9 @@ exclude-dev = true
 
 [advisories]
 ignore = [
-    { id = "RUSTSEC-2026-0370", reason = "zvariant 5 is required by Slint 1.18.1 Linux accessibility and portal dependencies. Its API moved to zbus 6; the pinned consumers require major version 5. This informational maintenance advisory reports no vulnerability." },
-    { id = "RUSTSEC-2026-0371", reason = "zbus_names 4 is required by Slint 1.18.1 Linux accessibility and portal dependencies. Its API moved to zbus 6; the pinned consumers require the standalone crate. This informational maintenance advisory reports no vulnerability." },
-    { id = "RUSTSEC-2026-0372", reason = "zvariant_derive 5 provides macros for the required zvariant 5 API. Its macros moved to zbus 6, which the pinned Slint 1.18.1 consumers cannot use. This informational maintenance advisory reports no vulnerability." },
+    { id = "RUSTSEC-2026-0370", reason = "zvariant 5 is required by Slint 1.19.0 Linux accessibility and portal dependencies. Its API moved to zbus 6; the pinned consumers require major version 5. This informational maintenance advisory reports no vulnerability." },
+    { id = "RUSTSEC-2026-0371", reason = "zbus_names 4 is required by Slint 1.19.0 Linux accessibility and portal dependencies. Its API moved to zbus 6; the pinned consumers require the standalone crate. This informational maintenance advisory reports no vulnerability." },
+    { id = "RUSTSEC-2026-0372", reason = "zvariant_derive 5 provides macros for the required zvariant 5 API. Its macros moved to zbus 6, which the pinned Slint 1.19.0 consumers cannot use. This informational maintenance advisory reports no vulnerability." },
 
     { id = "RUSTSEC-2026-0192", reason = "ttf-parser is unmaintained; it is reached only through winit's Wayland title-bar renderer (sctk-adwaita), which parses installed system fonts, not user input" },
 ]

@@ -1,6 +1,9 @@
 // Copyright 2026 Ervins Strauhmanis
 // SPDX-License-Identifier: AGPL-3.0-only
-import { HorizontalBox, ProgressIndicator } from "std-widgets.slint";
+import {
+    HorizontalBox,
+    ProgressIndicator,
+} from "std-widgets.slint";
 import { Button } from "button.slint";
 import { Actions } from "actions.slint";
 import { ViewCaptions } from "view-captions.slint";
@@ -25,6 +28,7 @@ export component RunningTaskActions inherits HorizontalBox {
         preferred-height: self.min-height;
         max-height: self.preferred-height;
         horizontal-stretch: 0;
+
         stop-measure := Button {
             visible: false;
             text: Actions.stop.label;
@@ -50,6 +54,7 @@ export component RunningTaskActions inherits HorizontalBox {
         preferred-height: self.min-height;
         max-height: self.preferred-height;
         horizontal-stretch: 0;
+
         cancel-measure := Button {
             visible: false;
             text: Actions.cancel-export.label;

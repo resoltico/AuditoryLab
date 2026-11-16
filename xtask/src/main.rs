@@ -340,20 +340,23 @@ fn about(product: &str, target: &str, meta: &Value, executable: Option<&Path>) -
         text.push_str(&fonts::notices(&fonts::embedded(&fs::read(executable)?))?);
     }
     if product == "gui" {
+        if target.contains("linux") {
+            text.push_str(include_str!("../templates/accesskit-unix-notice.txt"));
+        }
+        // The Taffy crate archive omits its source LICENSE copyright notices.
+        text.push_str(include_str!("../templates/taffy-notice.txt"));
         text.push_str(include_str!("../templates/slint-badge-notice.txt"));
         text.push_str(include_str!(
-            "../../third_party/i-slint-compiler/LICENSES/CC-BY-ND-4.0.txt"
+            "../templates/slint-widget-licenses/CC-BY-ND-4.0.txt"
         ));
         if target.contains("apple") {
             text.push_str(include_str!("../templates/slint-cupertino-notice.txt"));
             text.push_str(include_str!(
-                "../../third_party/i-slint-compiler/LICENSES/Apache-2.0.txt"
+                "../templates/slint-widget-licenses/Apache-2.0.txt"
             ));
         } else if target.contains("windows") || target.contains("linux") {
             text.push_str(include_str!("../templates/slint-fluent-notice.txt"));
-            text.push_str(include_str!(
-                "../../third_party/i-slint-compiler/LICENSES/MIT.txt"
-            ));
+            text.push_str(include_str!("../templates/slint-widget-licenses/MIT.txt"));
         }
     }
     Ok(text)

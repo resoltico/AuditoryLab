@@ -26,7 +26,7 @@ use crate::generated::{
     MetadataRow, ModelLane, MonitorWindow, ParameterRow,
 };
 use crate::{details_parent, motion, scope, typography};
-use actions::install_actions;
+use actions::{install_actions, install_application_actions};
 use auditorylab_app::document::editing::{EditingField, FieldHandle, MetadataField, RowKey};
 use auditorylab_app::services::playback::PlaybackPhase;
 use auditorylab_app::workspace::{
@@ -95,6 +95,10 @@ impl Windows {
         for terms in [
             windows.main.global::<crate::generated::Terms>(),
             windows.about.global::<crate::generated::Terms>(),
+            windows.licenses.global::<crate::generated::Terms>(),
+            windows.monitor.global::<crate::generated::Terms>(),
+            windows.details.global::<crate::generated::Terms>(),
+            windows.audio_controls.global::<crate::generated::Terms>(),
         ] {
             crate::native_text::initialize_identity(&terms);
         }
@@ -244,6 +248,7 @@ impl SlintAdapter {
             termination: RefCell::new(None),
             counts: ProjectionCounts::default(),
         });
+        install_application_actions(&adapter, windows);
         ui.set_components(ModelRc::from(adapter.components.clone()));
         ui.set_catalog(ModelRc::from(adapter.catalog.clone()));
         ui.set_model_lanes(ModelRc::from(adapter.lanes.clone()));
@@ -253,7 +258,6 @@ impl SlintAdapter {
                 .to_vec(),
         )));
         ui.set_guidance(auditorylab_presentation::Notice::general_guidance().into());
-        ui.set_native_mac(cfg!(target_os = "macos"));
         windows.about.set_identity(
             auditorylab_presentation::build_info::build_identity_about_version(
                 auditorylab_app::identity::BUILD_IDENTITY,

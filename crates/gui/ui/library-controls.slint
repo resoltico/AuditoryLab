@@ -1,6 +1,7 @@
+import { LineEdit } from "focus-controls.slint";
 import { EntryAddress, LibraryMutationAction } from "library-actions.slint";
 import { Button } from "button.slint";
-import { LineEdit } from "std-widgets.slint";
+
 // A held activation retains both its table and row, even after a model rebind.
 export component BoundButton inherits Button {
     in property <EntryAddress> entry;

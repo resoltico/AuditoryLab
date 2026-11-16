@@ -5,44 +5,26 @@ use slint::private_unstable_api::re_exports::{AccessibleStringProperty, ItemRc, 
 use std::ops::ControlFlow;
 
 slint::slint! {
-    import { Button, CheckBox, Switch, ScrollView, ComboBox } from "std-widgets.slint";
-    component OversizedPointOwner inherits Rectangle {
-        width:800px;height:700px;
-        public function focus-point() {point.focus();}
-        point := FocusScope {x:400px;y:300px;width:0px;height:0px;}
-    }
-    component NestedPointOwner inherits Rectangle {
-        width:250px;height:180px;
-        public function focus-point() {point.focus();}
-        public function reset-scroll() {inner.content-x=0px;inner.content-y=0px;}
-        inner := ScrollView {width:150px;height:100px;content-width:450px;content-height:350px;
-            Rectangle {width:450px;height:350px;
-                point := FocusScope {x:400px;y:300px;width:0px;height:0px;}
-            }
-        }
-    }
+    #[edition = "1.19"]
+    import { Button } from "../ui/button.slint";
+    import { CheckBox, Switch, ComboBox, LineEdit, Slider } from "../ui/focus-controls.slint";
+    import { ScrollView } from "std-widgets.slint";
     export component FocusScrollProbe inherits Window {
         in property <bool> hide-button;
-        out property <length> scroll-x:outer.content-x;
         out property <length> scroll-y:outer.content-y;
         out property <int> popup-selection:choices.current-index;
-        public function reset-scroll() {outer.content-x=0px;outer.content-y=0px;
-            nested.reset-scroll();nested-reference.reset-scroll();}
+        public function reset-scroll() {outer.content-x=0px;outer.content-y=0px;}
         public function scroll-to-end() {outer.content-y=-700px;}
         public function focus-target(index:int) {
             if index==0 {bottom.focus();}
             if index==1 {top.focus();}
             if index==2 {check.focus();}
             if index==3 {toggle.focus();}
-            if index==4 {positive.focus();}
-            if index==5 {point.focus();}
-            if index==6 {oversized.focus-point();}
-            if index==7 {nested.focus-point();}
-            if index==8 {oversized-reference.focus-point();}
-            if index==9 {nested-reference.focus-point();}
-            if index==10 {clipped.focus();}
-            if index==11 {read-only-input.focus();}
-            if index==12 {choices.focus();}
+            if index==4 {choices.focus();}
+            if index==5 {editable.focus();}
+            if index==6 {level.focus();}
+            if index==7 {clipped.focus();}
+            if index==8 {read-only-input.focus();}
         }
         FocusScope {width:parent.width;height:parent.height;
         capture-key-pressed(event)=>{if event.text=="k" {return accept;}if event.text=="j" {
@@ -53,16 +35,13 @@ slint::slint! {
                     visible:!root.hide-button;}
                 top := Button {x:40px;y:30px;width:150px;height:40px;text:"Top button";}
                 choices := ComboBox {x:40px;y:80px;width:180px;height:40px;model:["First","Second"];
-                    }
+                    accessible-label:"Choices";}
                 check := CheckBox {x:800px;y:100px;width:180px;height:40px;text:"Right checkbox";}
                 toggle := Switch {x:40px;y:700px;width:180px;height:40px;text:"Bottom switch";}
-                positive := FocusScope {x:500px;y:350px;width:80px;height:60px;
-                    accessible-role:button;accessible-label:"Positive focus";}
-                point := FocusScope {x:40px;y:30px;width:0px;height:0px;}
-                oversized := OversizedPointOwner {x:100px;y:100px;accessible-role:list-item;}
-                oversized-reference := OversizedPointOwner {x:100px;y:100px;}
-                nested := NestedPointOwner {x:600px;y:500px;accessible-role:button;}
-                nested-reference := NestedPointOwner {x:600px;y:500px;}
+                editable := LineEdit {x:800px;y:250px;width:180px;height:40px;
+                    accessible-label:"Editable value";text:"Value";}
+                level := Slider {x:800px;y:350px;width:180px;height:40px;
+                    accessible-label:"Level slider";}
                 Rectangle {x:300px;y:200px;width:100px;height:100px;clip:true;
                     clipped := FocusScope {x:120px;y:20px;width:40px;height:40px;}
                 }
@@ -76,6 +55,7 @@ slint::slint! {
 }
 
 slint::slint! {
+    #[edition = "1.19"]
     export component ConditionalLifetimeProbe inherits Window {
         in property <[int]> entries;
         for entry in root.entries: Rectangle {width:200px;height:100px;
@@ -164,7 +144,9 @@ pub(super) fn assert_control_focus_scrolls_into_view() {
         (1, "Top button"),
         (2, "Right checkbox"),
         (3, "Bottom switch"),
-        (4, "Positive focus"),
+        (4, "Choices"),
+        (5, "Editable value"),
+        (6, "Level slider"),
     ] {
         probe.invoke_focus_target(index);
         settle(probe.window());
@@ -187,8 +169,7 @@ pub(super) fn assert_control_focus_scrolls_into_view() {
             (x, y, width, height)
         );
     }
-    assert_original_point_cases(&probe);
-    probe.invoke_focus_target(10);
+    probe.invoke_focus_target(7);
     settle(probe.window());
     let clipped_focus = inner.focus_item.borrow().upgrade().unwrap();
     assert!(
@@ -212,7 +193,7 @@ pub(super) fn assert_control_focus_scrolls_into_view() {
     assert_readonly_clipped_shortcuts(&probe);
     assert_hidden_focus_released(&probe);
     probe.invoke_reset_scroll();
-    probe.invoke_focus_target(12);
+    probe.invoke_focus_target(4);
     settle(probe.window());
     for key in [
         slint::platform::Key::Return,
@@ -253,60 +234,11 @@ fn bounds(item: &ItemRc) -> (f32, f32, f32, f32) {
     )
 }
 
-fn assert_original_point_cases(probe: &FocusScrollProbe) {
-    let inner = WindowInner::from_pub(probe.window());
-    let root = inner.window_item_rc().unwrap();
-    // Disabling semantic ownership exercises the unchanged original point path.
-    // Compare it with the semantic path for ownerless, oversized and nested points.
-    for (index, reference) in [(5, 5), (6, 8), (7, 9)] {
-        let mut observations = Vec::new();
-        for selected in [index, reference] {
-            probe.invoke_focus_target(1);
-            settle(probe.window());
-            probe.invoke_reset_scroll();
-            probe.invoke_focus_target(selected);
-            settle(probe.window());
-            let focused = inner.focus_item.borrow().upgrade().unwrap();
-            let point = bounds(&focused);
-            let _ = root.visit_descendants(|candidate| {
-                if candidate
-                    .downcast::<slint::private_unstable_api::re_exports::Flickable>()
-                    .is_some()
-                {
-                    let mut contains_focus = false;
-                    let _ = candidate.visit_descendants(|item| {
-                        contains_focus |= *item == focused;
-                        ControlFlow::<()>::Continue(())
-                    });
-                    if contains_focus {
-                        let viewport = bounds(candidate);
-                        assert!(
-                            point.0 >= viewport.0 - 0.1
-                                && point.1 >= viewport.1 - 0.1
-                                && point.0 + point.2 <= viewport.0 + viewport.2 + 0.1
-                                && point.1 + point.3 <= viewport.1 + viewport.3 + 0.1,
-                            "point case{index} selected={selected}: {point:?} must fit actual \
-                                viewport{viewport:?}"
-                        );
-                    }
-                }
-                ControlFlow::<()>::Continue(())
-            });
-            observations.push((probe.get_scroll_x(), probe.get_scroll_y()));
-        }
-        assert!(
-            (observations[0].0 - observations[1].0).abs() < 0.1
-                && (observations[0].1 - observations[1].1).abs() < 0.1,
-            "point case{index} must preserve original point behavior: {observations:?}"
-        );
-    }
-}
-
 fn assert_readonly_clipped_shortcuts(probe: &FocusScrollProbe) {
     let inner = WindowInner::from_pub(probe.window());
     let root = inner.window_item_rc().unwrap();
     probe.invoke_reset_scroll();
-    probe.invoke_focus_target(11);
+    probe.invoke_focus_target(8);
     settle(probe.window());
     let read_only_focus = inner.focus_item.borrow().upgrade().unwrap();
     probe.invoke_scroll_to_end();

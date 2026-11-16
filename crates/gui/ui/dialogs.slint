@@ -1,3 +1,4 @@
+import { ComboBox, TextEdit, LineEdit } from "focus-controls.slint";
 import { DateInput } from "models.slint";
 import { ControlOption } from "models.slint";
 import { ViewCaptions } from "view-captions.slint";
@@ -6,9 +7,6 @@ import { Button } from "button.slint";
 import { Terms } from "vocabulary.slint";
 import {
     Palette,
-    ComboBox,
-    TextEdit,
-    LineEdit,
     VerticalBox,
     HorizontalBox,
     ScrollView,
@@ -71,6 +69,7 @@ export component Dialogs inherits Rectangle {
             { from-text: root.modified-from, through-text: root.modified-through },
             { from-text: root.added-from, through-text: root.added-through });
     }
+
     query-popup := PopupWindow {
         x: max(8px,root.window-width - self.width - 12px);
         y: root.toolbar-height + 8px;
@@ -78,6 +77,7 @@ export component Dialogs inherits Rectangle {
         height: min(480px,root.window-height - root.toolbar-height - 24px);
         close-policy: close-on-click-outside;
         forward-focus: query-focus;
+
         Rectangle {
             background: Palette.background;
             border-width: 1px;
@@ -93,12 +93,15 @@ export component Dialogs inherits Rectangle {
                 }
                 return reject;
             }
+
             VerticalLayout {
                 padding: 12px;
                 spacing: 8px;
+
                 HorizontalBox {
                     padding: 0px;
                     vertical-stretch: 0;
+
                     Text {
                         text: ViewCaptions.applied-library-filters;
                         font-weight: 600;
@@ -129,6 +132,7 @@ export component Dialogs inherits Rectangle {
         height: min(620px,root.window-height - root.toolbar-height - 24px);
         close-policy: close-on-click-outside;
         forward-focus: filter-focus;
+
         Rectangle {
             background: Palette.background;
             border-width: 1px;
@@ -144,12 +148,15 @@ export component Dialogs inherits Rectangle {
                 }
                 return reject;
             }
+
             VerticalLayout {
                 padding: 12px;
                 spacing: 8px;
+
                 HorizontalBox {
                     padding: 0px;
                     vertical-stretch: 0;
+
                     Text {
                         text: Terms.caption-library-filters;
                         font-weight: 600;
@@ -167,8 +174,10 @@ export component Dialogs inherits Rectangle {
                 filter-scroll := ScrollView {
                     accessible-role: groupbox;
                     accessible-label: Terms.caption-library-filters;
+
                     VerticalBox {
                         width: filter-scroll.visible-width;
+
                         Text {
                             text: Terms.caption-find-by-purpose;
                             wrap: word-wrap;
@@ -295,6 +304,7 @@ export component Dialogs inherits Rectangle {
                 HorizontalBox {
                     padding: 0px;
                     vertical-stretch: 0;
+
                     Button {
                         text: Terms.action-clear-all-filters;
                         triggered => { root.clear-applied-filters(); }

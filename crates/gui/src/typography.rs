@@ -7,16 +7,7 @@ pub(super) struct Typography {
     pub(super) size: f32,
     pub(super) origin: String,
 }
-fn system_family(fonts: &mut fontique::Collection) -> String {
-    let id = fonts
-        .generic_families(fontique::GenericFamily::SystemUi)
-        .next();
-    id.and_then(|id| fonts.family_name(id))
-        .unwrap_or("system-ui")
-        .to_owned()
-}
 pub(super) fn resolve() -> Typography {
-    let mut fonts = fontique::Collection::new(fontique::CollectionOptions::default());
     #[cfg(target_os = "macos")]
     let (size, origin) = {
         #[expect(
@@ -25,17 +16,20 @@ pub(super) fn resolve() -> Typography {
                 binary64 to the renderer f32 coordinate type is intentional"
         )]
         let size = objc2_app_kit::NSFont::systemFontSize() as f32;
-        (size, "AppKit system UI / fontique SystemUi".to_owned())
+        (
+            size,
+            "AppKit system UI size / Slint native family".to_owned(),
+        )
     };
     #[cfg(target_os = "linux")]
-    let (size, origin) = (13.0, "Toolkit DPI / fontique SystemUi".to_owned());
+    let (size, origin) = (13.0, "Toolkit DPI / Slint native family".to_owned());
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     let (size, origin) = (
         13.0,
-        "SystemUi fallback while reading desktop preference".to_owned(),
+        "Slint native family while reading desktop preference".to_owned(),
     );
     Typography {
-        family: system_family(&mut fonts),
+        family: String::new(),
         size,
         origin,
     }
