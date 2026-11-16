@@ -55,21 +55,6 @@ static NEXT_MENU_GENERATION: AtomicU64 = AtomicU64::new(1);
 
 static MUDA_SET_EVENT_HANDLER_INSTALLED: AtomicBool = AtomicBool::new(false);
 
-/// AuditoryLab: menu identifier of the application-handled About item. Muda
-/// events with this identifier are routed to the custom application handler
-/// before window menu identifiers are parsed.
-pub const APPLICATION_ABOUT_ID: &str = "slint-application-about";
-
-/// The title of the application-handled About item, when the custom
-/// application handler provides one; otherwise the predefined About is used.
-static APPLICATION_ABOUT_TITLE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
-
-/// Route the application menu's About item to the custom application handler.
-pub fn set_application_about(title: String) {
-    let _ = APPLICATION_ABOUT_TITLE.set(title);
-}
-
-
 /// Returns true when `SLINT_NO_MUDA` is set, in which case the menu bar and the context menus
 /// are rendered by Slint. That's the only way to exercise these code paths on macOS and Windows.
 pub fn is_disabled() -> bool {
@@ -600,10 +585,7 @@ impl MudaAdapter {
     }
 
     #[cfg(target_os = "macos")]
-    pub fn setup_default_menu_bar(
-        proxy: EventLoopProxy<SlintEvent>,
-    ) -> Result<Self, i_slint_core::api::PlatformError> {
-        install_event_handler_if_necessary(proxy);
+    pub fn setup_default_menu_bar() -> Result<Self, i_slint_core::api::PlatformError> {
         let menu_bar = muda::Menu::new();
         create_app_menu(&menu_bar, &[], |_, _| unreachable!())?;
         menu_bar.init_for_nsapp();
@@ -841,12 +823,7 @@ fn create_app_menu(
     let mut items: Vec<Box<dyn muda::IsMenuItem>> = Vec::new();
     items.push(match entry(MenuItemRole::About) {
         Some(about) => Box::new(menu_item(about, None)),
-        None => match APPLICATION_ABOUT_TITLE.get() {
-            Some(title) => Box::new(muda::MenuItem::with_id(
-                muda::MenuId(APPLICATION_ABOUT_ID.into()), title, true, None,
-            )),
-            None => Box::new(PredefinedMenuItem::about(None, None)),
-        },
+        None => Box::new(PredefinedMenuItem::about(None, None)),
     });
     items.push(Box::new(PredefinedMenuItem::separator()));
     if let Some(preferences) = entry(MenuItemRole::Preferences) {

@@ -1,10 +1,10 @@
+import { ApplicationCommands } from "application-menu.slint";
+import { ComboBox, TextEdit } from "focus-controls.slint";
 import { ViewCaptions } from "view-captions.slint";
 import { Actions } from "actions.slint";
 import { Button } from "button.slint";
 import { Terms } from "vocabulary.slint";
 import {
-    ComboBox,
-    TextEdit,
     ScrollView,
     VerticalBox,
     HorizontalBox,
@@ -312,6 +312,24 @@ export component MonitorPanel inherits VerticalBox {
 }
 
 export component MonitorWindow inherits Window {
+    MenuBar {
+        Menu {
+            title: Terms.caption-product-name;
+
+            MenuItem {
+                role: about;
+                title: Terms.caption-about-product;
+                activated => { ApplicationCommands.about(); }
+            }
+
+            MenuItem {
+                role: quit;
+                title: Terms.action-quit;
+                activated => { ApplicationCommands.quit(); }
+            }
+        }
+    }
+
     public function sync-controls() { panel.sync-controls(); }
     title: ViewCaptions.output-monitor;
     in property <string> ui-family;
@@ -389,6 +407,24 @@ export component MonitorWindow inherits Window {
 }
 
 export component DetailsWindow inherits Window {
+    MenuBar {
+        Menu {
+            title: Terms.caption-product-name;
+
+            MenuItem {
+                role: about;
+                title: Terms.caption-about-product;
+                activated => { ApplicationCommands.about(); }
+            }
+
+            MenuItem {
+                role: quit;
+                title: Terms.action-quit;
+                activated => { ApplicationCommands.quit(); }
+            }
+        }
+    }
+
     in property <string> ui-family;
     in property <length> ui-size:13px;
     default-font-family: root.ui-family;
@@ -397,7 +433,7 @@ export component DetailsWindow inherits Window {
     title: root.heading;
     in property <string> content;
     in property <bool> can-refresh;
-    public function focus-close() { close.focus(); }
+    public function focus-close() { close.ensure-visible(ScrollBehavior.instant); close.focus(); }
     callback refresh-content();
     preferred-width: 750px;
     preferred-height: 600px;
@@ -437,6 +473,24 @@ export component DetailsWindow inherits Window {
 }
 
 export component AudioControlsWindow inherits Window {
+    MenuBar {
+        Menu {
+            title: Terms.caption-product-name;
+
+            MenuItem {
+                role: about;
+                title: Terms.caption-about-product;
+                activated => { ApplicationCommands.about(); }
+            }
+
+            MenuItem {
+                role: quit;
+                title: Terms.action-quit;
+                activated => { ApplicationCommands.quit(); }
+            }
+        }
+    }
+
     title: Terms.caption-audio-controls;
     in property <string> ui-family;
     in property <length> ui-size:13px;

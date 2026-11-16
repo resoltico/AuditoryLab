@@ -223,12 +223,6 @@ impl winit::application::ApplicationHandler<SlintEvent> for EventLoopState {
                 }
             },
             #[cfg(muda)]
-            CustomEvent::Muda(event) if event.id().0 == crate::muda::APPLICATION_ABOUT_ID => {
-                if let Some(handler) = self.custom_application_handler.as_mut() {
-                    handler.about_requested(event_loop);
-                }
-            }
-            #[cfg(muda)]
             CustomEvent::Muda(event) => {
                 if let Some((window_id, generation, entry_id, muda_type)) =
                     crate::muda::parse_menu_item_id(event.id())

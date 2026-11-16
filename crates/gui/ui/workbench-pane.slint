@@ -1,3 +1,4 @@
+import { ComboBox } from "focus-controls.slint";
 import { ViewCaptions } from "view-captions.slint";
 import { Actions } from "actions.slint";
 import { Button } from "button.slint";
@@ -6,7 +7,6 @@ import { Button } from "button.slint";
 import { Terms } from "vocabulary.slint";
 import {
     Palette,
-    ComboBox,
     VerticalBox,
     HorizontalBox,
     ScrollView,
@@ -100,6 +100,7 @@ export component WorkbenchPane inherits Rectangle {
     // the previous document's scroll position or the control that opened it.
     public function focus-title() {
         editor-scroll.content-y = 0px;
+        title-input.ensure-visible(ScrollBehavior.instant);
         title-input.focus();
     }
 

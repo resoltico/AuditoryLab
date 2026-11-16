@@ -32,7 +32,7 @@ The artwork check needs Python 3.9+ with its standard library; ordinary Rust bui
 
 The compiler warns about ordinary hygiene locally. Core emits missing-documentation warnings; unsafe-code rules remain denied. CI denies workspace Clippy pedantic findings and documentation warnings without applying a global warning denial to vendored path dependencies.
 
-The desktop build and inline widget probes select Slint edition 1.19. Conditional and repeated children participate in natural layout sizing; decoration overlays use percentage sizes so they follow their fields without defining the fields' intrinsic size.
+The desktop build and inline widget probes select Slint edition 1.19. Conditional and repeated children participate in natural layout sizing; decoration overlays use percentage sizes so they follow their fields without defining the fields' intrinsic size. Application controls and selected rows use `ensure-visible`; native About/Quit menus declare `MenuItem.role` and bind `ApplicationCommands` in every window.
 
 Use the CI-pinned cargo-deny, cargo-mutants, cargo-about and actionlint versions. Install `slint-lsp` with `--locked --no-default-features` at the resolved Slint version in Cargo.lock; the style gate rejects a version mismatch. On Windows, point TMP/TEMP to an absolute directory under `target/`. Linux calendar checks need system `tzdata`.
 

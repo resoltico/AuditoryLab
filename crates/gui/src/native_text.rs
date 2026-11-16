@@ -26,6 +26,11 @@ impl Caption {
     /// A monitor's native typography values, without duplicating the diagnostic heading.
     #[must_use]
     pub(crate) fn typography_values(family: &str, size: f32, source: &str) -> String {
+        let family = if family.is_empty() {
+            "Slint native family"
+        } else {
+            family
+        };
         format!("{family} · {size} logical px · {source}")
     }
     /// Explain an incomplete desktop package without depending on the process cwd.

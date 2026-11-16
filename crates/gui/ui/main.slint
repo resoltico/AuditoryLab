@@ -1,3 +1,6 @@
+export { ApplicationCommands } from "application-menu.slint";
+import { ApplicationCommands } from "application-menu.slint";
+import { TextEdit } from "focus-controls.slint";
 import { RecordingFindings, RecordingEnergy } from "models.slint";
 export { DateInput } from "models.slint";
 import { DateInput } from "models.slint";
@@ -26,7 +29,6 @@ import {
     VerticalBox,
     HorizontalBox,
     ProgressIndicator,
-    TextEdit,
 } from "std-widgets.slint";
 export {
     EntryAddress,
@@ -70,7 +72,6 @@ export component MainWindow inherits Window {
     title: Terms.caption-product-name;
     in-out property <bool> edits-suspended:false;
     in-out property <bool> monitor-open:false;
-    in property <bool> native-mac: false;
     in property <string> draft-brief;
     in property <string> draft-location;
     in property <string> draft-location-details;
@@ -337,7 +338,7 @@ export component MainWindow inherits Window {
             root.restore-notice-focus();
         }
     }
-    public function focus-workspace-navigation() { workspace-navigation.focus(); }
+    public function focus-workspace-navigation() { workspace-navigation.ensure-visible(ScrollBehavior.instant); workspace-navigation.focus(); }
     in property <int> tab-index: 0;
     in property <string> device-check-introduction;
     in property <[DeviceTestRow]> device-tests;
@@ -451,9 +452,7 @@ export component MainWindow inherits Window {
     callback close-open-file(EntryAddress);
     callback edit-shortcut(string);
     callback open-guide();
-    callback about();
     callback based-on-source();
-    callback quit();
     callback rate-changed(int);
     callback window-changed();
     callback tab-changed(int);
@@ -565,11 +564,11 @@ export component MainWindow inherits Window {
                 activated => { root.stop-audio(); }
             }
 
-            // macOS puts Quit in the application menu.
-            if !root.native-mac: MenuItem {
+            MenuItem {
+                role: quit;
                 title: Terms.action-quit;
                 activated => {
-                    root.quit();
+                    ApplicationCommands.quit();
                 }
             }
         }
@@ -619,10 +618,11 @@ export component MainWindow inherits Window {
                 activated => { root.open-guide(); }
             }
 
-            if !root.native-mac: MenuItem {
+            MenuItem {
+                role: about;
                 title: Terms.caption-about-product;
                 activated => {
-                    root.about();
+                    ApplicationCommands.about();
                 }
             }
         }

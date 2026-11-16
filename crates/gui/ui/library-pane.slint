@@ -1,3 +1,4 @@
+import { ComboBox, TextEdit, LineEdit } from "focus-controls.slint";
 import { ViewCaptions } from "view-captions.slint";
 import { Actions } from "actions.slint";
 import { Button } from "button.slint";
@@ -6,9 +7,6 @@ import { LibraryNavigationItem } from "library-navigation.slint";
 import { Terms } from "vocabulary.slint";
 import {
     Palette,
-    ComboBox,
-    TextEdit,
-    LineEdit,
     VerticalBox,
     HorizontalBox,
     ScrollView,
@@ -390,6 +388,17 @@ export component LibraryPane inherits Rectangle {
                 }
 
                 entries := ScrollView {
+                    property <bool> restore-ready: root.library-restoring &&
+                        (root.library-restore-ready || !root.has-results) &&
+                        self.visible-height > 0px && self.content-height > 0px;
+                    function restore-scroll() {
+                        if self.restore-ready {
+                            self.content-y = root.library-scroll-y;
+                            root.library-restoring = false;
+                        }
+                    }
+                    init => { self.restore-scroll(); }
+                    changed restore-ready => { self.restore-scroll(); }
                     min-height: max(64px,root.ui-size * 3);
                     content-y: root.library-scroll-y;
                     changed content-y => {
@@ -444,39 +453,16 @@ export component LibraryPane inherits Rectangle {
 
                         for item[index] in root.catalog: catalog-row := Rectangle {
                             property <bool> selected-row: root.selected == index;
-                                    // A row created already selected, such as a new import,
-                                    // reveals itself once it has been laid out.
-                                    initial-reveal := Timer {
-                                interval: 1ms;
-                                running: catalog-row.selected-row;
-                                triggered => {
-                                    self.running = false;
-                                    if root.library-restoring { root.library-restore-ready = true; }
-                                    else { catalog-row.reveal(); }
-                                }
+                            init => {
+                                if root.library-restoring { root.library-restore-ready = true; }
+                                else { self.reveal(); }
                             }
-
                             function reveal() {
                                 if self.selected-row && !root.library-restoring {
-                                    // The first row keeps the notes above it in view, even
-                                    // after a reveal during an earlier, unsettled layout.
-                                    if index == 0 && self.y + self.height <=
-                                        entries.visible-height {
-                                        entries.content-y = 0px;
-                                    }
-                                    else if self.y + entries.content-y < 0px {
-                                        entries.content-y = -self.y;
-                                    }
-                                    else if self.y + self.height + entries.content-y >
-                                        entries.visible-height {
-                                        entries.content-y = entries.visible-height - self.y -
-                                            self.height;
-                                    }
+                                    self.ensure-visible(ScrollBehavior.instant);
                                 }
                             }
                             changed selected-row => { self.reveal(); }
-                            changed y => { self.reveal(); }
-                            changed height => { self.reveal(); }
 
                             height: max(root.ui-size * 3.5, card-content.preferred-height + 16px);
                             border-radius: 6px;
@@ -491,7 +477,7 @@ export component LibraryPane inherits Rectangle {
                             accessible-item-selected: self.selected-row;
                             property <bool> wants-focus: self.selected-row && item.binding != "" &&
                                 root.focused-library-key == item.binding;
-                            changed wants-focus => { if self.wants-focus { focus.focus(); } }
+                            changed wants-focus => { if self.wants-focus { self.ensure-visible(ScrollBehavior.instant); focus.focus(); } }
 
                             accessible-action-default => {
                                 touch.clicked();
@@ -556,6 +542,7 @@ export component LibraryPane inherits Rectangle {
                                     != "";
                                 changed has-focus => {
                                     if self.has-focus {
+                                        catalog-row.ensure-visible(ScrollBehavior.instant);
                                         root.focused-library-key = item.binding;
                                     }
                                     else if catalog-row.selected-row && root.focused-library-key ==
@@ -658,19 +645,6 @@ export component LibraryPane inherits Rectangle {
                         Rectangle {
                             vertical-stretch: 1;
                         }
-                    }
-                }
-                        // Re-created compact list rows must not replace the saved
-                        // scroll position with their initial selection reveal.
-                        Timer {
-                    interval: 1ms;
-                    running: root.library-restoring && (root.library-restore-ready ||
-                        !root.has-results);
-                    triggered => {
-                        entries.content-y = max(min(0px,root.library-scroll-y),min(0px,
-                            entries.visible-height - entries.content-height));
-                        root.library-scroll-y = entries.content-y;
-                        root.library-restoring = false;
                     }
                 }
             }

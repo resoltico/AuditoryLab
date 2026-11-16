@@ -14,7 +14,6 @@ auditorylab-presentation.workspace = true
 auditorylab-app.workspace = true
 slint.workspace = true
 rfd.workspace = true
-fontique = "=0.13.0"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 block2 = "=0.6.2"

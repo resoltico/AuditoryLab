@@ -1,6 +1,6 @@
 # Dependency integration
 
-The workspace patches the native toolkit for accessibility, focus, multiline editing, modeless windows and macOS application menus, including typed Windows UI Automation interface arrays, the RIFF reader for bounded RF64/BW64 lengths, and the AAC decoder to refuse unsupported profiles and SBR rather than report an incomplete LC-only decode. Font shaping and X11 DPI use the toolkit's upstream policy. The application embeds no fonts and uses system fonts; on Linux, Winit's Wayland window decorations embed the Cantarell title font, which packaging credits under its SIL Open Font License.
+The workspace patches the native toolkit for accessibility, focus, multiline editing, modeless windows and macOS application menus, including typed Windows UI Automation interface arrays, the RIFF reader for bounded RF64/BW64 lengths, and the AAC decoder to refuse unsupported profiles and SBR rather than report an incomplete LC-only decode. Font-family resolution, fallback shaping and X11 DPI use the toolkit's upstream policy. The application embeds no fonts and uses system fonts; on Linux, Winit's Wayland window decorations embed the Cantarell title font, which packaging credits under its SIL Open Font License.
 
 [patches.toml](patches.toml) defines archive URLs, versions and SHA-256 digests. [patches/](patches/) contains the exact unified diffs. Vendored source must equal its authenticated archive with the corresponding patch applied. Archive `Cargo.lock` files are retained when present; `spin_on` ships none and uses the workspace lockfile.
 
@@ -18,33 +18,25 @@ The verifier authenticates archives before extraction, compares every source byt
 | Symphonia RIFF | RF64/BW64 ds64 lengths use checked bounds and bounded table metadata. | RF64/BW64 export-sample equivalence, invalid-size refusals and sparse seeking beyond 4 GiB in [recording decoder tests](../crates/app/src/storage/recording/decode/tests.rs). |
 | Symphonia AAC | Non-LC ADTS profiles and in-band SBR are rejected before incomplete samples can be returned. | AAC-profile and in-band SBR refusals in [recording decoder tests](../crates/app/src/storage/recording/decode/tests.rs), with AAC-LC fixture positive controls. |
 | AccessKit Windows | UIA SAFEARRAYs preserve typed provider interface pointers, their IID metadata and COM reference ownership; unsupported text searches return failure HRESULTs. | Native [selection tests](accesskit_windows/src/selection_tests.rs) and actual selected multiline text through the [Windows UI Automation harness](../crates/gui/native/windows.ps1). |
-| AccessKit Unix | Cache signals carry one complete structured D-Bus argument; the vendored source includes its license texts and serialization regression cases. | Linux cache-add/cache-remove wire-signature cases in [bus.rs](accesskit_unix/src/atspi/bus.rs) and accessible-control removal/reinsertion. |
-| Slint core | Aggregate modifier synchronization, shaped multiline extents/cursor height, immediate semantic focus reveal, accumulated clipping, scroll-clipped key focus and active-row focus validation. | Modifier, cursor, control-focus and clipped-editor [window tests](../crates/gui/src/window_tests.rs), [focus/reflow tests](../crates/gui/src/focus_reflow_tests.rs) and retired-row callback [adapter tests](../crates/gui/src/adapter_tests.rs). |
-| Slint compiler | TextEdit reveals the shaped cursor rectangle and its height, paired with the core geometry property. | Cursor scrolling at supported text sizes through the [compiler binding](i-slint-compiler/widgets/common/textedit-base.slint) and [core geometry](i-slint-core/items/text.rs). |
-| Slint Winit backend | Aggregate macOS modifiers, deferred termination routing and application-owned About actions use the shared native backend. | Wayland first-show/details recreation, macOS modifiers and About/Quit Save/Discard/Cancel through the [native harnesses](../crates/gui/native/README.md). |
+| Slint core | Aggregate modifier synchronization, complete shaped multiline extents, accumulated clipping and active-row focus validation. | Modifier, cursor, control-focus and clipped-editor [window tests](../crates/gui/src/window_tests.rs), [focus/reflow tests](../crates/gui/src/focus_reflow_tests.rs) and retired-row callback [adapter tests](../crates/gui/src/adapter_tests.rs). |
+| Slint Winit backend | Aggregate macOS modifiers and deferred OS termination routing use the shared native backend. | Wayland first-show/details recreation, macOS modifiers and About/Quit Save/Discard/Cancel through the [native harnesses](../crates/gui/native/README.md). |
 | Winit | Modeless Wayland parents can be reacquired, and AppKit termination is deferred/coalesced without replacing the toolkit delegate. | Parent recreation/invalid-parent checks through [Details binding](../crates/gui/src/details_parent.rs), [termination state tests](winit/src/platform_impl/macos/app_state.rs) and native Quit/Cancel. |
 
-Keyboard focus and virtual-keyboard adjustments reveal their target immediately. Focus visibility intersects clipping rectangles through the ancestor chain; active-row checks reject retained controls from retired rows. Generic smooth-scrolling requests remain separate from focus admission.
+Application widgets use `ensure-visible(ScrollBehavior.instant)` on their own rectangles when focused, and Library rows use that same public API. Slint owns caret scrolling and native smooth-scrolling requests. Focus validity intersects clipping rectangles through the ancestor chain; active-row checks reject retained controls from retired rows.
 
-Application buttons use [the app-owned component](../crates/gui/ui/button.slint). It retains toolkit rendering and focus, gives every button one height that follows the window's text size, exposes one accessible button, and forwards its `triggered` application callback only while enabled. `accessibility_presses_respect_disabled_buttons` exercises this component through the production accessibility action.
+Application buttons use [the app-owned component](../crates/gui/ui/button.slint). It retains toolkit rendering and focus, gives every button one height that follows the window's text size, exposes one accessible button, and forwards toolkit activation to its `triggered` application callback. The toolkit owns disabled-input admission, including accessibility actions. `accessibility_presses_respect_disabled_buttons` exercises this component through the production accessibility action.
 
 The macOS application menu's About item opens the application's window containing its project and license actions. AppKit termination is intercepted through Winit's own application delegate; the delegate is not replaced. Repeated Quit joins one pending request; unavailable or abandoned handlers deny it.
 
-The AccessKit Unix patch must satisfy the pinned `accesskit_winit` dependency range and cache-signal contract. The exact patched version is recorded in [patches.toml](patches.toml) and resolved in [Cargo.lock](../Cargo.lock). A replacement requires a compatible toolkit graph; substituting a package outside its declared range is insufficient.
-
 ## Dependency boundaries
 
-[Cargo.toml](../Cargo.toml), [Cargo.lock](../Cargo.lock) and [patches.toml](patches.toml) define the current dependency graph. Slint core, compiler and backend share one version; the compiler's cursor-height input is paired with the core's shaped geometry. The backend uses Slint's Winit 0.30 API. AccessKit Unix must satisfy `accesskit_winit`'s dependency range and use compatible AccessKit data types throughout that graph.
+[Cargo.toml](../Cargo.toml), [Cargo.lock](../Cargo.lock) and [patches.toml](patches.toml) define the current dependency graph. Slint core, the registry compiler and the backend share one version. TextInput owns shaped-caret scrolling; the application uses declared menu roles for native About and Quit placement. The backend uses Slint's Winit 0.30 API. AccessKit Unix uses the registry's current compatible adapter, whose structured cache signals are exercised through the native AT-SPI client.
 
 Modeless parent-request retention belongs to the [Details binding](../crates/gui/src/details_parent.rs): it reacquires native handles after recreation and never retains a retired Wayland surface. Winit exposes the parent request; Slint's first-show redraw remains separate from this application binding.
 
 ## Checks
 
-The workspace GUI suite exercises the production controls and retained focus/input behavior. On Linux, the bridge tests exercise the real serialized cache signals:
-
-```sh
-CARGO_TARGET_DIR="$PWD/target" cargo test --manifest-path third_party/accesskit_unix/Cargo.toml --lib --locked
-```
+The workspace GUI suite exercises the production controls and retained focus/input behavior. On Linux, the [native graphical harness](../crates/gui/native/README.md) exercises the actual registry adapter through AT-SPI cache discovery and control updates.
 
 On Windows, provider-array tests exercise the native SAFEARRAY ABI and reference ownership:
 

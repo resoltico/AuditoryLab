@@ -1,20 +1,8 @@
 [[patch]]
-name = "accesskit_unix"
-version = "0.24.1"
-url = "https://static.crates.io/crates/accesskit_unix/accesskit_unix-0.24.1.crate"
-sha256 = "30d5192871228c54f1b0fb4a85cef000e11a3804f25d2165f14afa0daa67f3f6"
-
-[[patch]]
 name = "i-slint-core"
 version = "1.19.0"
 url = "https://static.crates.io/crates/i-slint-core/i-slint-core-1.19.0.crate"
 sha256 = "9590458a3ba4ad8e66a6b572dbe758cc5d4f84f57e682a097358e4fe0f02b006"
-
-[[patch]]
-name = "i-slint-compiler"
-version = "1.19.0"
-url = "https://static.crates.io/crates/i-slint-compiler/i-slint-compiler-1.19.0.crate"
-sha256 = "aba9cffaff13694d0123a43f3cb1dad6e6df9ba8fb7dcffad882aaed87e0cef0"
 
 [[patch]]
 name = "i-slint-backend-winit"

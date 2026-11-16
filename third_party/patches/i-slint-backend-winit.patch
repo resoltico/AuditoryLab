@@ -19,7 +19,7 @@
          }
      }
  }
-@@ -209,6 +214,20 @@
+@@ -209,6 +214,14 @@
              CustomEvent::WakeEventLoopWorkaround => {
                  event_loop.set_control_flow(ControlFlow::Poll);
              }
@@ -31,18 +31,12 @@
 +                    let _ = winit::platform::macos::reply_to_termination(request, false);
 +                }
 +            },
-+            #[cfg(muda)]
-+            CustomEvent::Muda(event) if event.id().0 == crate::muda::APPLICATION_ABOUT_ID => {
-+                if let Some(handler) = self.custom_application_handler.as_mut() {
-+                    handler.about_requested(event_loop);
-+                }
-+            }
              #[cfg(muda)]
              CustomEvent::Muda(event) => {
                  if let Some((window_id, generation, entry_id, muda_type)) =
 --- a/lib.rs
 +++ b/lib.rs
-@@ -290,6 +290,38 @@
+@@ -290,6 +290,29 @@
      fn memory_warning(&mut self, event_loop: &ActiveEventLoop) -> EventResult {
          EventResult::Propagate
      }
@@ -69,30 +63,16 @@
 +        let _ = winit::platform::macos::reply_to_termination(request, true);
 +    }
 +
-+    /// Return a title to replace the application menu's predefined About item
-+    /// with one that calls [`Self::about_requested`]. It is identified by a
-+    /// reserved menu identifier, not by its title or position.
-+    fn application_about_title(&self) -> Option<String> {
-+        None
-+    }
-+
-+    /// The application menu's About item was chosen.
-+    fn about_requested(&mut self, event_loop: &ActiveEventLoop) {}
  }
  
  /// Use the BackendBuilder to configure the properties of the Winit Backend before creating it.
-@@ -425,6 +457,26 @@
+@@ -425,6 +448,21 @@
              self.requested_graphics_api.clone(),
              self.allow_fallback,
          )?);
 +
-+        #[cfg(any(muda, target_os = "macos"))]
++        #[cfg(target_os = "macos")]
 +        if let Some(handler) = self.custom_application_handler.as_ref() {
-+            #[cfg(muda)]
-+            if let Some(title) = handler.application_about_title() {
-+                crate::muda::set_application_about(title);
-+            }
-+            #[cfg(target_os = "macos")]
 +            if handler.intercepts_termination()
 +                && let Some(event_loop) = shared_data.not_running_event_loop.borrow().as_ref()
 +            {
@@ -108,70 +88,9 @@
  
          Ok(Backend {
              event_loop_state: Default::default(),
---- a/muda.rs
-+++ b/muda.rs
-@@ -54,6 +54,21 @@
- static NEXT_MENU_GENERATION: AtomicU64 = AtomicU64::new(1);
- 
- static MUDA_SET_EVENT_HANDLER_INSTALLED: AtomicBool = AtomicBool::new(false);
-+
-+/// AuditoryLab: menu identifier of the application-handled About item. Muda
-+/// events with this identifier are routed to the custom application handler
-+/// before window menu identifiers are parsed.
-+pub const APPLICATION_ABOUT_ID: &str = "slint-application-about";
-+
-+/// The title of the application-handled About item, when the custom
-+/// application handler provides one; otherwise the predefined About is used.
-+static APPLICATION_ABOUT_TITLE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
-+
-+/// Route the application menu's About item to the custom application handler.
-+pub fn set_application_about(title: String) {
-+    let _ = APPLICATION_ABOUT_TITLE.set(title);
-+}
-+
- 
- /// Returns true when `SLINT_NO_MUDA` is set, in which case the menu bar and the context menus
- /// are rendered by Slint. That's the only way to exercise these code paths on macOS and Windows.
-@@ -585,7 +600,10 @@
-     }
- 
-     #[cfg(target_os = "macos")]
--    pub fn setup_default_menu_bar() -> Result<Self, i_slint_core::api::PlatformError> {
-+    pub fn setup_default_menu_bar(
-+        proxy: EventLoopProxy<SlintEvent>,
-+    ) -> Result<Self, i_slint_core::api::PlatformError> {
-+        install_event_handler_if_necessary(proxy);
-         let menu_bar = muda::Menu::new();
-         create_app_menu(&menu_bar, &[], |_, _| unreachable!())?;
-         menu_bar.init_for_nsapp();
-@@ -823,7 +841,12 @@
-     let mut items: Vec<Box<dyn muda::IsMenuItem>> = Vec::new();
-     items.push(match entry(MenuItemRole::About) {
-         Some(about) => Box::new(menu_item(about, None)),
--        None => Box::new(PredefinedMenuItem::about(None, None)),
-+        None => match APPLICATION_ABOUT_TITLE.get() {
-+            Some(title) => Box::new(muda::MenuItem::with_id(
-+                muda::MenuId(APPLICATION_ABOUT_ID.into()), title, true, None,
-+            )),
-+            None => Box::new(PredefinedMenuItem::about(None, None)),
-+        },
-     });
-     items.push(Box::new(PredefinedMenuItem::separator()));
-     if let Some(preferences) = entry(MenuItemRole::Preferences) {
 --- a/winitwindowadapter.rs
 +++ b/winitwindowadapter.rs
-@@ -1439,7 +1439,9 @@
-                     && self.menubar().is_none()
-                 {
-                     *muda_adapter.borrow_mut() =
--                        Some(crate::muda::MudaAdapter::setup_default_menu_bar()?);
-+                        Some(crate::muda::MudaAdapter::setup_default_menu_bar(
-+                            self.event_loop_proxy.clone(),
-+                        )?);
-                 }
- 
-                 if let Some(muda_adapter) = muda_adapter.borrow().as_ref() {
-@@ -1664,6 +1666,9 @@
+@@ -1664,6 +1664,9 @@
                  } else {
                      (state.control_key(), state.super_key())
                  };

@@ -235,118 +235,6 @@
                  }
              }
              parent = ancestor.parent_item(ParentItemTraversalMode::StopAtPopups);
-@@ -790,7 +821,6 @@
-     /// Returns an absolute position of `p` in the `ancestor`'s coordinate system
-     /// (does not add this item's x and y)
-     /// Don't rely on any specific behavior if `self` isn't a descendant of `ancestor`.
--    #[cfg(test)]
-     fn map_to_ancestor(&self, p: LogicalPoint, ancestor: &Self) -> LogicalPoint {
-         self.map_to_item_tree_impl(p, |parent| parent == ancestor)
-     }
-@@ -1163,7 +1193,83 @@
-     /// Scrolls every `Flickable` ancestor up to the nearest popup by the smallest amount that brings `self` into view.
-     /// Does nothing if no such ancestor is a `Flickable`.
-     pub fn try_scroll_into_visible(&self, scroll_behavior: ScrollBehavior) {
--        self.try_scroll_rect_into_visible(self.geometry(), scroll_behavior);
-+        // Standard controls use a zero-width FocusScope to avoid intercepting
-+        // pointer events. Reveal the owning control, not only that focus point.
-+        let mut scroll_target = self.clone();
-+        let focused_geometry = self.geometry();
-+        if focused_geometry.width() <= 0. || focused_geometry.height() <= 0. {
-+            let mut candidate = self.parent_item(ParentItemTraversalMode::StopAtPopups);
-+            while let Some(owner) = candidate {
-+                if owner.downcast::<crate::items::Flickable>().is_some()
-+                    || owner.downcast::<crate::items::WindowItem>().is_some()
-+                {
-+                    break;
-+                }
-+                let geometry = owner.geometry();
-+                if geometry.width() > 0.
-+                    && geometry.height() > 0.
-+                    && owner.is_visible_or_clipped_by_flickable()
-+                    && matches!(
-+                        owner.accessible_role(),
-+                        crate::items::AccessibleRole::Button
-+                            | crate::items::AccessibleRole::Checkbox
-+                            | crate::items::AccessibleRole::Combobox
-+                            | crate::items::AccessibleRole::Slider
-+                            | crate::items::AccessibleRole::Spinbox
-+                            | crate::items::AccessibleRole::Tab
-+                            | crate::items::AccessibleRole::TextInput
-+                            | crate::items::AccessibleRole::Switch
-+                            | crate::items::AccessibleRole::ListItem
-+                            | crate::items::AccessibleRole::RadioButton
-+                    )
-+                {
-+                    scroll_target = owner;
-+                    break;
-+                }
-+                candidate = owner.parent_item(ParentItemTraversalMode::StopAtPopups);
-+            }
-+        }
-+        let mut parent = self.parent_item(ParentItemTraversalMode::StopAtPopups);
-+        while let Some(item_rc) = parent.as_ref() {
-+            let item_ref = item_rc.borrow();
-+            if let Some(flickable) = vtable::VRef::downcast_pin::<crate::items::Flickable>(item_ref)
-+            {
-+                let points = |item: &Self| {
-+                    let geo = item.geometry();
-+                    [
-+                        item.map_to_ancestor(
-+                            LogicalPoint::new(
-+                                geo.origin.x - flickable.content_x().0,
-+                                geo.origin.y - flickable.content_y().0,
-+                            ),
-+                            item_rc,
-+                        ),
-+                        item.map_to_ancestor(
-+                            LogicalPoint::new(
-+                                geo.max_x() - flickable.content_x().0,
-+                                geo.max_y() - flickable.content_y().0,
-+                            ),
-+                            item_rc,
-+                        ),
-+                    ]
-+                };
-+                let focused_points = points(self);
-+                let mut target_points = points(&scroll_target);
-+                let viewport = crate::items::Flickable::geometry_without_virtual_keyboard(item_rc);
-+                // An oversized owner cannot fit. Keep the original focus extent
-+                // on that axis instead of scrolling toward an unrelated edge.
-+                if (target_points[1].x - target_points[0].x).abs() > viewport.width() {
-+                    target_points[0].x = focused_points[0].x;
-+                    target_points[1].x = focused_points[1].x;
-+                }
-+                if (target_points[1].y - target_points[0].y).abs() > viewport.height() {
-+                    target_points[0].y = focused_points[0].y;
-+                    target_points[1].y = focused_points[1].y;
-+                }
-+                flickable.reveal_points(item_rc, &target_points, scroll_behavior);
-+            }
-+            parent = item_rc.parent_item(ParentItemTraversalMode::StopAtPopups);
-+        }
-     }
- 
-     /// Like [`Self::try_scroll_into_visible`], but brings only `geo` into view.
---- a/items/text.rs
-+++ b/items/text.rs
-@@ -1120,6 +1120,8 @@
-     pub line_height_factor: Property<f32>,
-     pub width: Property<LogicalLength>,
-     pub height: Property<LogicalLength>,
-+    /// Height of the shaped cursor rectangle used by the multiline widget scroll policy.
-+    pub cursor_height: Property<LogicalLength>,
-     pub cursor_position_byte_offset: Property<i32>,
-     pub anchor_position_byte_offset: Property<i32>,
-     cursor_affinity: Cell<TextCursorAffinity>,
-@@ -2120,6 +2122,7 @@
-                 window_adapter,
-                 self_rc,
-             );
-+            self.cursor_height.set(LogicalLength::new(cursor_rect.size.height));
-             let pos = cursor_rect.origin;
-             if reset_preferred_x_pos {
-                 self.preferred_x_pos.set(pos.x);
 --- a/textlayout/sharedparley.rs
 +++ b/textlayout/sharedparley.rs
 @@ -602,7 +602,24 @@
@@ -413,7 +301,7 @@
      /// Receive a key event and pass it to the items of the component to
      /// change their state.
      ///
-@@ -1386,31 +1415,13 @@
+@@ -1386,31 +1415,12 @@
              }
          }
  
@@ -444,63 +332,8 @@
 -                });
 -            }
 +        );
-+        let is_modifier_event = modifier_update.is_some();
 +        if let Some(updated_modifier) = modifier_update {
 +            self.set_modifier_state(updated_modifier);
          }
  
          internal_key_event.key_event.modifiers =
-@@ -1456,6 +1467,20 @@
-         }
- 
-         drop(item_list);
-+
-+        // Editing a scroll-clipped control needs its context back, but captured
-+        // shortcuts and pointer movement must leave the user's viewport alone.
-+        let current_focus = self.focus_item.borrow().upgrade();
-+        let mut revealed = None;
-+        if internal_key_event.event_type == KeyEventType::KeyPressed
-+            && !is_modifier_event
-+            && let Some(focus_item) = item.as_ref()
-+            && current_focus.as_ref() == Some(focus_item)
-+            && !focus_item.is_visible()
-+        {
-+            focus_item.try_scroll_into_visible(crate::items::ScrollBehavior::Instant);
-+            revealed = Some(focus_item.clone());
-+        }
- 
-         // Deliver key_event (to focused item, going up towards the window):
-         while let Some(focus_item) = item {
-@@ -1466,6 +1491,14 @@
-             ) == crate::input::KeyEventResult::EventAccepted
-             {
-                 self.ensure_tree_instantiated();
-+                // The handler may move the editor, for example when a restored
-+                // value shortens text above it; reveal it again in the new
-+                // layout. Revealing moves only as far as needed.
-+                if let Some(revealed) = revealed
-+                    && self.focus_item.borrow().upgrade().as_ref() == Some(&revealed)
-+                {
-+                    revealed.try_scroll_into_visible(crate::items::ScrollBehavior::Instant);
-+                }
-                 return crate::input::KeyEventResult::EventAccepted;
-             }
-             item = focus_item.parent_item(ParentItemTraversalMode::StopAtPopups);
-@@ -1644,7 +1677,7 @@
-                 // Reveal offscreen item when it gains focus
-                 if result == crate::input::FocusEventResult::FocusAccepted {
-                     self.track_focus_item(item);
--                    item.try_scroll_into_visible(crate::items::ScrollBehavior::Smooth);
-+                    item.try_scroll_into_visible(crate::items::ScrollBehavior::Instant);
-                 }
- 
-                 result
-@@ -2677,7 +2710,7 @@
-         window_item.virtual_keyboard_position.set(origin);
-         window_item.virtual_keyboard_size.set(size);
-         if let Some(focus_item) = self.focus_item.borrow().upgrade() {
--            focus_item.try_scroll_into_visible(crate::items::ScrollBehavior::Smooth);
-+            focus_item.try_scroll_into_visible(crate::items::ScrollBehavior::Instant);
-         }
-     }
- 

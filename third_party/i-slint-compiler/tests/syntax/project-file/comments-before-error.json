@@ -1,7 +1,0 @@
-{
-  "edition": "1.19",
-  // one
-  // two
-  "include-paths": nonsense
-//                  |error{expected ident}
-}

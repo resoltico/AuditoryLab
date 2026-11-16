@@ -1,0 +1,45 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+import {
+    CheckBox as ToolkitCheckBox,
+    Switch as ToolkitSwitch,
+    ComboBox as ToolkitComboBox,
+    LineEdit as ToolkitLineEdit,
+    TextEdit as ToolkitTextEdit,
+    Slider as ToolkitSlider,
+} from "std-widgets.slint";
+
+export component CheckBox inherits ToolkitCheckBox {
+    changed has-focus => {
+        if self.has-focus { self.ensure-visible(ScrollBehavior.instant); }
+    }
+}
+
+export component Switch inherits ToolkitSwitch {
+    changed has-focus => {
+        if self.has-focus { self.ensure-visible(ScrollBehavior.instant); }
+    }
+}
+
+export component ComboBox inherits ToolkitComboBox {
+    changed has-focus => {
+        if self.has-focus { self.ensure-visible(ScrollBehavior.instant); }
+    }
+}
+
+export component LineEdit inherits ToolkitLineEdit {
+    changed has-focus => {
+        if self.has-focus { self.ensure-visible(ScrollBehavior.instant); }
+    }
+}
+
+export component TextEdit inherits ToolkitTextEdit {
+    changed has-focus => {
+        if self.has-focus { self.ensure-visible(ScrollBehavior.instant); }
+    }
+}
+
+export component Slider inherits ToolkitSlider {
+    changed has-focus => {
+        if self.has-focus { self.ensure-visible(ScrollBehavior.instant); }
+    }
+}

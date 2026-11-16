@@ -45,7 +45,7 @@ export component TransportBar inherits Rectangle {
     in property <[string]> transport-labels;
     in property <length> ui-size;
     callback update-monitor-layout();
-    public function focus-monitor() { monitor.focus(); }
+    public function focus-monitor() { monitor.ensure-visible(ScrollBehavior.instant); monitor.focus(); }
     accessible-role: groupbox;
     accessible-label: ViewCaptions.playback-transport;
     changed preferred-height => { root.update-monitor-layout(); }

@@ -221,8 +221,8 @@ export component LearningPane inherits Rectangle {
     visible: root.active;
     background: Palette.background;
     changed topic-key => { reader.content-y = 0px; }
-    public function focus-start() { navigation.focus(); }
-    public function focus-preference-notice() { preference-notice-button.focus(); }
+    public function focus-start() { navigation.ensure-visible(ScrollBehavior.instant); navigation.focus(); }
+    public function focus-preference-notice() { preference-notice-button.ensure-visible(ScrollBehavior.instant); preference-notice-button.focus(); }
 
     VerticalBox {
         padding: root.compact ? 12px : 20px;

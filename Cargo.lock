@@ -82,6 +82,8 @@ dependencies = [
 [[package]]
 name = "accesskit_unix"
 version = "0.24.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "30d5192871228c54f1b0fb4a85cef000e11a3804f25d2165f14afa0daa67f3f6"
 dependencies = [
  "accesskit",
  "accesskit_atspi_common",
@@ -607,7 +609,6 @@ dependencies = [
  "auditorylab-presentation",
  "block2 0.6.2",
  "embed-resource",
- "fontique 0.13.0",
  "futures-lite",
  "libloading 0.9.1",
  "objc2 0.6.5",
@@ -1697,29 +1698,7 @@ dependencies = [
  "objc2-core-text",
  "objc2-foundation 0.3.2",
  "parlance",
- "read-fonts 0.41.0",
- "roxmltree",
- "smallvec",
- "windows",
- "windows-core",
- "yeslogic-fontconfig-sys",
-]
-
-[[package]]
-name = "fontique"
-version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eb17c03da08e75b2a84346a7548f34c038fa24d9d5cb12b1ed18c1ea8dbe86d8"
-dependencies = [
- "hashbrown 0.17.1",
- "linebender_resource_handle",
- "memmap2",
- "objc2 0.6.5",
- "objc2-core-foundation",
- "objc2-core-text",
- "objc2-foundation 0.3.2",
- "parlance",
- "read-fonts 0.46.0",
+ "read-fonts",
  "roxmltree",
  "smallvec",
  "windows",
@@ -2072,7 +2051,7 @@ checksum = "c03d949a14aa089bbb282f7dd76a498a7f684428e4257202efc119ec010376f9"
 dependencies = [
  "bitflags 2.13.2",
  "bytemuck",
- "read-fonts 0.41.0",
+ "read-fonts",
  "smallvec",
 ]
 
@@ -2240,7 +2219,7 @@ checksum = "d0d03eef528cd0aec45f3cc9d557f4dbe952433f8e29a46576e7e9c36264eeff"
 dependencies = [
  "derive_more",
  "euclid",
- "fontique 0.12.0",
+ "fontique",
  "htmlparser",
  "icu_decimal",
  "icu_locale_core",
@@ -2254,6 +2233,8 @@ dependencies = [
 [[package]]
 name = "i-slint-compiler"
 version = "1.19.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aba9cffaff13694d0123a43f3cb1dad6e6df9ba8fb7dcffad882aaed87e0cef0"
 dependencies = [
  "annotate-snippets",
  "by_address",
@@ -2389,7 +2370,7 @@ dependencies = [
  "objc2-quartz-core 0.3.2",
  "pin-weak",
  "raw-window-handle",
- "read-fonts 0.41.0",
+ "read-fonts",
  "scoped-tls-hkt",
  "skia-safe",
  "softbuffer",
@@ -3744,7 +3725,7 @@ version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "61bd0c0c1737f0b3d3726dc06b225083af213b61913e4fbae1670613a106c6ce"
 dependencies = [
- "fontique 0.12.0",
+ "fontique",
  "hashbrown 0.17.1",
  "linebender_resource_handle",
  "parlance",
@@ -3774,7 +3755,7 @@ version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b74c0d373e462e504ad4436710a39f099e18e848e1ee711f70cd2dcd5a69b290"
 dependencies = [
- "fontique 0.12.0",
+ "fontique",
  "harfrust",
  "hashbrown 0.17.1",
  "icu_locale_core",
@@ -4145,20 +4126,6 @@ dependencies = [
  "bytemuck",
  "font-types",
  "once_cell",
-]
-
-[[package]]
-name = "read-fonts"
-version = "0.46.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bdaa4fffe9ff3ca2c353fa9729792805b9b3e324695ff5a081f860612e81b330"
-dependencies = [
- "bytemuck",
- "foldhash",
- "font-types",
- "once_cell",
- "smallvec",
- "yoke",
 ]
 
 [[package]]
@@ -4629,7 +4596,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "819ab7d62b1d3e72d9d9dea5650bac30424f9111364bb94928dbf5ecad1baa68"
 dependencies = [
  "bytemuck",
- "read-fonts 0.41.0",
+ "read-fonts",
 ]
 
 [[package]]
@@ -6486,7 +6453,7 @@ dependencies = [
  "indexmap",
  "kurbo",
  "log",
- "read-fonts 0.41.0",
+ "read-fonts",
 ]
 
 [[package]]

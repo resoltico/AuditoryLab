@@ -315,9 +315,6 @@ fn install_workbench_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
     on!(adapter, ui, on_based_on_source, |a| a.command(
         |w| w.apply(Command::Editor(EditorCommand::ShowBasedOnSource))
     ));
-    on!(adapter, ui, on_quit, |a| a
-        .command(|w| w.apply(Command::Close)));
-    on!(adapter, ui, on_about, |a| a.show_about());
     on!(adapter, ui, on_open_guide, |_a| super::open_web(
         &auditorylab_app::identity::BUILD_IDENTITY.document_url("docs/desktop.md")
     ));

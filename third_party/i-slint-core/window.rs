@@ -1419,7 +1419,6 @@ impl WindowInner {
             internal_key_event.event_type == KeyEventType::KeyPressed,
             &internal_key_event.key_event.text,
         );
-        let is_modifier_event = modifier_update.is_some();
         if let Some(updated_modifier) = modifier_update {
             self.set_modifier_state(updated_modifier);
         }
@@ -1468,20 +1467,6 @@ impl WindowInner {
 
         drop(item_list);
 
-        // Editing a scroll-clipped control needs its context back, but captured
-        // shortcuts and pointer movement must leave the user's viewport alone.
-        let current_focus = self.focus_item.borrow().upgrade();
-        let mut revealed = None;
-        if internal_key_event.event_type == KeyEventType::KeyPressed
-            && !is_modifier_event
-            && let Some(focus_item) = item.as_ref()
-            && current_focus.as_ref() == Some(focus_item)
-            && !focus_item.is_visible()
-        {
-            focus_item.try_scroll_into_visible(crate::items::ScrollBehavior::Instant);
-            revealed = Some(focus_item.clone());
-        }
-
         // Deliver key_event (to focused item, going up towards the window):
         while let Some(focus_item) = item {
             if focus_item.borrow().as_ref().key_event(
@@ -1491,14 +1476,6 @@ impl WindowInner {
             ) == crate::input::KeyEventResult::EventAccepted
             {
                 self.ensure_tree_instantiated();
-                // The handler may move the editor, for example when a restored
-                // value shortens text above it; reveal it again in the new
-                // layout. Revealing moves only as far as needed.
-                if let Some(revealed) = revealed
-                    && self.focus_item.borrow().upgrade().as_ref() == Some(&revealed)
-                {
-                    revealed.try_scroll_into_visible(crate::items::ScrollBehavior::Instant);
-                }
                 return crate::input::KeyEventResult::EventAccepted;
             }
             item = focus_item.parent_item(ParentItemTraversalMode::StopAtPopups);
@@ -1677,7 +1654,7 @@ impl WindowInner {
                 // Reveal offscreen item when it gains focus
                 if result == crate::input::FocusEventResult::FocusAccepted {
                     self.track_focus_item(item);
-                    item.try_scroll_into_visible(crate::items::ScrollBehavior::Instant);
+                    item.try_scroll_into_visible(crate::items::ScrollBehavior::Smooth);
                 }
 
                 result
@@ -2710,7 +2687,7 @@ impl WindowInner {
         window_item.virtual_keyboard_position.set(origin);
         window_item.virtual_keyboard_size.set(size);
         if let Some(focus_item) = self.focus_item.borrow().upgrade() {
-            focus_item.try_scroll_into_visible(crate::items::ScrollBehavior::Instant);
+            focus_item.try_scroll_into_visible(crate::items::ScrollBehavior::Smooth);
         }
     }
 

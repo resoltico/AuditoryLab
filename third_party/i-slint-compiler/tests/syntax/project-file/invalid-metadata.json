@@ -1,4 +1,0 @@
-{
-  "metadata": { this is not json! }
-//              |error{key must be a string}
-}

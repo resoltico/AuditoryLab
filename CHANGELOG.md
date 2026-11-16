@@ -4,8 +4,9 @@
 
 ## [0.14.0] - 2026-11-16
 
+- Receipts with a different managed-file inventory are refused; uninstall with their matching installer or choose a fresh directory. No receipt conversion is performed.
 - Conditional and repeated desktop content participates in natural layout sizing, including wrapped text, through Slint edition 1.19.
-- Desktop dependencies use Slint 1.19.0, AccessKit Unix 0.24.1/Windows 0.35.2 and fontique 0.13.0; native focus, modifier, menu and accessibility integrations retain maintained patches.
+- Desktop uses Slint 1.19.0 and AccessKit Unix 0.24.1/Windows 0.35.2; native font-family selection, caret scrolling and application menus use current toolkit APIs.
 - Installer refusals explain replacement or removal, offer quoted recovery commands, and link directly to matching Help; existing-file backups and ownership safeguards remain.
 
 ## [0.13.0] - 2026-11-15

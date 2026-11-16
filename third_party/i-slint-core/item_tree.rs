@@ -821,6 +821,7 @@ impl ItemRc {
     /// Returns an absolute position of `p` in the `ancestor`'s coordinate system
     /// (does not add this item's x and y)
     /// Don't rely on any specific behavior if `self` isn't a descendant of `ancestor`.
+    #[cfg(test)]
     fn map_to_ancestor(&self, p: LogicalPoint, ancestor: &Self) -> LogicalPoint {
         self.map_to_item_tree_impl(p, |parent| parent == ancestor)
     }
@@ -1193,83 +1194,7 @@ impl ItemRc {
     /// Scrolls every `Flickable` ancestor up to the nearest popup by the smallest amount that brings `self` into view.
     /// Does nothing if no such ancestor is a `Flickable`.
     pub fn try_scroll_into_visible(&self, scroll_behavior: ScrollBehavior) {
-        // Standard controls use a zero-width FocusScope to avoid intercepting
-        // pointer events. Reveal the owning control, not only that focus point.
-        let mut scroll_target = self.clone();
-        let focused_geometry = self.geometry();
-        if focused_geometry.width() <= 0. || focused_geometry.height() <= 0. {
-            let mut candidate = self.parent_item(ParentItemTraversalMode::StopAtPopups);
-            while let Some(owner) = candidate {
-                if owner.downcast::<crate::items::Flickable>().is_some()
-                    || owner.downcast::<crate::items::WindowItem>().is_some()
-                {
-                    break;
-                }
-                let geometry = owner.geometry();
-                if geometry.width() > 0.
-                    && geometry.height() > 0.
-                    && owner.is_visible_or_clipped_by_flickable()
-                    && matches!(
-                        owner.accessible_role(),
-                        crate::items::AccessibleRole::Button
-                            | crate::items::AccessibleRole::Checkbox
-                            | crate::items::AccessibleRole::Combobox
-                            | crate::items::AccessibleRole::Slider
-                            | crate::items::AccessibleRole::Spinbox
-                            | crate::items::AccessibleRole::Tab
-                            | crate::items::AccessibleRole::TextInput
-                            | crate::items::AccessibleRole::Switch
-                            | crate::items::AccessibleRole::ListItem
-                            | crate::items::AccessibleRole::RadioButton
-                    )
-                {
-                    scroll_target = owner;
-                    break;
-                }
-                candidate = owner.parent_item(ParentItemTraversalMode::StopAtPopups);
-            }
-        }
-        let mut parent = self.parent_item(ParentItemTraversalMode::StopAtPopups);
-        while let Some(item_rc) = parent.as_ref() {
-            let item_ref = item_rc.borrow();
-            if let Some(flickable) = vtable::VRef::downcast_pin::<crate::items::Flickable>(item_ref)
-            {
-                let points = |item: &Self| {
-                    let geo = item.geometry();
-                    [
-                        item.map_to_ancestor(
-                            LogicalPoint::new(
-                                geo.origin.x - flickable.content_x().0,
-                                geo.origin.y - flickable.content_y().0,
-                            ),
-                            item_rc,
-                        ),
-                        item.map_to_ancestor(
-                            LogicalPoint::new(
-                                geo.max_x() - flickable.content_x().0,
-                                geo.max_y() - flickable.content_y().0,
-                            ),
-                            item_rc,
-                        ),
-                    ]
-                };
-                let focused_points = points(self);
-                let mut target_points = points(&scroll_target);
-                let viewport = crate::items::Flickable::geometry_without_virtual_keyboard(item_rc);
-                // An oversized owner cannot fit. Keep the original focus extent
-                // on that axis instead of scrolling toward an unrelated edge.
-                if (target_points[1].x - target_points[0].x).abs() > viewport.width() {
-                    target_points[0].x = focused_points[0].x;
-                    target_points[1].x = focused_points[1].x;
-                }
-                if (target_points[1].y - target_points[0].y).abs() > viewport.height() {
-                    target_points[0].y = focused_points[0].y;
-                    target_points[1].y = focused_points[1].y;
-                }
-                flickable.reveal_points(item_rc, &target_points, scroll_behavior);
-            }
-            parent = item_rc.parent_item(ParentItemTraversalMode::StopAtPopups);
-        }
+        self.try_scroll_rect_into_visible(self.geometry(), scroll_behavior);
     }
 
     /// Like [`Self::try_scroll_into_visible`], but brings only `geo` into view.

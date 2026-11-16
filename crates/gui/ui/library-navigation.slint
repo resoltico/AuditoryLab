@@ -1,4 +1,6 @@
-import { Palette } from "std-widgets.slint";
+import {
+    Palette,
+} from "std-widgets.slint";
 export component LibraryNavigationItem inherits Rectangle {
     in property <string> label;
     in property <string> detail;
@@ -69,6 +71,7 @@ export component LibraryNavigationItem inherits Rectangle {
     forward-focus: focus;
 
     focus := FocusScope {
+        changed has-focus => { if self.has-focus { root.ensure-visible(ScrollBehavior.instant); } }
         key-pressed(event) => {
             if event.text == "\n" || event.text == " " { root.activated(); return accept; }
             return reject;

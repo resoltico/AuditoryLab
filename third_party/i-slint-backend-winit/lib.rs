@@ -313,15 +313,6 @@ pub trait CustomApplicationHandler {
         let _ = winit::platform::macos::reply_to_termination(request, true);
     }
 
-    /// Return a title to replace the application menu's predefined About item
-    /// with one that calls [`Self::about_requested`]. It is identified by a
-    /// reserved menu identifier, not by its title or position.
-    fn application_about_title(&self) -> Option<String> {
-        None
-    }
-
-    /// The application menu's About item was chosen.
-    fn about_requested(&mut self, event_loop: &ActiveEventLoop) {}
 }
 
 /// Use the BackendBuilder to configure the properties of the Winit Backend before creating it.
@@ -458,13 +449,8 @@ impl BackendBuilder {
             self.allow_fallback,
         )?);
 
-        #[cfg(any(muda, target_os = "macos"))]
+        #[cfg(target_os = "macos")]
         if let Some(handler) = self.custom_application_handler.as_ref() {
-            #[cfg(muda)]
-            if let Some(title) = handler.application_about_title() {
-                crate::muda::set_application_about(title);
-            }
-            #[cfg(target_os = "macos")]
             if handler.intercepts_termination()
                 && let Some(event_loop) = shared_data.not_running_event_loop.borrow().as_ref()
             {
