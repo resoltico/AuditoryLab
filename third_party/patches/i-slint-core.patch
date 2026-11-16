@@ -235,6 +235,26 @@
                  }
              }
              parent = ancestor.parent_item(ParentItemTraversalMode::StopAtPopups);
+@@ -3542,10 +3573,6 @@
+         ) {
+         }
+ 
+-        fn slint_context(&self) -> Option<crate::SlintContext> {
+-            None
+-        }
+-
+         fn supports_transformations(&self) -> bool {
+             self.supports_transformations
+         }
+@@ -3587,7 +3614,7 @@
+         }
+ 
+         fn window_adapter(&self) -> Option<std::rc::Rc<dyn crate::window::WindowAdapter>> {
+-            unimplemented!("Not required in this test");
++            None
+         }
+     }
+ }
 --- a/items/flickable.rs
 +++ b/items/flickable.rs
 @@ -394,9 +394,13 @@

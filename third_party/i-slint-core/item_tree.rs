@@ -3573,10 +3573,6 @@ mod tests {
         ) {
         }
 
-        fn slint_context(&self) -> Option<crate::SlintContext> {
-            None
-        }
-
         fn supports_transformations(&self) -> bool {
             self.supports_transformations
         }
@@ -3618,7 +3614,7 @@ mod tests {
         }
 
         fn window_adapter(&self) -> Option<std::rc::Rc<dyn crate::window::WindowAdapter>> {
-            unimplemented!("Not required in this test");
+            None
         }
     }
 }
