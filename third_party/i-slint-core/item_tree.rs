@@ -521,37 +521,32 @@ impl ItemRc {
             return true;
         }
 
-        // Walk toward the root to the clipping ancestor that hides the item, and ask whether
-        // it's a Flickable, which scrolling can undo. An ancestor hides the item with its own
-        // rectangle, or with that rectangle intersected with the clips above it. The first
-        // reading is needed for a LineEdit: once the Flickable scrolled it away, its own clip
-        // intersected with the Flickable's is empty, and the walk would stop there. The
-        // second is needed for a Flickable taller than a clip around it. Every ancestor that
-        // hides the item by its own rectangle also hides it by the intersection, so the
-        // intersection only has to be asked until it first hides the item.
-        let geometry = self.absolute_clip_rect_and_geometry().1;
-        let mut hidden_by_intersection = false;
+        // The item is not visible. Walk toward the root and find the first
+        // clipping ancestor that actually hides the item: if it is a
+        // Flickable, scrolling can bring the item back into view.
+        //
+        // Clips accumulate exactly as in `is_visible`: an inner clip and an
+        // outer Flickable can each overlap a partly scrolled-out item while
+        // their intersection is empty, and that Flickable then hides it.
+        let geometry = self.absolute_clip_rect_and_geometry().1.to_box2d();
+        let mut clip: Option<euclid::Box2D<crate::Coord, crate::lengths::LogicalPx>> = None;
         let mut parent = self.parent_item(ParentItemTraversalMode::StopAtPopups);
         while let Some(ancestor) = parent {
             if ancestor.borrow().as_ref().clips_children() {
-                let (clip, ancestor_geo) = ancestor.absolute_clip_rect_and_geometry();
-                let hidden_by_own_rect = !clip_overlaps(ancestor_geo, geometry);
-                if hidden_by_own_rect
-                    || (!hidden_by_intersection
-                        && !clip_overlaps(
-                            ancestor_geo.intersection(&clip).unwrap_or_default(),
-                            geometry,
-                        ))
-                {
-                    if ancestor.downcast::<crate::items::Flickable>().is_some()
-                        && ancestor.is_visible_or_clipped_by_flickable()
-                    {
-                        return true;
-                    }
-                    if hidden_by_own_rect {
-                        return false;
-                    }
-                    hidden_by_intersection = true;
+                let own = ancestor.absolute_clip_rect_and_geometry().1.to_box2d();
+                let accumulated = match clip {
+                    None => own,
+                    Some(inner) => inner.intersection(&own).unwrap_or_default(),
+                };
+                clip = Some(accumulated);
+                let item_in_clip = !accumulated.is_empty()
+                    && accumulated.max.x >= geometry.min.x
+                    && accumulated.max.y >= geometry.min.y
+                    && accumulated.min.x <= geometry.max.x
+                    && accumulated.min.y <= geometry.max.y;
+                if !item_in_clip {
+                    return ancestor.downcast::<crate::items::Flickable>().is_some()
+                        && ancestor.is_visible_or_clipped_by_flickable();
                 }
             }
             parent = ancestor.parent_item(ParentItemTraversalMode::StopAtPopups);
