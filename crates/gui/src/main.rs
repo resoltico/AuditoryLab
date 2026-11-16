@@ -30,7 +30,7 @@ mod typography;
     unreachable_pub,
     clippy::unwrap_used,
     clippy::todo,
-    reason = "Slint 1.18.1 generates unreachable public UI items, unwraps and TODO \
+    reason = "Slint 1.19.0 generates unreachable public UI items, unwraps and TODO \
         branches; removing these exceptions produces compiler/Clippy errors \
         in generated output. This module contains only include_modules"
 )]

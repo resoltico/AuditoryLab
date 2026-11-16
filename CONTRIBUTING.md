@@ -78,7 +78,7 @@ Prefer removing unnecessary work over lint suppression. For a necessary numeric 
 
 ## Dependencies and native toolkit
 
-Review graph changes with Cargo.lock. `cargo deny check` covers advisories, source policy, duplicates and licenses. [Dependency integration](third_party/README.md) records archive pins, patch behavior and retirement conditions. Update source, patch, digest and affected consumer checks together. `cargo xtask verify-vendor` authenticates, applies and compares every source byte and checks target/product resolution.
+Review graph changes with Cargo.lock. `cargo deny check` covers advisories, source policy, duplicates and licenses. [Dependency integration](third_party/README.md) records archive pins, maintained behavior and qualification. Update source, patch, digest and affected consumer checks together. `cargo xtask verify-vendor` authenticates, applies and compares every source byte and checks target/product resolution.
 
 ## Build storage and cleanup
 
@@ -98,13 +98,21 @@ Use the [release guide](docs/releasing.md) for native toolchains, icon resources
 
 ## CLI installer verification
 
+Published installer Help links identify the full source commit stamped before
+checksums are generated; source installers link to `main`. For local archive
+qualification, `install/prepare-test-release.py DIRECTORY` stages source Help;
+add `--revision FULL_COMMIT` only for archives built from that committed source.
+The release workflow supplies its checked-out commit automatically. Staging
+refuses existing installer/checksum files. Run the packaging and parity tests
+with `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s install -p '*_test.py'`.
+
 The self-contained scripts in [install/](install/) share the reviewed
 [PDFConcat](https://github.com/resoltico/pdfconcat/tree/main/install) engine with
-EML Attachment Remover. Only the bounded literal product settings differ.
+EML Attachment Remover and HTMLCut. Only the bounded literal product settings differ.
 `install/engine-source.txt` pins the canonical PDFConcat commit; end users do not
 fetch code from either other repository at runtime. When changing behavior,
-review and commit it in PDFConcat, synchronize both consumer engines while
-preserving product settings, update both full commit pins, and qualify all three.
+review and commit it in PDFConcat, synchronize all consumer engines while
+preserving product settings, update their full commit pins, and qualify all four.
 Keep archive layouts, architecture names and legal-material lists product-specific.
 
 ```sh

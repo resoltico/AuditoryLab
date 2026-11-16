@@ -222,15 +222,20 @@ async fn process_adapter_message(
             deactivation_handler,
             state,
         } => {
-            adapters.push(AdapterEntry {
-                id,
-                activation_handler,
-                deactivation_handler,
-                state,
-            });
+            let index = adapters
+                .binary_search_by(|entry| entry.id.cmp(&id))
+                .unwrap_or_else(|index| index);
+            adapters.insert(
+                index,
+                AdapterEntry {
+                    id,
+                    activation_handler,
+                    deactivation_handler,
+                    state,
+                },
+            );
             if atspi_bus.is_some() {
-                let entry = adapters.last_mut().unwrap();
-                activate_adapter(entry);
+                activate_adapter(&mut adapters[index]);
             }
         }
         Message::RemoveAdapter { id } => {
@@ -273,6 +278,14 @@ async fn process_adapter_message(
             if let Some(bus) = atspi_bus {
                 bus.emit_window_event(adapter_id, target, name, event)
                     .await?;
+            }
+        }
+        Message::EmitEvent {
+            adapter_id,
+            event: Event::Document { target, event },
+        } => {
+            if let Some(bus) = atspi_bus {
+                bus.emit_document_event(adapter_id, target, event).await?;
             }
         }
         Message::EmitEvent {

@@ -96,7 +96,7 @@ jobs:
         run: |
           cargo xtask collect-assets "$RELEASE_VERSION" target/distributions target/assets
           cp "target/source-artifact/auditorylab-${RELEASE_VERSION}-source.tar.gz" target/assets/
-          python3 install/prepare-test-release.py target/assets
+          python3 install/prepare-test-release.py target/assets --revision "$GITHUB_SHA"
           cargo xtask notes "$RELEASE_VERSION" > target/notes.md
       - id: provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2

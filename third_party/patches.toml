@@ -1,26 +1,26 @@
 [[patch]]
 name = "accesskit_unix"
-version = "0.22.1"
-url = "https://static.crates.io/crates/accesskit_unix/accesskit_unix-0.22.1.crate"
-sha256 = "03e156ed3802e35eefe894ef2671bc6c889303d8a7e110b5e1b48f504b91362f"
+version = "0.24.1"
+url = "https://static.crates.io/crates/accesskit_unix/accesskit_unix-0.24.1.crate"
+sha256 = "30d5192871228c54f1b0fb4a85cef000e11a3804f25d2165f14afa0daa67f3f6"
 
 [[patch]]
 name = "i-slint-core"
-version = "1.18.1"
-url = "https://static.crates.io/crates/i-slint-core/i-slint-core-1.18.1.crate"
-sha256 = "ed2ea15059d70bc31b1a8b1eb4c34f2c5df04cb7e53f36179b43c0261231d646"
+version = "1.19.0"
+url = "https://static.crates.io/crates/i-slint-core/i-slint-core-1.19.0.crate"
+sha256 = "9590458a3ba4ad8e66a6b572dbe758cc5d4f84f57e682a097358e4fe0f02b006"
 
 [[patch]]
 name = "i-slint-compiler"
-version = "1.18.1"
-url = "https://static.crates.io/crates/i-slint-compiler/i-slint-compiler-1.18.1.crate"
-sha256 = "f55d48ebef05e2bf09ba5a1fc67bcb11033b9e12a2a50ed3105c7d25e2b539d0"
+version = "1.19.0"
+url = "https://static.crates.io/crates/i-slint-compiler/i-slint-compiler-1.19.0.crate"
+sha256 = "aba9cffaff13694d0123a43f3cb1dad6e6df9ba8fb7dcffad882aaed87e0cef0"
 
 [[patch]]
 name = "i-slint-backend-winit"
-version = "1.18.1"
-url = "https://static.crates.io/crates/i-slint-backend-winit/i-slint-backend-winit-1.18.1.crate"
-sha256 = "dae4fcf1b19e9cb109984d2af87d2b9485388c619265bff71dd523133888bee2"
+version = "1.19.0"
+url = "https://static.crates.io/crates/i-slint-backend-winit/i-slint-backend-winit-1.19.0.crate"
+sha256 = "ecb1104c0220c068772ff60912a3dac80b95e1d491d801836256c870245a2162"
 
 [[patch]]
 name = "winit"
@@ -48,6 +48,6 @@ sha256 = "076e103ed41b9864aa838287efe5f4e3a7a0362dd00671ae62a212e5e4612da2"
 
 [[patch]]
 name = "accesskit_windows"
-version = "0.34.0"
-url = "https://static.crates.io/crates/accesskit_windows/accesskit_windows-0.34.0.crate"
-sha256 = "106c2b961215864d1c2e703ee63269c25c4e80a577ffb2c1017b9c17dcdf83a1"
+version = "0.35.2"
+url = "https://static.crates.io/crates/accesskit_windows/accesskit_windows-0.35.2.crate"
+sha256 = "498668b90da9995302a0055aaecad4756932333da2ddef6baee1c00844c430fc"

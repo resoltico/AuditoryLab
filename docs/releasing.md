@@ -2,6 +2,12 @@
 
 ## Build distributions
 
+Release preparation stages the installers with
+`python3 install/prepare-test-release.py target/assets --revision "$GITHUB_SHA"`
+after collecting archives. Their Help links identify the checked-out source
+commit, and `SHA256SUMS` binds those generated script bytes. Local qualification
+without `--revision` uses the source installers' `main` Help links.
+
 Use the [source prerequisites](../README.md#build-from-source) and pinned [toolchain](../rust-toolchain.toml). Install cargo-about at the version in [CI](../.github/workflows/ci.yml), with its `cli` feature; contributor checks also use the pinned cargo-deny and cargo-mutants versions there.
 
 ```sh
@@ -57,7 +63,7 @@ Keep pending changes under `Unreleased` in [CHANGELOG.md](../CHANGELOG.md). For 
 
 Check the hosted release/assets and failed-publication state as well as tags before selecting the published baseline. `cargo xtask check-release VERSION` validates the requested workspace version, dated nonempty notes, compiler notices. Verify the baseline release status and resolve any stray or failed-publication tag before dispatch.
 
-Both verification and publication require an unused target version with matching dated notes; neither mode accepts an existing target tag. For an authorized public release, dispatch [release.yml](../.github/workflows/release.yml) once with `publish: true`: it qualifies the source, verifies the exact generated assets, then publishes those same bytes. A separate `publish: false` run is optional when a verification-only bundle is needed; it is not a prerequisite for publication. Verification may run on a branch; publication requires main. Both modes compile source-bound icon resources on macOS 26 for macOS packaging; state checks, native integration and mutations run independently of icons. Both modes call every native CI target, graphical job and file-scoped mutation job, collect the exact archive set through `cargo xtask collect-assets VERSION INPUT OUTPUT`, stage both standalone CLI installers with `python3 install/prepare-test-release.py target/assets`, write checksums/notes and attest them. Missing, duplicate, stale or unexpected archives are rejected before installers are added. `SHA256SUMS` covers all twelve binary archives, the source archive and both installer scripts. Installer copies remain outside the archives; the CLI installer does not manage the GUI or user content.
+Both verification and publication require an unused target version with matching dated notes; neither mode accepts an existing target tag. For an authorized public release, dispatch [release.yml](../.github/workflows/release.yml) once with `publish: true`: it qualifies the source, verifies the exact generated assets, then publishes those same bytes. A separate `publish: false` run is optional when a verification-only bundle is needed; it is not a prerequisite for publication. Verification may run on a branch; publication requires main. Both modes compile source-bound icon resources on macOS 26 for macOS packaging; state checks, native integration and mutations run independently of icons. Both modes call every native CI target, graphical job and file-scoped mutation job, collect the exact archive set through `cargo xtask collect-assets VERSION INPUT OUTPUT`, stage both standalone CLI installers with `python3 install/prepare-test-release.py target/assets --revision "$GITHUB_SHA"`, write checksums/notes and attest them. Missing, duplicate, stale or unexpected archives are rejected before installers are added. `SHA256SUMS` covers all twelve binary archives, the source archive and both installer scripts. Installer copies remain outside the archives; the CLI installer does not manage the GUI or user content.
 
 The `release-verification` artifact contains `assets/`, `notes.md` and `provenance.jsonl`. Native installer jobs download this exact bundle and qualify install, update and offline uninstall on all six platform/CPU pairs plus a translated macOS shell. The subsequent read-only job verifies checksums and attestations against the source commit/ref and release workflow. Notes are verified alongside archive/checksum files. Verification creates workflow artifacts and attestations, without a tag or draft release. Review the intended commit's bundle and repeat package checks if its source changes.
 

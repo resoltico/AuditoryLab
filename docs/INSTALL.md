@@ -5,6 +5,87 @@ SHA-256 checksum and test-runs the program before replacing an owned installatio
 No administrator account, background updater, scheduled task or file association
 is needed. The CLI's inputs and outputs are outside the installer's scope.
 
+## Existing executable without an installer receipt
+
+`Existing executable has no installer receipt` means a file already exists at
+the printed path, but this installer has no record of managing it. This does not
+identify how the file was installed. The refusal changes no program or PATH entry.
+
+Choose whether to replace that executable or keep it:
+
+- **Replace it:** use the complete command printed by the installer. It keeps
+  the selected directory, version pin and choice to leave PATH unchanged. It
+  authorizes backing up and replacing only the named executable after the new
+  candidate verifies.
+- **Keep it:** install into another directory and use that installation's full
+  executable path. Avoid adding a second command with the same name to PATH
+  until you have chosen which installation should be used.
+
+For the default directory and a saved installer, explicit replacement is:
+
+```sh
+sh ./install-auditorylab.sh --install-dir "$HOME/.local/bin" --replace-unmanaged
+```
+
+```powershell
+powershell -NoProfile -ExecutionPolicy ByPass -File .\install-auditorylab.ps1 -InstallDir "$env:LOCALAPPDATA\Programs\AuditoryLab" -ReplaceUnmanaged
+if ($LASTEXITCODE -ne 0) { throw "Installer failed ($LASTEXITCODE)." }
+```
+
+These examples explicitly select the usual default directories. If
+`XDG_BIN_HOME`, another directory, a version pin or disabled PATH changes were
+selected, use the printed command instead. If the installer ran through stdin or
+an expression and cannot identify its saved file, save and inspect the installer using [Install](#install), then
+apply the options printed by the refusal to that saved script. Keep mirror
+configuration in the environment; recovery commands do not print it.
+
+To keep the existing executable, choose a fresh directory, for example:
+
+```sh
+sh ./install-auditorylab.sh --install-dir "$HOME/auditorylab-cli" --no-modify-path
+```
+
+```powershell
+powershell -NoProfile -ExecutionPolicy ByPass -File .\install-auditorylab.ps1 -InstallDir "$env:LOCALAPPDATA\AuditoryLab-CLI" -NoModifyPath
+if ($LASTEXITCODE -ne 0) { throw "Installer failed ($LASTEXITCODE)." }
+```
+
+Retain any selected version option when changing directories. After a successful
+replacement, keep the original backup at its exact reported path until you have
+verified the new executable. Uninstall does not remove this backup. Run the
+printed full executable path with `--version` and `--help`; this checks the
+installation you just selected rather than another command on PATH. For the
+default directories:
+
+```sh
+"$HOME/.local/bin/auditorylab" --version
+"$HOME/.local/bin/auditorylab" --help
+```
+
+```powershell
+& "$env:LOCALAPPDATA\Programs\AuditoryLab\auditorylab.exe" --version
+& "$env:LOCALAPPDATA\Programs\AuditoryLab\auditorylab.exe" --help
+```
+
+To restore the original after a successful replacement, first [uninstall](#uninstall)
+the new managed copy from the same directory. Continue only after uninstall
+succeeds; then move the exact reported backup to the original executable path.
+Review PATH separately: pre-existing entries were not adopted, and entries added
+by the new installation may have been removed. If replacement or restoration
+failed, preserve the reported recovery files and follow
+[ownership and unmanaged installations](#ownership-and-unmanaged-installations)
+before retrying. The replacement option cannot bypass changed managed files,
+corrupt state, symlinks, nonregular targets or access failures.
+
+If this error occurs during **uninstall**, the installer cannot remove that
+untracked executable or its PATH entries. Use the method that installed it, or
+inspect and preserve the file before deciding on manual removal. Replacement is
+an installation action, not a way to uninstall an untracked executable.
+
+Published installers link Help to their source commit, so it stays matched to
+that installer. Scripts run from a source checkout link to the current `main`
+guide. Keep the saved installer for later update or offline removal.
+
 ## Install
 
 From a reviewed source checkout, use `sh install/install.sh` or
@@ -77,20 +158,20 @@ program. An update requires intact verified ownership metadata and every remaini
 Select a release explicitly, for example:
 
 ```sh
-curl -fsSL -o install-auditorylab.sh https://github.com/resoltico/AuditoryLab/releases/download/v0.13.0/install.sh &&
-sh ./install-auditorylab.sh --version 0.13.0
+curl -fsSL -o install-auditorylab.sh https://github.com/resoltico/AuditoryLab/releases/download/v0.14.0/install.sh &&
+sh ./install-auditorylab.sh --version 0.14.0
 ```
 
 ```powershell
 & {
     $ErrorActionPreference = 'Stop'
-    Invoke-WebRequest -UseBasicParsing https://github.com/resoltico/AuditoryLab/releases/download/v0.13.0/install.ps1 -OutFile .\install-auditorylab.ps1 -ErrorAction Stop
-    powershell -NoProfile -ExecutionPolicy ByPass -File .\install-auditorylab.ps1 -Version 0.13.0
+    Invoke-WebRequest -UseBasicParsing https://github.com/resoltico/AuditoryLab/releases/download/v0.14.0/install.ps1 -OutFile .\install-auditorylab.ps1 -ErrorAction Stop
+    powershell -NoProfile -ExecutionPolicy ByPass -File .\install-auditorylab.ps1 -Version 0.14.0
     if ($LASTEXITCODE -ne 0) { throw "Installer failed with exit $LASTEXITCODE" }
 }
 ```
 
-These examples pin both installer and payload to 0.13.0. Substitute the same chosen stable release in both places. If instead you use `AUDITORYLAB_VERSION`, that environment pin remains set in the session; clear it to return to latest:
+These examples pin both installer and payload to 0.14.0. Substitute the same chosen stable release in both places. If instead you use `AUDITORYLAB_VERSION`, that environment pin remains set in the session; clear it to return to latest:
 
 ```sh
 unset AUDITORYLAB_VERSION
@@ -124,22 +205,13 @@ for ownership receipts and managed data. It verifies managed file hashes before
 update or removal and refuses unowned files by default and changed managed files. A matching
 filename, version output or PATH entry does not establish ownership.
 
-A receiptless ordinary executable is refused by default, with its exact path and an explicit replacement command. Use `--replace-unmanaged` / `-ReplaceUnmanaged` only for an install where private installer state is absent:
-
-```sh
-sh ./install-auditorylab.sh --version 0.13.0 --install-dir '/absolute/my tools' --replace-unmanaged
-```
-
-```powershell
-powershell -NoProfile -ExecutionPolicy ByPass -File .\install-auditorylab.ps1 -Version 0.13.0 -InstallDir 'C:\My Tools' -ReplaceUnmanaged
-if ($LASTEXITCODE -ne 0) { throw "Installer failed with exit $LASTEXITCODE" }
-```
+For a receiptless executable, follow the [replace or keep decision and commands](#existing-executable-without-an-installer-receipt).
 
 The option authorizes replacement of only the named ordinary executable. The installer never runs that unowned executable or infers ownership from a version/hash. It verifies the candidate first, locks and rechecks the inspected target immediately before mutation, then preserves the original bytes in a unique recovery backup in the install directory's parent. It reports the exact backup path. A successful install retains the backup; uninstall never deletes it. Existing PATH entries and directory ownership are not adopted. Windows refuses replacement at a filesystem-root install directory because an outside-directory recovery backup cannot be created there.
 
 The flag is install-only. It cannot bypass changed owned payloads, corrupt/incomplete metadata, nonregular targets or access failures. Precise errors name the affected executable, receipt/state directory, lock or retained recovery stage. Preserve those paths and inspect the stated cause; do not edit receipts or hashes, copy ownership metadata to a new directory, or remove an entire shared bin directory.
 
-A normal activation failure restores the prior executable and receipt, preserving prior absence when repairing a missing payload. PowerShell cancellation can bypass `catch`, so recovery is planned before the first PATH/file mutation and runs from the outer `finally`, validating actual backup slots and receipt hashes rather than trusting a flag after each move. Rollback and uninstall preserve the actual registry PATH value kind; removing the owned entry does not convert a later user-edited `String` container into absence. If rollback is incomplete, the installer retains recovery evidence, reports exact paths and refuses to proceed on retry until that evidence is inspected. Never assume restoration succeeded after an incomplete-rollback error. To recover an original unmanaged backup after successful replacement, first uninstall the new managed executable, then move the exact reported backup back to its original executable path. Review PATH separately.
+A normal activation failure restores the prior executable and receipt, preserving prior absence when repairing a missing payload. PowerShell cancellation can bypass `catch`, so recovery is planned before the first PATH/file mutation and runs from the outer `finally`, validating actual backup slots and receipt hashes rather than trusting a flag after each move. Rollback and uninstall preserve the actual registry PATH value kind; removing the owned entry does not convert a later user-edited `String` container into absence. If rollback is incomplete, the installer retains recovery evidence, reports exact paths and refuses to proceed on retry until that evidence is inspected. Never assume restoration succeeded after an incomplete-rollback error. For restoring a retained original after successful replacement, follow the [recovery steps](#existing-executable-without-an-installer-receipt).
 
 On Unix, existing directory aliases may be used only when requested and recorded paths resolve to the same physical directory; exact owned PATH text is retained. Windows normalizes ordinary equivalent path spellings such as a trailing `.` but refuses reparse-point install directories; use the ordinary recorded directory command identified by the diagnostic. Moved receipts do not acquire ownership of a new directory.
 

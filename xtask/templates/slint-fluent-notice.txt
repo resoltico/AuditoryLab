@@ -1,12 +1,11 @@
 
-Slint 1.18.1 Fluent widget graphics (Windows and Linux native styles)
+Slint 1.19.0 Fluent widget graphics (Windows and Linux native styles)
 
-_down.svg, _right.svg, _up.svg, _left.svg, _dropdown.svg, _dismiss.svg,
-_eye_hide.svg, _eye_show.svg and _arrow_forward.svg
+Slint Fluent _*.svg resources used by the application widgets
 Copyright © Microsoft Corporation
 https://github.com/microsoft/fluentui-system-icons/blob/main/LICENSE
 MIT License
 Source and attribution metadata:
-https://github.com/slint-ui/slint/blob/372cf0ee5577c3dfec309a45e7b778ba4e81b734/REUSE.toml
+https://github.com/slint-ui/slint/blob/e436f546f71481d786cbc2a74316b1be1ef678c1/REUSE.toml
 These graphics are embedded unchanged through Slint's Fluent widgets.
 They are third-party artwork, separate from project-owned artwork and its license.

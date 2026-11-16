@@ -9,7 +9,8 @@ use crate::{
     executor::{Executor, Task},
 };
 use accesskit_atspi_common::{
-    NodeId, NodeIdOrRoot, ObjectEvent, PlatformNode, PlatformRoot, Property, WindowEvent,
+    DocumentEvent, FullNodeId, NodeIdOrRoot, ObjectEvent, PlatformNode, PlatformRoot, Property,
+    WindowEvent,
 };
 use atspi::{
     Interface, InterfaceSet, ObjectRefOwned,
@@ -141,12 +142,24 @@ impl Bus {
             )
             .await?;
         }
+        if new_interfaces.contains(Interface::Document) {
+            self.register_interface(&path, DocumentInterface::new(node.clone()))
+                .await?;
+        }
+        if new_interfaces.contains(Interface::EditableText) {
+            self.register_interface(&path, EditableTextInterface::new(node.clone()))
+                .await?;
+        }
         if new_interfaces.contains(Interface::Hyperlink) {
             self.register_interface(
                 &path,
                 HyperlinkInterface::new(bus_name.clone(), node.clone()),
             )
             .await?;
+        }
+        if new_interfaces.contains(Interface::Image) {
+            self.register_interface(&path, ImageInterface::new(node.clone()))
+                .await?;
         }
         if new_interfaces.contains(Interface::Selection) {
             self.register_interface(
@@ -181,7 +194,7 @@ impl Bus {
     pub(crate) async fn unregister_interfaces(
         &self,
         adapter_id: usize,
-        node_id: NodeId,
+        node_id: FullNodeId,
         old_interfaces: InterfaceSet,
     ) -> zbus::Result<()> {
         let path = ObjectId::Node {
@@ -200,9 +213,20 @@ impl Bus {
             self.unregister_interface::<ComponentInterface>(&path)
                 .await?;
         }
+        if old_interfaces.contains(Interface::Document) {
+            self.unregister_interface::<DocumentInterface>(&path)
+                .await?;
+        }
+        if old_interfaces.contains(Interface::EditableText) {
+            self.unregister_interface::<EditableTextInterface>(&path)
+                .await?;
+        }
         if old_interfaces.contains(Interface::Hyperlink) {
             self.unregister_interface::<HyperlinkInterface>(&path)
                 .await?;
+        }
+        if old_interfaces.contains(Interface::Image) {
+            self.unregister_interface::<ImageInterface>(&path).await?;
         }
         if old_interfaces.contains(Interface::Selection) {
             self.unregister_interface::<SelectionInterface>(&path)
@@ -374,7 +398,7 @@ impl Bus {
     pub(crate) async fn emit_window_event(
         &self,
         adapter_id: usize,
-        target: NodeId,
+        target: FullNodeId,
         window_name: String,
         event: WindowEvent,
     ) -> Result<()> {
@@ -392,6 +416,28 @@ impl Bus {
             .await
     }
 
+    pub(crate) async fn emit_document_event(
+        &self,
+        adapter_id: usize,
+        target: FullNodeId,
+        event: DocumentEvent,
+    ) -> Result<()> {
+        let target = ObjectId::Node {
+            adapter: adapter_id,
+            node: target,
+        };
+        let signal = match event {
+            DocumentEvent::LoadComplete => "LoadComplete",
+        };
+        self.emit_event(
+            target,
+            "org.a11y.atspi.Event.Document",
+            signal,
+            EventBodyBorrowed::default(),
+        )
+        .await
+    }
+
     pub(crate) async fn emit_cache_add(&self, node: PlatformNode) -> Result<()> {
         let Ok(item) = cache_item_for_node(self.unique_name().inner(), &node) else {
             return Ok(());
@@ -399,7 +445,11 @@ impl Bus {
         self.emit_cache_signal("AddAccessible", &item).await
     }
 
-    pub(crate) async fn emit_cache_remove(&self, adapter_id: usize, node_id: NodeId) -> Result<()> {
+    pub(crate) async fn emit_cache_remove(
+        &self,
+        adapter_id: usize,
+        node_id: FullNodeId,
+    ) -> Result<()> {
         let reference = object_ref(
             self.unique_name().inner(),
             ObjectId::Node {

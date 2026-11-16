@@ -19,11 +19,10 @@
          }
      }
  }
-@@ -189,6 +194,20 @@
-             #[cfg(target_arch = "wasm32")]
+@@ -209,6 +214,20 @@
              CustomEvent::WakeEventLoopWorkaround => {
                  event_loop.set_control_flow(ControlFlow::Poll);
-+            }
+             }
 +            #[cfg(target_os = "macos")]
 +            CustomEvent::Termination(request) => match self.custom_application_handler.as_mut() {
 +                Some(handler) => handler.termination_requested(event_loop, request),
@@ -37,12 +36,13 @@
 +                if let Some(handler) = self.custom_application_handler.as_mut() {
 +                    handler.about_requested(event_loop);
 +                }
-             }
++            }
              #[cfg(muda)]
              CustomEvent::Muda(event) => {
+                 if let Some((window_id, generation, entry_id, muda_type)) =
 --- a/lib.rs
 +++ b/lib.rs
-@@ -271,6 +271,38 @@
+@@ -290,6 +290,38 @@
      fn memory_warning(&mut self, event_loop: &ActiveEventLoop) -> EventResult {
          EventResult::Propagate
      }
@@ -81,7 +81,7 @@
  }
  
  /// Use the BackendBuilder to configure the properties of the Winit Backend before creating it.
-@@ -403,6 +435,26 @@
+@@ -425,6 +457,26 @@
              self.requested_graphics_api.clone(),
              self.allow_fallback,
          )?);
@@ -110,8 +110,8 @@
              event_loop_state: Default::default(),
 --- a/muda.rs
 +++ b/muda.rs
-@@ -31,6 +31,20 @@
- }
+@@ -54,6 +54,21 @@
+ static NEXT_MENU_GENERATION: AtomicU64 = AtomicU64::new(1);
  
  static MUDA_SET_EVENT_HANDLER_INSTALLED: AtomicBool = AtomicBool::new(false);
 +
@@ -128,10 +128,11 @@
 +pub fn set_application_about(title: String) {
 +    let _ = APPLICATION_ABOUT_TITLE.set(title);
 +}
++
  
  /// Returns true when `SLINT_NO_MUDA` is set, in which case the menu bar and the context menus
  /// are rendered by Slint. That's the only way to exercise these code paths on macOS and Windows.
-@@ -316,7 +330,11 @@
+@@ -585,7 +600,10 @@
      }
  
      #[cfg(target_os = "macos")]
@@ -139,32 +140,27 @@
 +    pub fn setup_default_menu_bar(
 +        proxy: EventLoopProxy<SlintEvent>,
 +    ) -> Result<Self, i_slint_core::api::PlatformError> {
-+        // The default menu routes its items through the same once-installed bridge.
 +        install_event_handler_if_necessary(proxy);
          let menu_bar = muda::Menu::new();
-         create_default_app_menu(&menu_bar)?;
+         create_app_menu(&menu_bar, &[], |_, _| unreachable!())?;
          menu_bar.init_for_nsapp();
-@@ -402,8 +420,16 @@
-     menu_bar
-         .append(&app_menu)
-         .and_then(|_| {
-+            match APPLICATION_ABOUT_TITLE.get() {
-+                Some(title) => app_menu.append(&muda::MenuItem::with_id(
-+                    muda::MenuId(APPLICATION_ABOUT_ID.into()),
-+                    title,
-+                    true,
-+                    None,
-+                )),
-+                None => app_menu.append(&muda::PredefinedMenuItem::about(None, None)),
-+            }?;
-             app_menu.append_items(&[
--                &muda::PredefinedMenuItem::about(None, None),
-                 &muda::PredefinedMenuItem::separator(),
-                 &muda::PredefinedMenuItem::services(None),
-                 &muda::PredefinedMenuItem::separator(),
+@@ -823,7 +841,12 @@
+     let mut items: Vec<Box<dyn muda::IsMenuItem>> = Vec::new();
+     items.push(match entry(MenuItemRole::About) {
+         Some(about) => Box::new(menu_item(about, None)),
+-        None => Box::new(PredefinedMenuItem::about(None, None)),
++        None => match APPLICATION_ABOUT_TITLE.get() {
++            Some(title) => Box::new(muda::MenuItem::with_id(
++                muda::MenuId(APPLICATION_ABOUT_ID.into()), title, true, None,
++            )),
++            None => Box::new(PredefinedMenuItem::about(None, None)),
++        },
+     });
+     items.push(Box::new(PredefinedMenuItem::separator()));
+     if let Some(preferences) = entry(MenuItemRole::Preferences) {
 --- a/winitwindowadapter.rs
 +++ b/winitwindowadapter.rs
-@@ -1230,7 +1230,9 @@
+@@ -1439,7 +1439,9 @@
                      && self.menubar().is_none()
                  {
                      *muda_adapter.borrow_mut() =
@@ -175,41 +171,13 @@
                  }
  
                  if let Some(muda_adapter) = muda_adapter.borrow().as_ref() {
-@@ -1318,6 +1320,18 @@
-                 let have_focus =
-                     if cfg!(target_os = "macos") { winit_window.has_focus() } else { have_focus };
-                 self.activation_changed(have_focus)?;
-+            }
-+
-+            #[cfg(target_os = "macos")]
-+            WinitWindowEvent::ModifiersChanged(modifiers) => {
-+                let state = modifiers.state();
-+                let swap_cmd_ctrl = i_slint_core::is_apple_platform();
-+                let mut normalized = corelib::input::KeyboardModifiers::default();
-+                normalized.alt = state.alt_key();
-+                normalized.shift = state.shift_key();
-+                normalized.control = if swap_cmd_ctrl { state.super_key() } else { state.control_key() };
-+                normalized.meta = if swap_cmd_ctrl { state.control_key() } else { state.super_key() };
-+                WindowInner::from_pub(self.window()).set_keyboard_modifiers(normalized);
+@@ -1664,6 +1666,9 @@
+                 } else {
+                     (state.control_key(), state.super_key())
+                 };
++                #[cfg(target_os = "macos")]
++                WindowInner::from_pub(self.window()).set_keyboard_modifiers(held);
++                #[cfg(not(target_os = "macos"))]
+                 WindowInner::from_pub(self.window()).release_modifiers_not_held(held);
              }
- 
-             WinitWindowEvent::KeyboardInput { event, is_synthetic, .. } => {
-@@ -1709,11 +1723,13 @@
-                 self.draw()?;
-             };
- 
--            // On iOS making an already-created window visible doesn't generate a fresh
--            // RedrawRequested. winit's one initial RedrawRequested is delivered while the window is
--            // created (during `resumed`), so a window first shown later misses it and stays blank.
--            #[cfg(ios_and_friends)]
--            self.request_redraw();
-+            // Wayland and iOS don't generate a fresh native redraw when a
-+            // precreated window is first shown. Its initial redraw may already
-+            // have arrived while hidden. Arm a future frame; don't pre-render
-+            // Wayland before its initial configure.
-+            if self.shared_backend_data.is_wayland || cfg!(ios_and_friends) {
-+                self.request_redraw();
-+            }
- 
-             Ok(())
-         } else {
+             WinitWindowEvent::Ime(winit::event::Ime::Preedit(string, preedit_selection)) => {

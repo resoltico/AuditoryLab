@@ -340,6 +340,8 @@ fn about(product: &str, target: &str, meta: &Value, executable: Option<&Path>) -
         text.push_str(&fonts::notices(&fonts::embedded(&fs::read(executable)?))?);
     }
     if product == "gui" {
+        // The Taffy crate archive omits its source LICENSE copyright notices.
+        text.push_str(include_str!("../templates/taffy-notice.txt"));
         text.push_str(include_str!("../templates/slint-badge-notice.txt"));
         text.push_str(include_str!(
             "../../third_party/i-slint-compiler/LICENSES/CC-BY-ND-4.0.txt"
