@@ -35,13 +35,13 @@ export component AboutWindow inherits Window {
             title: Terms.caption-product-name;
 
             MenuItem {
-                role: about;
+                role: MenuItemRole.about;
                 title: Terms.caption-about-product;
                 activated => { ApplicationCommands.about(); }
             }
 
             MenuItem {
-                role: quit;
+                role: MenuItemRole.quit;
                 title: Terms.action-quit;
                 activated => { ApplicationCommands.quit(); }
             }
@@ -188,13 +188,13 @@ export component LicenseWindow inherits Window {
             title: Terms.caption-product-name;
 
             MenuItem {
-                role: about;
+                role: MenuItemRole.about;
                 title: Terms.caption-about-product;
                 activated => { ApplicationCommands.about(); }
             }
 
             MenuItem {
-                role: quit;
+                role: MenuItemRole.quit;
                 title: Terms.action-quit;
                 activated => { ApplicationCommands.quit(); }
             }

@@ -26,7 +26,7 @@ use crate::generated::{
     MetadataRow, ModelLane, MonitorWindow, ParameterRow,
 };
 use crate::{details_parent, motion, scope, typography};
-use actions::install_actions;
+use actions::{install_actions, install_application_actions};
 use auditorylab_app::document::editing::{EditingField, FieldHandle, MetadataField, RowKey};
 use auditorylab_app::services::playback::PlaybackPhase;
 use auditorylab_app::workspace::{
@@ -248,39 +248,7 @@ impl SlintAdapter {
             termination: RefCell::new(None),
             counts: ProjectionCounts::default(),
         });
-        for commands in [
-            windows
-                .main
-                .global::<crate::generated::ApplicationCommands>(),
-            windows
-                .about
-                .global::<crate::generated::ApplicationCommands>(),
-            windows
-                .licenses
-                .global::<crate::generated::ApplicationCommands>(),
-            windows
-                .monitor
-                .global::<crate::generated::ApplicationCommands>(),
-            windows
-                .details
-                .global::<crate::generated::ApplicationCommands>(),
-            windows
-                .audio_controls
-                .global::<crate::generated::ApplicationCommands>(),
-        ] {
-            let weak = Rc::downgrade(&adapter);
-            commands.on_about(move || {
-                if let Some(adapter) = weak.upgrade() {
-                    adapter.show_about();
-                }
-            });
-            let weak = Rc::downgrade(&adapter);
-            commands.on_quit(move || {
-                if let Some(adapter) = weak.upgrade() {
-                    adapter.command(|workspace| workspace.apply(Command::Close));
-                }
-            });
-        }
+        install_application_actions(&adapter, windows);
         ui.set_components(ModelRc::from(adapter.components.clone()));
         ui.set_catalog(ModelRc::from(adapter.catalog.clone()));
         ui.set_model_lanes(ModelRc::from(adapter.lanes.clone()));
