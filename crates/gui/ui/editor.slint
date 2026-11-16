@@ -58,6 +58,7 @@ export component NumericField inherits LineEdit {
     changed staged => {
         if root.staged && !root.dirty { root.captured = root.binding; }
         root.dirty = root.staged;
+        if !root.staged && self.has-focus { self.ensure-visible(ScrollBehavior.instant); }
     }
     init => {
         self.text = root.display-text;
@@ -80,7 +81,6 @@ export component NumericField inherits LineEdit {
             root.restore(root.owner());
             self.text = root.display-text;
             root.dirty = false;
-            self.ensure-visible(ScrollBehavior.instant);
             return accept;
         }
         return reject;
@@ -210,6 +210,7 @@ export component NotesInput inherits TextEdit {
     changed staged => {
         if root.staged && !root.dirty { root.captured = root.binding; }
         root.dirty = root.staged;
+        if !root.staged && self.has-focus { self.ensure-visible(ScrollBehavior.instant); }
     }
     init => {
         self.text = root.display-text;
@@ -232,7 +233,6 @@ export component NotesInput inherits TextEdit {
             root.restore(root.owner());
             self.text = root.display-text;
             root.dirty = false;
-            self.ensure-visible(ScrollBehavior.instant);
             return accept;
         }
         return reject;

@@ -101,19 +101,15 @@ pub(super) fn assert_cursor_rect_scrolls_into_view() {
                         scroll={} viewport={viewport}",
                     probe.get_scroll_y()
                 );
-                assert!(
-                    bottom <= viewport + 0.05,
-                    "complete cursor line must fit the viewport bottom: {bottom}>{viewport}"
-                );
                 if viewport >= rect.size.height {
                     assert!(
-                        top >= -0.05,
-                        "complete cursor line must fit the viewport top"
+                        top >= -0.05 && bottom <= viewport + 0.05,
+                        "the complete cursor line must fit when the viewport has room: {top}..{bottom} in {viewport}"
                     );
                 } else {
                     assert!(
-                        (bottom - viewport).abs() < 0.05,
-                        "a viewport shorter than one line aligns its bottom without bouncing"
+                        top <= 0.05 && bottom >= viewport - 0.05,
+                        "an undersized viewport must show the maximum representable caret span: {top}..{bottom} in {viewport}"
                     );
                 }
             }

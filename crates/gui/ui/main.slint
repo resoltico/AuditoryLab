@@ -68,6 +68,7 @@ export {
 import { MonitorPanel, MonitorData } from "monitor.slint";
 
 export component MainWindow inherits Window {
+    in property <bool> initial-layout-ready: false;
     icon: @image-url("../../../artwork/auditorylab-icon/assets/runtime/window-icon.png");
     title: Terms.caption-product-name;
     in-out property <bool> edits-suspended:false;
@@ -784,6 +785,7 @@ export component MainWindow inherits Window {
             min-height: 0px;
 
             library-page := LibraryPane {
+                initial-layout-ready: root.initial-layout-ready;
                 visible: !root.learning-visible && root.tab-index == 0;
                 width: parent.width;
                 height: parent.height;

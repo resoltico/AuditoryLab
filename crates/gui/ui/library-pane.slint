@@ -65,6 +65,7 @@ export component LibraryPane inherits Rectangle {
     in property <bool> has-results;
     callback library-action(EntryAddress, LibraryMutationAction, string);
     in property <string> library-alert;
+    in property <bool> initial-layout-ready: false;
     in property <string> library-classification;
     in property <string> library-dates;
     in property <string> library-dates-utc;
@@ -453,16 +454,19 @@ export component LibraryPane inherits Rectangle {
 
                         for item[index] in root.catalog: catalog-row := Rectangle {
                             property <bool> selected-row: root.selected == index;
+                            property <bool> reveal-ready: self.selected-row && root.initial-layout-ready &&
+                                entries.visible-width > 0px && entries.visible-height > 0px &&
+                                self.width > 0px && self.height > 0px;
                             init => {
                                 if root.library-restoring { root.library-restore-ready = true; }
                                 else { self.reveal(); }
                             }
                             function reveal() {
-                                if self.selected-row && !root.library-restoring {
+                                if self.reveal-ready && !root.library-restoring {
                                     self.ensure-visible(ScrollBehavior.instant);
                                 }
                             }
-                            changed selected-row => { self.reveal(); }
+                            changed reveal-ready => { self.reveal(); }
 
                             height: max(root.ui-size * 3.5, card-content.preferred-height + 16px);
                             border-radius: 6px;

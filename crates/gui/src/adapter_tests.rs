@@ -2463,17 +2463,42 @@ fn first_selected_row_keeps_the_results_note_in_view_after_launch() {
     h.wait_for_files();
     let ui = h.ui();
     ui.window().set_size(slint::LogicalSize::new(1280.0, 932.0));
-    for _ in 0..3 {
-        h.settle();
-        std::thread::sleep(Duration::from_millis(15));
-    }
     h.settle();
     assert!(ui.get_library_alert().contains("incomplete"));
     assert_eq!(ui.get_selected(), 0);
+    let note = labelled(ui, ui.get_library_alert().as_str());
     assert!(
-        ui.get_library_scroll_y().abs() < 1.0,
-        "the note above the selected first row must stay in view, got {}",
-        ui.get_library_scroll_y()
+        note.is_visible(),
+        "the incomplete-inventory warning must be visible"
+    );
+    let results = labelled(
+        ui,
+        ui.global::<crate::generated::Terms>()
+            .get_caption_library_results()
+            .as_str(),
+    );
+    let viewport = results
+        .visit_descendants(|item| {
+            if item
+                .downcast::<slint::private_unstable_api::re_exports::Flickable>()
+                .is_some()
+            {
+                ControlFlow::Break(item.clone())
+            } else {
+                ControlFlow::Continue(())
+            }
+        })
+        .expect("the actual results viewport exists");
+    let bounds = note.geometry();
+    let origin = note.map_to_window(bounds.origin);
+    let view = viewport.geometry();
+    let view_origin = viewport.map_to_window(view.origin);
+    assert!(
+        origin.x >= view_origin.x
+            && origin.y >= view_origin.y
+            && origin.x + bounds.size.width <= view_origin.x + view.size.width
+            && origin.y + bounds.size.height <= view_origin.y + view.size.height,
+        "the complete warning must fit the actual results viewport: {origin:?} {bounds:?} in {view_origin:?} {view:?}"
     );
 }
 

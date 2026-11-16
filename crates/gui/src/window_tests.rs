@@ -240,6 +240,7 @@ fn assert_monitor_lane_geometry(
     ui.set_monitor_open(true);
     ui.invoke_resize_monitor(270.0);
     let window = MonitorWindow::new().unwrap();
+    crate::native_text::initialize_identity(&window.global::<crate::generated::Terms>());
     crate::adapter::project_captions(
         &window.global::<crate::generated::ViewCaptions>(),
         auditorylab_app::vocabulary::EditorStatus::UnmodifiedDraft,
@@ -363,6 +364,7 @@ fn assert_focused_monitor_reachable(
 
 fn assert_monitor_warning_accessibility(ui: &MainWindow) {
     let window = MonitorWindow::new().unwrap();
+    crate::native_text::initialize_identity(&window.global::<crate::generated::Terms>());
     crate::adapter::project_captions(
         &window.global::<crate::generated::ViewCaptions>(),
         auditorylab_app::vocabulary::EditorStatus::UnmodifiedDraft,
@@ -539,6 +541,7 @@ fn assert_audio_controls_keep_stop_visible(
     use slint::platform::{PointerEventButton, WindowEvent};
 
     let controls = AudioControlsWindow::new().unwrap();
+    crate::native_text::initialize_identity(&controls.global::<crate::generated::Terms>());
     controls.set_ui_family(typography::resolve().family.into());
     controls.set_active(true);
     controls
@@ -885,7 +888,9 @@ fn unbreakable_text_never_widens_the_documents() {
 fn about_geometry_keeps_identity_icon_and_actions_visible_at_font_and_display_scales() {
     use crate::generated::AboutWindow;
     use crate::test_platform::settle;
-    use slint::private_unstable_api::re_exports::{AccessibleStringProperty, WindowInner};
+    use slint::private_unstable_api::re_exports::{
+        AccessibleRole, AccessibleStringProperty, WindowInner,
+    };
     use std::ops::ControlFlow;
 
     install();
@@ -914,6 +919,8 @@ fn about_geometry_keeps_identity_icon_and_actions_visible_at_font_and_display_sc
             let _ = root.visit_descendants(|item| {
                 if let Some(label) =
                     item.accessible_string_property(AccessibleStringProperty::Label)
+                    && (label != "Auditory Lab"
+                        || item.accessible_role() == AccessibleRole::TextInput)
                     && (matches!(
                         label.as_str(),
                         "Application icon"
@@ -1408,20 +1415,24 @@ fn assert_monitor_paging(
 ) {
     let inner = WindowInner::from_pub(window.window());
     let root = inner.window_item_rc().unwrap();
-    let viewport = window
-        .window()
-        .size()
-        .to_logical(window.window().scale_factor());
-    let flickable = root
+    let viewport = root
         .visit_descendants(|item| {
-            item.downcast::<slint::private_unstable_api::re_exports::Flickable>()
-                .map_or(ControlFlow::Continue(()), |flickable| {
-                    ControlFlow::Break(flickable)
-                })
+            if item
+                .downcast::<slint::private_unstable_api::re_exports::Flickable>()
+                .is_some()
+            {
+                ControlFlow::Break(item.clone())
+            } else {
+                ControlFlow::Continue(())
+            }
         })
         .unwrap();
+    let (view_x, view_y, view_width, view_height) = focused_bounds(&viewport);
+    let flickable = viewport
+        .downcast::<slint::private_unstable_api::re_exports::Flickable>()
+        .unwrap();
     let flickable = flickable.as_pin_ref();
-    let bottom = (viewport.height - flickable.content_height().get()).min(0.0);
+    let bottom = (view_height - flickable.content_height().get()).min(0.0);
     for _ in 0..8 {
         let before = flickable.content_y().get();
         focused_key(window.window(), Key::PageDown);
@@ -1453,10 +1464,10 @@ fn assert_monitor_paging(
         assert!(
             width > 0.0
                 && height > 0.0
-                && x < viewport.width
-                && x + width > 0.0
-                && y >= -0.1
-                && y + height <= viewport.height + 0.1,
+                && x < view_x + view_width
+                && x + width > view_x
+                && y >= view_y - 0.1
+                && y + height <= view_y + view_height + 0.1,
             "Ctrl/Cmd End must reach warning text with only the keyboard"
         );
     }
@@ -1470,16 +1481,19 @@ fn assert_monitor_paging(
     focused_settle(window.window());
     let (x, y, width, height) = focused_bounds(&find(data.state.as_str()));
     assert!(
-        x >= -0.1
-            && y >= -0.1
-            && x + width <= viewport.width + 0.1
-            && y + height <= viewport.height + 0.1,
+        x >= view_x - 0.1
+            && y >= view_y - 0.1
+            && x + width <= view_x + view_width + 0.1
+            && y + height <= view_y + view_height + 0.1,
         "Ctrl/Cmd Home must return left/top to the complete monitor state"
     );
     window
         .window()
         .dispatch_event(WindowEvent::PointerScrolled {
-            position: slint::LogicalPosition::new(viewport.width / 2.0, viewport.height / 2.0),
+            position: slint::LogicalPosition::new(
+                view_x + view_width / 2.0,
+                view_y + view_height / 2.0,
+            ),
             delta_x: -100_000.0,
             delta_y: -100_000.0,
         });
@@ -1489,10 +1503,10 @@ fn assert_monitor_paging(
         assert!(
             width > 0.0
                 && height > 0.0
-                && x < viewport.width
-                && x + width > 0.0
-                && y >= -0.1
-                && y + height <= viewport.height + 0.1,
+                && x < view_x + view_width
+                && x + width > view_x
+                && y >= view_y - 0.1
+                && y + height <= view_y + view_height + 0.1,
             "scrolling must reach the complete warning row at {size}px: {:?}",
             (x, y, width, height)
         );
