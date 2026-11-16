@@ -30,6 +30,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     slint_build::compile_with_config(
         "ui/main.slint",
         slint_build::CompilerConfiguration::new()
+            .with_edition((1, 19))
             .with_include_paths(vec![generated])
             .embed_resources(slint_build::EmbedResourcesKind::EmbedFiles),
     )?;

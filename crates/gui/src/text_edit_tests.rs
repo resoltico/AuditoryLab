@@ -5,6 +5,7 @@ use slint::private_unstable_api::re_exports::{TextInput, WindowInner};
 use std::ops::ControlFlow;
 
 slint::slint! {
+    #[edition = "1.19"]
     import { TextEdit, VerticalBox } from "std-widgets.slint";
     export component CursorScrollProbe inherits Window {
         preferred-width:420px;preferred-height:180px;

@@ -793,6 +793,7 @@ fn accessibility_presses_respect_disabled_buttons() {
     use std::ops::ControlFlow;
 
     slint::slint! {
+        #[edition = "1.19"]
         import { Button } from "../ui/button.slint";
         export component PressProbe inherits Window {
             in property <bool> enabled;
@@ -1111,6 +1112,7 @@ fn focused_settle(window: &slint::Window) {
     slint::platform::update_timers_and_animations();
 }
 slint::slint! {
+    #[edition = "1.19"]
     import { Button } from "std-widgets.slint";
     export component MonitorButtonMeasure inherits Window {
         in property <string> family;
@@ -1162,6 +1164,7 @@ fn modifier_press(probe: &ModifierProbe, text: impl Into<slint::SharedString>) {
         .dispatch_event(WindowEvent::KeyPressed { text: text.into() });
 }
 slint::slint! {
+    #[edition = "1.19"]
     export component ModifierProbe inherits Window {
         width:400px;height:80px;
         in-out property <string> value:"baseline";
@@ -1602,6 +1605,7 @@ fn diagnose_monitor_focus(root: &ItemRc, focused: &ItemRc, item: &ItemRc) {
 }
 
 slint::slint! {
+    #[edition = "1.19"]
     export component PartlyScrolledEditor inherits Window {
         width: 200px;
         height: 100px;

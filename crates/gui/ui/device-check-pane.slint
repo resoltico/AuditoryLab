@@ -32,10 +32,12 @@ export component DeviceCheckPane inherits Rectangle {
     check-scroll := ScrollView {
         width: parent.width;
         height: parent.height;
+
         VerticalBox {
             width: check-scroll.visible-width;
             padding: 16px;
             spacing: 14px;
+
             Text {
                 text: ViewCaptions.device-check;
                 font-size: root.ui-size * 1.5;
@@ -55,11 +57,14 @@ export component DeviceCheckPane inherits Rectangle {
                 border-width: test.selected ? 2px : 1px;
                 border-color: test.selected ? Palette.accent-background : Palette.border;
                 border-radius: 6px;
+
                 VerticalBox {
                     padding: 12px;
                     spacing: 8px;
+
                     HorizontalBox {
                         padding: 0px;
+
                         Text {
                             text: test.label;
                             font-weight: 700;
@@ -103,6 +108,7 @@ export component DeviceCheckPane inherits Rectangle {
             Section {
                 title: Terms.caption-device-check-results;
                 ui-size: root.ui-size;
+
                 Text {
                     text: root.channel-result;
                     wrap: word-wrap;
@@ -119,6 +125,7 @@ export component DeviceCheckPane inherits Rectangle {
 
                 HorizontalLayout {
                     alignment: start;
+
                     Button {
                         text: Actions.clear-device-answers.label;
                         enabled: Actions.clear-device-answers.enabled;

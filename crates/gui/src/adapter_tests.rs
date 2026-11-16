@@ -1934,6 +1934,7 @@ fn persistent_native_filters_use_shared_query_and_invalid_dates_preserve_it() {
 }
 
 slint::slint! {
+    #[edition = "1.19"]
     import { BoundButton } from "ui/library-controls.slint";
     export { EntryAddress, LibraryMutationAction } from "ui/library-actions.slint";
     import { EntryAddress, LibraryMutationAction } from "ui/library-actions.slint";

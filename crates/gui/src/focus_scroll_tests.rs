@@ -5,6 +5,7 @@ use slint::private_unstable_api::re_exports::{AccessibleStringProperty, ItemRc, 
 use std::ops::ControlFlow;
 
 slint::slint! {
+    #[edition = "1.19"]
     import { Button, CheckBox, Switch, ScrollView, ComboBox } from "std-widgets.slint";
     component OversizedPointOwner inherits Rectangle {
         width:800px;height:700px;
@@ -76,6 +77,7 @@ slint::slint! {
 }
 
 slint::slint! {
+    #[edition = "1.19"]
     export component ConditionalLifetimeProbe inherits Window {
         in property <[int]> entries;
         for entry in root.entries: Rectangle {width:200px;height:100px;

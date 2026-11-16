@@ -28,9 +28,11 @@ export component AboutWindow inherits Window {
     callback dismiss();
     callback focus-website();
     focus-website => { website.focus(); }
+
     MenuBar {
         Menu {
             title: Terms.action-edit;
+
             MenuItem {
                 title: Terms.action-copy;
                 shortcut: @keys(Control + C);
@@ -60,18 +62,22 @@ export component AboutWindow inherits Window {
     }
 
     forward-focus: about-focus;
+
     about-focus := FocusScope {
         key-pressed(event) => {
             if event.text == Key.Escape { root.dismiss(); return accept; }
             return reject;
         }
+
         VerticalBox {
             padding: 24px;
             spacing: 12px;
             alignment: center;
+
             HorizontalBox {
                 alignment: center;
                 padding: 0px;
+
                 Image {
                     source: root.icon;
                     width: 64px;
@@ -110,6 +116,7 @@ export component AboutWindow inherits Window {
                 alignment: center;
                 spacing: 12px;
                 padding: 0px;
+
                 website := Button {
                     text: Terms.caption-project-website;
                     triggered => { root.open-source(); }
@@ -125,6 +132,7 @@ export component AboutWindow inherits Window {
                 alignment: center;
                 vertical-stretch: 0;
                 padding: 0px;
+
                 AboutSlint {
                     width: 280px;
                     height: 100px;
@@ -156,9 +164,11 @@ export component LicenseWindow inherits Window {
         license-text.content-y = 0px;
     }
     forward-focus: license-focus;
+
     MenuBar {
         Menu {
             title: Terms.action-edit;
+
             MenuItem {
                 title: Terms.action-copy;
                 shortcut: @keys(Control + C);
@@ -181,6 +191,7 @@ export component LicenseWindow inherits Window {
             if event.text == Key.Escape { root.dismiss(); return accept; }
             return reject;
         }
+
         VerticalBox {
             license-text := TextEdit {
                 text: root.licenses;
@@ -192,6 +203,7 @@ export component LicenseWindow inherits Window {
                 padding: 12px;
                 spacing: 12px;
                 vertical-stretch: 0;
+
                 Text {
                     text: root.notice;
                     wrap: word-wrap;

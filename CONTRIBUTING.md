@@ -32,6 +32,8 @@ The artwork check needs Python 3.9+ with its standard library; ordinary Rust bui
 
 The compiler warns about ordinary hygiene locally. Core emits missing-documentation warnings; unsafe-code rules remain denied. CI denies workspace Clippy pedantic findings and documentation warnings without applying a global warning denial to vendored path dependencies.
 
+The desktop build and inline widget probes select Slint edition 1.19. Conditional and repeated children participate in natural layout sizing; decoration overlays use percentage sizes so they follow their fields without defining the fields' intrinsic size.
+
 Use the CI-pinned cargo-deny, cargo-mutants, cargo-about and actionlint versions. Install `slint-lsp` with `--locked --no-default-features` at the resolved Slint version in Cargo.lock; the style gate rejects a version mismatch. On Windows, point TMP/TEMP to an absolute directory under `target/`. Linux calendar checks need system `tzdata`.
 
 Unit tests exercise owners and private adapters; integration tests use public services and the actual CLI. GUI tests install production callbacks on an offscreen platform with an injected deterministic executor; a separate test uses the real Runner and Slint event proxy to cover completion with no redraw timer and notification coalescing. Startup installs that same wake path. App unit tests assert typed state and causes. Presentation unit and integration suites render through the public app API. Shared behavioral recipes come from core’s dev-only `test-support` feature. Use independent numerical/structural expectations, relevant failures and negative controls. Check discovered/ignored counts and retain useful failure evidence.

@@ -23,6 +23,7 @@ component LessonTab inherits Rectangle {
     accessible-item-selectable: true;
     accessible-item-selected: root.selected;
     accessible-action-default => { root.activated(); }
+
     Rectangle {
         width: parent.width;
         height: parent.height;
@@ -30,6 +31,7 @@ component LessonTab inherits Rectangle {
         border-radius: 6px;
         border-width: root.focused ? 2px : 0px;
         border-color: Palette.accent-background;
+
         Text {
             x: root.compact ? 6px : 12px;
             width: parent.width - 2 * self.x;
@@ -63,9 +65,11 @@ component PathCard inherits Rectangle {
     border-color: Palette.border;
     border-radius: 10px;
     background: Palette.control-background;
+
     content := VerticalBox {
         padding: 16px;
         spacing: 10px;
+
         Text {
             text: root.title;
             font-size: root.ui-size * 1.2;
@@ -86,6 +90,7 @@ component PathCard inherits Rectangle {
         HorizontalBox {
             padding: 0px;
             vertical-stretch: 0;
+
             Button {
                 text: root.action;
                 primary: root.primary;
@@ -115,6 +120,7 @@ component LessonPlot inherits Rectangle {
     border-radius: 6px;
     accessible-role: image;
     accessible-label: root.label;
+
     Text {
         x: 4px;
         y: 4px;
@@ -221,8 +227,10 @@ export component LearningPane inherits Rectangle {
     VerticalBox {
         padding: root.compact ? 12px : 20px;
         spacing: root.compact ? 0px : 16px;
+
         content := Rectangle {
             min-height: 0px;
+
             preference-notice-button := Button {
                 visible: root.preference-notice;
                 x: root.compact ? (navigation.width + 8px) * 2 / 3 : 0px;
@@ -312,6 +320,7 @@ export component LearningPane inherits Rectangle {
                 height: parent.height - self.y;
                 content-width: self.visible-width;
                 content-height: reading-column.preferred-height;
+
                 reading-column := VerticalBox {
                     x: 0px;
                     y: 0px;
@@ -321,6 +330,7 @@ export component LearningPane inherits Rectangle {
                     // Clears the overlay scroll bar, so choices and plots never run under it.
                     padding-right: 16px;
                     spacing: 20px;
+
                     Text {
                         text: root.heading;
                         font-size: root.ui-size * 1.8;
@@ -374,6 +384,7 @@ export component LearningPane inherits Rectangle {
                         padding: 0px;
                         spacing: 14px;
                         vertical-stretch: 0;
+
                         PathCard {
                             title: "Explore the Library";
                             text: "Inspect a ready-made sound and the research behind it.";
@@ -425,6 +436,7 @@ export component LearningPane inherits Rectangle {
                         for lane in root.traces: VerticalBox {
                             padding: 0px;
                             spacing: 6px;
+
                             Text {
                                 text: lane.label;
                                 font-size: root.ui-size;
@@ -465,6 +477,7 @@ export component LearningPane inherits Rectangle {
                                 spacing: 4px;
                                 min-width: 0px;
                                 horizontal-stretch: 1;
+
                                 Button {
                                     text: item.name;
                                     checked: root.band == index;
@@ -494,6 +507,7 @@ export component LearningPane inherits Rectangle {
                             accessible-role: image;
                             accessible-label: "Five normalized illustrative sine waves, " +
                                 "one second per section, Delta through Gamma.";
+
                             Rectangle {
                                 y: parent.height / 2;
                                 width: parent.width;
@@ -531,6 +545,7 @@ export component LearningPane inherits Rectangle {
                                 spacing: 6px;
                                 min-width: 0px;
                                 horizontal-stretch: 1;
+
                                 Text {
                                     text: item.rate;
                                     color: Palette.foreground;
@@ -597,6 +612,7 @@ export component LearningPane inherits Rectangle {
                     if root.details != "": Section {
                         title: "Details and sources";
                         ui-size: root.ui-size;
+
                         Text {
                             text: root.details;
                             color: Palette.foreground;

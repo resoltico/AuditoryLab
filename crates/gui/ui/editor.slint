@@ -20,6 +20,7 @@ export component Section inherits VerticalBox {
     padding-top: 6px;
     spacing: 8px;
     vertical-stretch: 0;
+
     Rectangle {
         height: 1px;
         background: Palette.border;
@@ -113,9 +114,11 @@ export component ParameterControl inherits VerticalBox {
     callback slide(string, float);
     padding: 0px;
     vertical-stretch: 0;
+
     HorizontalBox {
         padding: 0px;
         vertical-stretch: 0;
+
         Text {
             text: root.parameter.label;
             vertical-alignment: center;
@@ -144,6 +147,7 @@ export component ParameterControl inherits VerticalBox {
             preferred-height: field.preferred-height;
             min-height: field.min-height;
             horizontal-stretch: 0;
+
             field := NumericField {
                 width: parent.width;
                 height: parent.height;
@@ -162,8 +166,8 @@ export component ParameterControl inherits VerticalBox {
             }
 
             if root.parameter.diagnostic != "": Rectangle {
-                width: parent.width;
-                height: parent.height;
+                width: 100%;
+                height: 100%;
                 background: transparent;
                 border-width: 2px;
                 border-color: Palette.accent-background;
@@ -291,6 +295,7 @@ export component StableButton inherits Rectangle {
     preferred-height: button.min-height;
     max-height: button.min-height;
     horizontal-stretch: 0;
+
     measure := VerticalLayout {
         visible: false;
         for label in root.labels: Button {
@@ -321,6 +326,7 @@ export component ExportRate inherits HorizontalBox {
     in property <[string]> choices;
     in property <bool> edit-enabled;
     callback changed(int);
+
     Text {
         text: ViewCaptions.export-sample-rate;
         vertical-alignment: center;

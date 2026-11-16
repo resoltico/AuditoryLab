@@ -460,6 +460,7 @@ export component MainWindow inherits Window {
     callback open-workbench();
     callback new-draft();
     callback save-recipe();
+
     dialogs := Dialogs {
         window-width: root.width;
         window-height: root.height;
@@ -506,6 +507,7 @@ export component MainWindow inherits Window {
     MenuBar {
         Menu {
             title: Terms.caption-file;
+
             MenuItem {
                 title: Actions.new-sound.label;
                 enabled: Actions.new-sound.enabled;
@@ -577,6 +579,7 @@ export component MainWindow inherits Window {
         // the keystroke away from the field it is meant for.
         Menu {
             title: Terms.action-edit;
+
             MenuItem {
                 title: Terms.action-undo;
                 activated => { root.edit-shortcut("z"); }
@@ -605,6 +608,7 @@ export component MainWindow inherits Window {
 
         Menu {
             title: Terms.caption-help;
+
             MenuItem {
                 title: "Start here";
                 activated => { root.resume-learning(); }
@@ -632,6 +636,7 @@ export component MainWindow inherits Window {
         y: max(16px, (root.height - self.height) / 3);
         close-policy: close-on-click-outside;
         forward-focus: preference-focus;
+
         Rectangle {
             background: Palette.background;
             border-width: 1px;
@@ -647,9 +652,11 @@ export component MainWindow inherits Window {
                 }
                 return reject;
             }
+
             VerticalBox {
                 padding: 16px;
                 spacing: 12px;
+
                 Text {
                     text: "Couldn't save the Start here preference";
                     color: Palette.foreground;
@@ -670,6 +677,7 @@ export component MainWindow inherits Window {
                 HorizontalBox {
                     padding: 0px;
                     vertical-stretch: 0;
+
                     RunningTaskActions {
                         audio-busy: root.playback-busy;
                         exporting: root.exporting;
@@ -694,6 +702,7 @@ export component MainWindow inherits Window {
 
     workspace-layout := VerticalBox {
         spacing: 0px;
+
         notice-banner := Rectangle {
             visible: root.onboarding-notice != "" && !root.learning-visible;
             preferred-height: self.visible ? notice-content.preferred-height : 0px;
@@ -701,12 +710,14 @@ export component MainWindow inherits Window {
             max-height: self.preferred-height;
             vertical-stretch: 0;
             clip: true;
+
             notice-content := HorizontalBox {
                 x: 0px;
                 y: 0px;
                 width: parent.width;
                 height: parent.height;
                 padding: 4px;
+
                 Text {
                     text: "Couldn't save that you've seen Start here; it may open again " +
                         "next time. Everything else works.";
@@ -729,6 +740,7 @@ export component MainWindow inherits Window {
             changed preferred-height => { root.update-monitor-layout(); }
             vertical-stretch: 0;
             padding: 8px;
+
             workspace-navigation := WorkspaceNavigation {
                 current: root.learning-visible ? 4 : root.tab-index;
                 text-size: root.ui-size;
@@ -770,6 +782,7 @@ export component MainWindow inherits Window {
 
         Rectangle {
             min-height: 0px;
+
             library-page := LibraryPane {
                 visible: !root.learning-visible && root.tab-index == 0;
                 width: parent.width;
@@ -1013,9 +1026,11 @@ export component MainWindow inherits Window {
             background: Palette.control-background;
             border-width: 1px;
             border-color: Palette.border;
+
             drawer-content := VerticalBox {
                 padding: 8px;
                 spacing: 3px;
+
                 Rectangle {
                     height: 6px;
                     background: grip-touch.has-hover || grip-focus.has-focus ?
@@ -1039,6 +1054,7 @@ export component MainWindow inherits Window {
                         root.resize-monitor(root.effective-drawer-height / 1px - 16);
                     }
                     forward-focus: grip-focus;
+
                     grip-focus := FocusScope {
                         key-pressed(e) => {
                             if e.text == Key.UpArrow {

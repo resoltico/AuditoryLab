@@ -133,6 +133,7 @@ export component LibraryPane inherits Rectangle {
             vertical-stretch: 0;
             padding: 12px;
             spacing: 10px;
+
             LineEdit {
                 text <=> root.query;
                 placeholder-text: Terms.caption-search-recipes;
@@ -173,10 +174,12 @@ export component LibraryPane inherits Rectangle {
                 horizontal-stretch: 0;
                 accessible-role: groupbox;
                 accessible-label: Terms.caption-browse-rhythm;
+
                 VerticalBox {
                     width: navigation-scroll.visible-width;
                     padding: 10px;
                     spacing: 4px;
+
                     Text {
                         text: ViewCaptions.collections;
                         font-weight: 600;
@@ -223,9 +226,11 @@ export component LibraryPane inherits Rectangle {
                     vertical-stretch: 0;
                     padding: 0px;
                     spacing: 4px;
+
                     HorizontalBox {
                         padding: 0px;
                         vertical-stretch: 0;
+
                         ComboBox {
                             min-width: 0px;
                             model: root.collection-labels;
@@ -273,6 +278,7 @@ export component LibraryPane inherits Rectangle {
                     HorizontalBox {
                         padding: 0px;
                         vertical-stretch: 0;
+
                         LineEdit {
                             text <=> root.query;
                             placeholder-text: Terms.caption-search-recipes;
@@ -291,6 +297,7 @@ export component LibraryPane inherits Rectangle {
                     if !root.compact: HorizontalBox {
                         padding: 0px;
                         vertical-stretch: 0;
+
                         ComboBox {
                             min-width: 0px;
                             model: root.band-labels;
@@ -330,6 +337,7 @@ export component LibraryPane inherits Rectangle {
                     vertical-stretch: 0;
                     padding: 12px;
                     spacing: 8px;
+
                     Text {
                         text: root.library-heading;
                         font-size: root.ui-size * 1.4;
@@ -342,6 +350,7 @@ export component LibraryPane inherits Rectangle {
                 HorizontalBox {
                     padding: 0px;
                     vertical-stretch: 0;
+
                     Text {
                         text: root.library-overview;
                         min-width: 0px;
@@ -362,6 +371,7 @@ export component LibraryPane inherits Rectangle {
                 if root.library-restrictions != "" || root.library-filters-active: HorizontalBox {
                     padding: 0px;
                     vertical-stretch: 0;
+
                     Text {
                         text: root.library-restrictions;
                         min-width: 0px;
@@ -389,6 +399,7 @@ export component LibraryPane inherits Rectangle {
                     }
                     accessible-role: list;
                     accessible-label: Terms.caption-library-results;
+
                     VerticalBox {
                         spacing: 4px;
                         width: entries.visible-width;
@@ -418,6 +429,7 @@ export component LibraryPane inherits Rectangle {
 
                         if !root.has-results: HorizontalBox {
                             vertical-stretch: 0;
+
                             Button {
                                 horizontal-stretch: 0;
                                 text: Terms.caption-create-sound;
@@ -484,6 +496,7 @@ export component LibraryPane inherits Rectangle {
                             accessible-action-default => {
                                 touch.clicked();
                             }
+
                             card-content := VerticalLayout {
                                 x: 10px;
                                 y: 8px;
@@ -494,6 +507,7 @@ export component LibraryPane inherits Rectangle {
                                 // was studied for on the next.
                                 HorizontalLayout {
                                     spacing: 8px;
+
                                     Text {
                                         text: item.title;
                                         font-size: root.ui-size * 1.08;
@@ -587,6 +601,7 @@ export component LibraryPane inherits Rectangle {
                         Section {
                             title: Terms.caption-library-storage-and-recovery;
                             ui-size: root.ui-size;
+
                             Text {
                                 text: root.library-status;
                                 wrap: word-wrap;
@@ -597,6 +612,7 @@ export component LibraryPane inherits Rectangle {
                             HorizontalBox {
                                 padding: 0px;
                                 vertical-stretch: 0;
+
                                 Button {
                                     enabled: Actions.library-refresh.enabled;
                                     text: Actions.library-refresh.label;
@@ -619,6 +635,7 @@ export component LibraryPane inherits Rectangle {
                             HorizontalBox {
                                 padding: 0px;
                                 vertical-stretch: 0;
+
                                 Button {
                                     text: Terms.action-reset-sort;
                                     horizontal-stretch: 0;
@@ -661,6 +678,7 @@ export component LibraryPane inherits Rectangle {
             // pointed at or focused.
             if !root.compact && root.has-results: Rectangle {
                 width: 8px;
+
                 Rectangle {
                     x: (parent.width - self.width) / 2;
                     width: resize-touch.has-hover || resize-focus.has-focus ? 3px : 1px;
@@ -686,6 +704,7 @@ export component LibraryPane inherits Rectangle {
                     root.resize-library-pane(root.sidebar-width / 1px - 16);
                 }
                 forward-focus: resize-focus;
+
                 resize-focus := FocusScope {
                     key-pressed(event) => {
                         if event.text == Key.LeftArrow {
@@ -852,6 +871,7 @@ export component LibraryPane inherits Rectangle {
                         Section {
                             title: Terms.caption-waveform-pattern;
                             ui-size: root.ui-size;
+
                             Text {
                                 min-width: 0px;
                                 text: root.model-caption;
@@ -863,6 +883,7 @@ export component LibraryPane inherits Rectangle {
                                 padding: 0px;
                                 spacing: 4px;
                                 vertical-stretch: 0;
+
                                 Text {
                                     min-width: 0px;
                                     text: lane.label;
@@ -876,6 +897,7 @@ export component LibraryPane inherits Rectangle {
                                     background: Palette.control-background;
                                     accessible-role: image;
                                     accessible-label: lane.label + Terms.caption-calculated-pattern;
+
                                     Path {
                                         x: 4px;
                                         width: parent.width - 8px;
@@ -932,6 +954,7 @@ export component LibraryPane inherits Rectangle {
                         Section {
                             title: Terms.caption-classification;
                             ui-size: root.ui-size;
+
                             Text {
                                 text: root.library-classification;
                                 wrap: word-wrap;
@@ -943,9 +966,11 @@ export component LibraryPane inherits Rectangle {
                         Section {
                             title: Terms.caption-export-sound;
                             ui-size: root.ui-size;
+
                             HorizontalBox {
                                 padding: 0px;
                                 vertical-stretch: 0;
+
                                 ExportRate {
                                     horizontal-stretch: 0;
                                     choices: root.export-rates;
@@ -962,6 +987,7 @@ export component LibraryPane inherits Rectangle {
                             HorizontalBox {
                                 padding: 0px;
                                 vertical-stretch: 0;
+
                                 Button {
                                     text: Actions.export.label + "…";
                                     enabled: Actions.export.enabled;
