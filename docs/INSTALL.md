@@ -28,7 +28,7 @@ sh ./install-auditorylab.sh --install-dir "$HOME/.local/bin" --replace-unmanaged
 ```
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy ByPass -File .\install-auditorylab.ps1 -InstallDir "$env:LOCALAPPDATA\Programs\AuditoryLab" -ReplaceUnmanaged
+powershell -NoProfile -ExecutionPolicy ByPass -File (Join-Path $HOME 'install-auditorylab.ps1') -InstallDir "$env:LOCALAPPDATA\Programs\AuditoryLab" -ReplaceUnmanaged
 if ($LASTEXITCODE -ne 0) { throw "Installer failed ($LASTEXITCODE)." }
 ```
 
@@ -46,7 +46,7 @@ sh ./install-auditorylab.sh --install-dir "$HOME/auditorylab-cli" --no-modify-pa
 ```
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy ByPass -File .\install-auditorylab.ps1 -InstallDir "$env:LOCALAPPDATA\AuditoryLab-CLI" -NoModifyPath
+powershell -NoProfile -ExecutionPolicy ByPass -File (Join-Path $HOME 'install-auditorylab.ps1') -InstallDir "$env:LOCALAPPDATA\AuditoryLab-CLI" -NoModifyPath
 if ($LASTEXITCODE -ne 0) { throw "Installer failed ($LASTEXITCODE)." }
 ```
 
@@ -105,16 +105,26 @@ If curl is unavailable, use
 The installer itself requires standard shell tools, tar and a SHA-256 tool
 (`sha256sum`, `shasum` or `openssl`).
 
-On Windows, use PowerShell:
+On Windows, use PowerShell. The command saves `install-auditorylab.ps1` in your
+home directory and restores your starting directory.
 
 ```powershell
 & {
     $ErrorActionPreference = 'Stop'
-    Invoke-WebRequest -UseBasicParsing https://github.com/resoltico/AuditoryLab/releases/latest/download/install.ps1 -OutFile .\install-auditorylab.ps1 -ErrorAction Stop
-    powershell -NoProfile -ExecutionPolicy ByPass -File .\install-auditorylab.ps1
-    if ($LASTEXITCODE -ne 0) { throw "Installer failed with exit $LASTEXITCODE" }
+    $startingLocation = Get-Location
+    Set-Location -LiteralPath $HOME
+    try {
+        Invoke-WebRequest -UseBasicParsing https://github.com/resoltico/AuditoryLab/releases/latest/download/install.ps1 -OutFile .\install-auditorylab.ps1 -ErrorAction Stop
+        powershell -NoProfile -ExecutionPolicy ByPass -File .\install-auditorylab.ps1
+        if ($LASTEXITCODE -ne 0) { throw "Installer failed with exit $LASTEXITCODE" }
+    } finally {
+        Set-Location -LiteralPath $startingLocation.Path
+    }
 }
 ```
+
+If you save the reviewed installer elsewhere, substitute its full path in the
+Windows examples that reuse it.
 
 Windows PowerShell 5.1 and PowerShell 7 are supported. `ByPass` applies only to the
 launched PowerShell session; it does not change persistent policy or override
@@ -165,9 +175,15 @@ sh ./install-auditorylab.sh --version 0.14.0
 ```powershell
 & {
     $ErrorActionPreference = 'Stop'
-    Invoke-WebRequest -UseBasicParsing https://github.com/resoltico/AuditoryLab/releases/download/v0.14.0/install.ps1 -OutFile .\install-auditorylab.ps1 -ErrorAction Stop
-    powershell -NoProfile -ExecutionPolicy ByPass -File .\install-auditorylab.ps1 -Version 0.14.0
-    if ($LASTEXITCODE -ne 0) { throw "Installer failed with exit $LASTEXITCODE" }
+    $startingLocation = Get-Location
+    Set-Location -LiteralPath $HOME
+    try {
+        Invoke-WebRequest -UseBasicParsing https://github.com/resoltico/AuditoryLab/releases/download/v0.14.0/install.ps1 -OutFile .\install-auditorylab.ps1 -ErrorAction Stop
+        powershell -NoProfile -ExecutionPolicy ByPass -File .\install-auditorylab.ps1 -Version 0.14.0
+        if ($LASTEXITCODE -ne 0) { throw "Installer failed with exit $LASTEXITCODE" }
+    } finally {
+        Set-Location -LiteralPath $startingLocation.Path
+    }
 }
 ```
 
@@ -182,8 +198,10 @@ Remove-Item Env:AUDITORYLAB_VERSION -ErrorAction SilentlyContinue
 ```
 
 Keep a copy of the reviewed installer you used, from the selected release tag or
-reviewed source checkout. The commands above save one as `install-auditorylab.sh` or `install-auditorylab.ps1`. Do not assume that
-fetching the current latest script later gives the same ownership protocol.
+reviewed source checkout. The download commands save `install-auditorylab.sh` in
+the current directory or `install-auditorylab.ps1` in your home directory.
+Fetching the current latest script later may give you a different ownership
+protocol.
 
 The installer stages files privately on the destination filesystem and uses a
 per-product, per-directory exclusive lock. A held lock fails promptly; there are
@@ -228,12 +246,12 @@ sh ./install-auditorylab.sh --uninstall
 ```
 
 ```powershell
-powershell -ExecutionPolicy ByPass -File .\install-auditorylab.ps1 -Uninstall
+powershell -ExecutionPolicy ByPass -File (Join-Path $HOME 'install-auditorylab.ps1') -Uninstall
 ```
 
 Pass the same custom install directory used for installation, for example
 `sh ./install-auditorylab.sh --uninstall --install-dir '/absolute/my tools'` or
-`powershell -ExecutionPolicy ByPass -File .\install-auditorylab.ps1 -Uninstall -InstallDir 'C:\My Tools'`.
+`powershell -ExecutionPolicy ByPass -File (Join-Path $HOME 'install-auditorylab.ps1') -Uninstall -InstallDir 'C:\My Tools'`.
 Removal does not
 need a download of the program. An offline saved copy of the installer can be
 run with the same uninstall option.
