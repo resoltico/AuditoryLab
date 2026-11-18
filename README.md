@@ -21,14 +21,21 @@ curl -fsSL -o install-auditorylab.sh https://github.com/resoltico/AuditoryLab/re
 sh ./install-auditorylab.sh
 ```
 
-On Windows, use PowerShell:
+On Windows, use PowerShell. The command saves `install-auditorylab.ps1` in your
+home directory.
 
 ```powershell
 & {
     $ErrorActionPreference = 'Stop'
-    Invoke-WebRequest -UseBasicParsing https://github.com/resoltico/AuditoryLab/releases/latest/download/install.ps1 -OutFile .\install-auditorylab.ps1 -ErrorAction Stop
-    powershell -NoProfile -ExecutionPolicy ByPass -File .\install-auditorylab.ps1
-    if ($LASTEXITCODE -ne 0) { throw "Installer failed with exit $LASTEXITCODE" }
+    $startingLocation = Get-Location
+    Set-Location -LiteralPath $HOME
+    try {
+        Invoke-WebRequest -UseBasicParsing https://github.com/resoltico/AuditoryLab/releases/latest/download/install.ps1 -OutFile .\install-auditorylab.ps1 -ErrorAction Stop
+        powershell -NoProfile -ExecutionPolicy ByPass -File .\install-auditorylab.ps1
+        if ($LASTEXITCODE -ne 0) { throw "Installer failed with exit $LASTEXITCODE" }
+    } finally {
+        Set-Location -LiteralPath $startingLocation.Path
+    }
 }
 ```
 
