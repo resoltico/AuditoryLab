@@ -17,33 +17,44 @@ Set the device volume low before pressing Play, then raise it gradually. Digital
 Install the CLI for your user account on macOS or Linux:
 
 ```sh
-curl -fsSL -o install-auditorylab.sh https://github.com/resoltico/AuditoryLab/releases/latest/download/install.sh &&
-sh ./install-auditorylab.sh
+sh -c '
+  installer=$(curl --proto =https --proto-redir =https -fsSL https://github.com/resoltico/AuditoryLab/releases/latest/download/install.sh) &&
+    printf "%s\n" "$installer" | sh
+'
 ```
 
-On Windows, use PowerShell. The command saves `install-auditorylab.ps1` in your
-home directory.
+On Windows, use PowerShell.
 
 ```powershell
 & {
     $ErrorActionPreference = 'Stop'
-    $startingLocation = Get-Location
-    Set-Location -LiteralPath $HOME
+    $stage = Join-Path ([IO.Path]::GetTempPath()) ('auditorylab-install-' + [guid]::NewGuid().ToString('N'))
+    $installer = Join-Path $stage 'install-auditorylab.ps1'
+    [void][IO.Directory]::CreateDirectory($stage)
+    $keepInstaller = $false
     try {
-        Invoke-WebRequest -UseBasicParsing https://github.com/resoltico/AuditoryLab/releases/latest/download/install.ps1 -OutFile .\install-auditorylab.ps1 -ErrorAction Stop
-        powershell -NoProfile -ExecutionPolicy ByPass -File .\install-auditorylab.ps1
-        if ($LASTEXITCODE -ne 0) { throw "Installer failed with exit $LASTEXITCODE" }
+        Invoke-WebRequest -UseBasicParsing -Uri https://github.com/resoltico/AuditoryLab/releases/latest/download/install.ps1 -OutFile $installer
+        $keepInstaller = $true
+        powershell -NoProfile -ExecutionPolicy ByPass -File $installer
+        if ($LASTEXITCODE -ne 0) { throw "Installer failed ($LASTEXITCODE)." }
+        $keepInstaller = $false
     } finally {
-        Set-Location -LiteralPath $startingLocation.Path
+        if ($keepInstaller) {
+            Write-Warning "Installer kept for retry at $installer"
+        } else {
+            Remove-Item -LiteralPath $stage -Recurse -Force
+        }
     }
 }
 ```
 
-The installers verify the native CLI, support updates and offline uninstall,
-and leave the desktop app and your recipes/recordings alone. See the
-[installation guide](docs/INSTALL.md) for PATH, ownership, version pins, custom
-folders and running a reviewed local copy. If an existing executable blocks
-installation, follow the [replace or keep instructions](docs/INSTALL.md#existing-executable-without-an-installer-receipt).
+Quick install leaves no installer script after success. If the Windows installer
+fails, the command prints the temporary script path for retry. The installers
+verify the native CLI, support updates and leave the desktop app and your
+recipes/recordings alone. See the [installation guide](docs/INSTALL.md) for PATH,
+ownership, version pins, custom folders and saving a reviewed installer for
+offline uninstall. If an existing executable blocks installation, follow the
+[replace or keep instructions](docs/INSTALL.md#existing-executable-without-an-installer-receipt).
 
 Choose a CLI or desktop archive for your OS and processor from [Releases](https://github.com/resoltico/AuditoryLab/releases/latest). macOS packages require macOS 15 or later and contain either Apple silicon or Intel code. Windows requires Windows 10 on x86_64 or Windows 11 on ARM64. See the [desktop platform requirements](docs/desktop.md#platforms) for graphics and Linux dependencies.
 

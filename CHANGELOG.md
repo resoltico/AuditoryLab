@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- The README quick install leaves no installer script after success. Windows reports the temporary script path on installer failure so you can retry. [Install guide](docs/INSTALL.md#install)
+
 ## [0.14.0] - 2026-11-16
 
 - Receipts with a different managed-file inventory are refused; uninstall with their matching installer or choose a fresh directory. No receipt conversion is performed.
