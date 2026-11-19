@@ -34,10 +34,12 @@ if ($LASTEXITCODE -ne 0) { throw "Installer failed ($LASTEXITCODE)." }
 
 These examples explicitly select the usual default directories. If
 `XDG_BIN_HOME`, another directory, a version pin or disabled PATH changes were
-selected, use the printed command instead. If the installer ran through stdin or
-an expression and cannot identify its saved file, save and inspect the installer using [Install](#install), then
-apply the options printed by the refusal to that saved script. Keep mirror
-configuration in the environment; recovery commands do not print it.
+selected, use the printed options. If the quick installer ran through stdin
+and has no saved file, [download and review the installer](#install), then apply
+those options to your saved script. On Windows, quick install retains the
+temporary script on installer failure so its printed retry command can use it.
+After you finish retrying, you can delete that temporary script and its directory.
+Keep mirror configuration in the environment; recovery commands do not print it.
 
 To keep the existing executable, choose a fresh directory, for example:
 
@@ -90,37 +92,43 @@ guide. Keep the saved installer for later update or offline removal.
 
 From a reviewed source checkout, use `sh install/install.sh` or
 `powershell -ExecutionPolicy ByPass -File .\install\install.ps1`. These scripts
-download a CLI archive without compiling the application. The release commands
-below download the standalone scripts instead.
+download a CLI archive without compiling the application. For a quick install
+from a release, use the [README commands](../README.md#download). They run the
+installer after a successful download and leave no installer script after success.
+To review the installer, choose custom options or keep a copy for offline removal,
+save it using the commands below.
 
 On macOS or Linux:
 
 ```sh
-curl -fsSL -o install-auditorylab.sh https://github.com/resoltico/AuditoryLab/releases/latest/download/install.sh &&
-sh ./install-auditorylab.sh
+curl --proto '=https' --proto-redir '=https' -fsSL -o install-auditorylab.sh https://github.com/resoltico/AuditoryLab/releases/latest/download/install.sh &&
+  less ./install-auditorylab.sh &&
+  sh ./install-auditorylab.sh
 ```
 
-If curl is unavailable, use
-`wget -O install-auditorylab.sh https://github.com/resoltico/AuditoryLab/releases/latest/download/install.sh && sh ./install-auditorylab.sh`. A failed fetch must prevent execution, even when a stale saved script exists. Inspect the saved script before running it; retain it for offline uninstall. A bare `curl | sh` pipeline can hide a failed download behind a successful empty shell.
+If curl is unavailable, use `wget --https-only -O install-auditorylab.sh URL`
+with the same URL and the same `&&` chain. Run the script only after a
+successful download and review.
 The installer itself requires standard shell tools, tar and a SHA-256 tool
 (`sha256sum`, `shasum` or `openssl`).
 
-On Windows, use PowerShell. The command saves `install-auditorylab.ps1` in your
-home directory and restores your starting directory.
+On Windows, save `install-auditorylab.ps1` in your home directory and display it
+for review.
 
 ```powershell
 & {
     $ErrorActionPreference = 'Stop'
-    $startingLocation = Get-Location
-    Set-Location -LiteralPath $HOME
-    try {
-        Invoke-WebRequest -UseBasicParsing https://github.com/resoltico/AuditoryLab/releases/latest/download/install.ps1 -OutFile .\install-auditorylab.ps1 -ErrorAction Stop
-        powershell -NoProfile -ExecutionPolicy ByPass -File .\install-auditorylab.ps1
-        if ($LASTEXITCODE -ne 0) { throw "Installer failed with exit $LASTEXITCODE" }
-    } finally {
-        Set-Location -LiteralPath $startingLocation.Path
-    }
+    $installer = Join-Path $HOME 'install-auditorylab.ps1'
+    Invoke-WebRequest -UseBasicParsing -Uri https://github.com/resoltico/AuditoryLab/releases/latest/download/install.ps1 -OutFile $installer
+    Get-Content -LiteralPath $installer
 }
+```
+
+After the download succeeds and you review the script, run it in a child session.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy ByPass -File (Join-Path $HOME 'install-auditorylab.ps1')
+if ($LASTEXITCODE -ne 0) { throw "Installer failed ($LASTEXITCODE)." }
 ```
 
 If you save the reviewed installer elsewhere, substitute its full path in the
@@ -168,23 +176,25 @@ program. An update requires intact verified ownership metadata and every remaini
 Select a release explicitly, for example:
 
 ```sh
-curl -fsSL -o install-auditorylab.sh https://github.com/resoltico/AuditoryLab/releases/download/v0.14.0/install.sh &&
-sh ./install-auditorylab.sh --version 0.14.0
+curl --proto '=https' --proto-redir '=https' -fsSL -o install-auditorylab.sh https://github.com/resoltico/AuditoryLab/releases/download/v0.14.0/install.sh &&
+  less ./install-auditorylab.sh &&
+  sh ./install-auditorylab.sh --version 0.14.0
 ```
 
 ```powershell
 & {
     $ErrorActionPreference = 'Stop'
-    $startingLocation = Get-Location
-    Set-Location -LiteralPath $HOME
-    try {
-        Invoke-WebRequest -UseBasicParsing https://github.com/resoltico/AuditoryLab/releases/download/v0.14.0/install.ps1 -OutFile .\install-auditorylab.ps1 -ErrorAction Stop
-        powershell -NoProfile -ExecutionPolicy ByPass -File .\install-auditorylab.ps1 -Version 0.14.0
-        if ($LASTEXITCODE -ne 0) { throw "Installer failed with exit $LASTEXITCODE" }
-    } finally {
-        Set-Location -LiteralPath $startingLocation.Path
-    }
+    $installer = Join-Path $HOME 'install-auditorylab.ps1'
+    Invoke-WebRequest -UseBasicParsing -Uri https://github.com/resoltico/AuditoryLab/releases/download/v0.14.0/install.ps1 -OutFile $installer
+    Get-Content -LiteralPath $installer
 }
+```
+
+After you review the downloaded Windows script, run it with the same version.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy ByPass -File (Join-Path $HOME 'install-auditorylab.ps1') -Version 0.14.0
+if ($LASTEXITCODE -ne 0) { throw "Installer failed ($LASTEXITCODE)." }
 ```
 
 These examples pin both installer and payload to 0.14.0. Substitute the same chosen stable release in both places. If instead you use `AUDITORYLAB_VERSION`, that environment pin remains set in the session; clear it to return to latest:
@@ -197,11 +207,10 @@ unset AUDITORYLAB_VERSION
 Remove-Item Env:AUDITORYLAB_VERSION -ErrorAction SilentlyContinue
 ```
 
-Keep a copy of the reviewed installer you used, from the selected release tag or
-reviewed source checkout. The download commands save `install-auditorylab.sh` in
-the current directory or `install-auditorylab.ps1` in your home directory.
-Fetching the current latest script later may give you a different ownership
-protocol.
+For offline removal after quick install, save and review the installer from the
+release tag matching the installed executable's version before going offline.
+Use the download step above and substitute the installed version. Fetching the
+current latest script later may give you a different ownership protocol.
 
 The installer stages files privately on the destination filesystem and uses a
 per-product, per-directory exclusive lock. A held lock fails promptly; there are
