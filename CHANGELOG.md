@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 - The README quick install leaves no installer script after success. Windows reports the temporary script path on installer failure so you can retry. [Install guide](docs/INSTALL.md#install)
+- On Windows, the installer warns when a different executable wins on PATH and gives the full path to the installed copy. [Install guide](docs/INSTALL.md#troubleshooting)
 
 ## [0.14.0] - 2026-11-16
 

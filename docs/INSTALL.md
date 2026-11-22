@@ -366,9 +366,13 @@ first establish that no installer is using it before manual cleanup.
 If the verified candidate cannot run, use its reported diagnostic to check the
 CPU, minimum OS/runtime and device policy. Do not bypass checksum verification.
 If PATH was not changed, use the quoted full path printed by the installer or
-open a new terminal after successful persistence. For shell shadowing use
-`command -v auditorylab`; in PowerShell use `Get-Command auditorylab` and remove a
-conflicting installation using the method that installed it.
+open a new terminal after successful persistence.
+
+The installer warns when another executable wins on its session's PATH. Use
+the quoted full path it prints to run the installed copy. To check what your
+own shell resolves, run `command -v auditorylab` on macOS or Linux, or
+`Get-Command auditorylab.exe` in PowerShell. Remove a conflicting installation
+using the method that installed it.
 
 ## Archive names
 
