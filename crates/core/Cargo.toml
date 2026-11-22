@@ -18,7 +18,7 @@ uuid.workspace = true
 libm.workspace = true
 serde.workspace = true
 toml.workspace = true
-url = "2.5.8"
+url = "2.5.9"
 
 [dev-dependencies]
 auditorylab-core = { path = ".", features = ["test-support"] }
