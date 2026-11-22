@@ -886,6 +886,24 @@ try {
         foreach ($notice in @($Product.LegalFiles)) { Check ('installed release file retained: ' + $notice) ((Get-Item -LiteralPath (Join-Path (Join-Path $state 'legal') $notice)).Length -gt 0) }
         Check 'installation reported' ((Get-Output) -match 'is installed')
         Check 'custom uninstall path is quoted' ((Get-Output).Contains("-InstallDir '" + $dir.Replace("'", "''") + "'"))
+        Write-Host '--- executable precedence on PATH'
+        $otherDir = Join-Path $work "$shellName-other tools"
+        [void][IO.Directory]::CreateDirectory($otherDir)
+        $otherExe = Join-Path $otherDir ($command + '.exe')
+        $fixture = 'unowned executable fixture'
+        [IO.File]::WriteAllText($otherExe, $fixture)
+        $savedSessionPath = $env:Path
+        $pathWarning = "The installer session finds another $command.exe"
+        try {
+            $env:Path = "$otherDir;$dir;$savedSessionPath"
+            Check 'install succeeds with a competing executable first on PATH' ((Invoke-Installer $shell @('-InstallDir', $dir, '-NoModifyPath')) -eq 0)
+            Check 'PATH warning identifies the first executable' ((Get-Output).Contains("${pathWarning}: $otherExe"))
+            Check 'PATH warning leaves a quoted command for the installed executable' ((Get-Output).Contains("Get started: & '" + $exe.Replace("'", "''") + "' --help"))
+            $env:Path = "$dir;$otherDir;$savedSessionPath"
+            Check 'install succeeds with the installed executable first on PATH' ((Invoke-Installer $shell @('-InstallDir', $dir, '-NoModifyPath')) -eq 0)
+            Check 'PATH warning is omitted when the installed executable wins' (-not (Get-Output).Contains($pathWarning))
+            Check 'the competing executable is untouched' ([IO.File]::ReadAllText($otherExe) -ceq $fixture)
+        } finally { $env:Path = $savedSessionPath }
         Check 'reinstall succeeds' ((Invoke-Installer $shell @('-InstallDir', $dir, '-NoModifyPath')) -eq 0)
         Check 'reinstall reported' ((Get-Output) -match 'reinstalled')
         Remove-Item -LiteralPath $exe
