@@ -24,7 +24,7 @@ env:
   MACOS_XCODE_VERSION: '26.3'
   # Latest stable Xcode installed on the hosted macOS 26 icon producer.
   MACOS_ICON_XCODE_VERSION: '26.6'
-  CARGO_DENY_VERSION: '0.20.2'
+  CARGO_DENY_VERSION: '0.22.0'
   CARGO_ABOUT_VERSION: '0.9.3'
   CARGO_MUTANTS_VERSION: '27.1.0'
   ACTIONLINT_VERSION: '1.7.12'

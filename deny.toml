@@ -12,6 +12,7 @@ targets = [
 exclude-dev = true
 
 [advisories]
+unmaintained = "all"
 ignore = [
     { id = "RUSTSEC-2026-0370", reason = "zvariant 5 is required by Slint 1.19.0 Linux accessibility and portal dependencies. Its API moved to zbus 6; the pinned consumers require major version 5. This informational maintenance advisory reports no vulnerability." },
     { id = "RUSTSEC-2026-0371", reason = "zbus_names 4 is required by Slint 1.19.0 Linux accessibility and portal dependencies. Its API moved to zbus 6; the pinned consumers require the standalone crate. This informational maintenance advisory reports no vulnerability." },
